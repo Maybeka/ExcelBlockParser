@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+release/
+build/bin/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sisyphus / work tracking
+.sisyphus/
+.playwright-mcp/
+
+# Playwright
+test-results/
+
+# Wails
+wailsjs/
+
+# Env
+.env
+.env.local

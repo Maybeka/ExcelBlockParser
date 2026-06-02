@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "excel-block-parser",
+  "outputfilename": "excel-block-parser",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build:vite",
+  "frontend:dev:watcher": "npm run dev:vite",
+  "frontend:dev:serverUrl": "http://localhost:5173",
+  "author": {
+    "name": "Your Name",
+    "email": "your@email.com"
+  }
+}
