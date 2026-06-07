@@ -19,10 +19,11 @@ interface SpreadsheetPanelProps {
   onSelectionChange: (range: CellRange | null, activeSheet: string | null) => void
   loadSignal: number
   onFileLoaded: (fileName: string) => void
+  closeSignal: number
   lockedRanges: LockedRangeInfo[]
 }
 
-export function SpreadsheetPanel({ activeBlockId, activeColIndex, onSelectionChange, loadSignal, onFileLoaded, lockedRanges }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeBlockId, activeColIndex, onSelectionChange, loadSignal, onFileLoaded, lockedRanges, closeSignal }: SpreadsheetPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { univerAPI, setUniverAPI, setSheetNames } = useUniver()
   const univerAPIRef = useRef(univerAPI)
@@ -305,6 +306,16 @@ export function SpreadsheetPanel({ activeBlockId, activeColIndex, onSelectionCha
 
     doLoad()
   }, [loadSignal])
+
+  useEffect(() => {
+    if (closeSignal === 0) return
+    const api = univerAPIRef.current
+    if (!api) return
+    const wb = api.getActiveWorkbook()
+    if (wb) api.disposeUnit(wb.getId())
+    setHasFile(false)
+    setError(null)
+  }, [closeSignal])
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>

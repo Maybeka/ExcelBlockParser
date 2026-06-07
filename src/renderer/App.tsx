@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Button, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert } from 'antd'
-import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined } from '@ant-design/icons'
+import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined } from '@ant-design/icons'
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { ConfigPanel } from './components/ConfigPanel'
@@ -226,6 +226,10 @@ function AppContent() {
   const [shouldReParse, setShouldReParse] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [currentFileName, setCurrentFileName] = useState<string | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [closeSignal, setCloseSignal] = useState(0)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const pendingFileActionRef = useRef<(() => void) | null>(null)
   const pendingReconcilingRangeRef = useRef<{ range: CellRange; activeSheet: string | null } | null>(null)
 
   const activeBlockIdRef = useRef(activeBlockId)
@@ -337,8 +341,46 @@ function AppContent() {
   }, [])
 
   const handleOpenFile = useCallback(() => {
+    if (hasUnsavedChanges) {
+      pendingFileActionRef.current = () => {
+        setLoadSignal(s => s + 1)
+        setParseResult(null)
+      }
+      setShowDiscardConfirm(true)
+      return
+    }
     setLoadSignal(s => s + 1)
     setParseResult(null)
+  }, [hasUnsavedChanges])
+
+  const handleCloseFile = useCallback(() => {
+    if (hasUnsavedChanges) {
+      pendingFileActionRef.current = () => {
+        const freshBlock = createDefaultBlock(0)
+        setBlocks([freshBlock])
+        setActiveBlockId(freshBlock.id)
+        setCloseSignal(s => s + 1)
+        setCurrentFileName(null)
+        setParseResult(null)
+        blockCounter = 1
+      }
+      setShowDiscardConfirm(true)
+      return
+    }
+    const freshBlock = createDefaultBlock(0)
+    setBlocks([freshBlock])
+    setActiveBlockId(freshBlock.id)
+    setCloseSignal(s => s + 1)
+    setCurrentFileName(null)
+    setParseResult(null)
+    blockCounter = 1
+  }, [hasUnsavedChanges])
+
+  const handleConfirmDiscard = useCallback(() => {
+    pendingFileActionRef.current?.()
+    pendingFileActionRef.current = null
+    setShowDiscardConfirm(false)
+    setHasUnsavedChanges(false)
   }, [])
 
   const handleFileLoaded = useCallback((fileName: string) => {
@@ -346,6 +388,7 @@ function AppContent() {
     setBlocks([freshBlock])
     setActiveBlockId(freshBlock.id)
     setCurrentFileName(fileName)
+    setHasUnsavedChanges(false)
     blockCounter = 1
   }, [])
 
@@ -366,6 +409,9 @@ function AppContent() {
     }
 
     if (!range) {
+      // Don't clear range for locked blocks (e.g. sheet switch triggered by
+      // handleActivateBlock should not wipe the locked block's configured range).
+      if (currentBlock?.selectionLocked) return
       setBlocks(prev => prev.map(b =>
         b.id === blockId ? { ...b, range: null, columns: [] } : b,
       ))
@@ -386,6 +432,16 @@ function AppContent() {
   }, [])
 
   const handleActivateBlock = useCallback((blockId: string) => {
+    const block = blocksRef.current.find(b => b.id === blockId)
+    if (block?.activeSheet && !reconcilingBlockIdRef.current) {
+      const wb = univerAPIRef.current?.getActiveWorkbook()
+      if (wb) {
+        const currentSheet = wb.getActiveSheet()
+        if (currentSheet?.getSheetName() !== block.activeSheet) {
+          wb.setActiveSheet(block.activeSheet)
+        }
+      }
+    }
     setActiveBlockId(blockId)
   }, [])
 
@@ -400,6 +456,7 @@ function AppContent() {
 
   const handleBlockChange = useCallback((blockId: string, partial: Partial<BlockConfig>) => {
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, ...partial } : b))
+    setHasUnsavedChanges(true)
   }, [])
 
   const handleAddBlock = useCallback(() => {
@@ -407,6 +464,7 @@ function AppContent() {
     setBlocks(prev => [...prev, block])
     setActiveBlockId(block.id)
     setParseResult(null)
+    setHasUnsavedChanges(true)
   }, [])
 
   const handleDeleteBlock = useCallback((blockId: string) => {
@@ -424,6 +482,7 @@ function AppContent() {
       return next
     })
     setParseResult(null)
+    setHasUnsavedChanges(true)
   }, [])
 
 
@@ -540,7 +599,11 @@ function AppContent() {
 
       const jsonStr = JSON.stringify(session, null, 2)
       const result = await getBridge().saveJson('session.json', jsonStr)
-      if (!result.success) console.error('Save failed:', result.error)
+      if (result.success) {
+        setHasUnsavedChanges(false)
+      } else {
+        console.error('Save failed:', result.error)
+      }
     } catch (err) {
       console.error('Export failed:', err)
     }
@@ -624,9 +687,24 @@ function AppContent() {
         borderBottom: `1px solid ${token.colorBorderSecondary}`,
         display: 'flex', alignItems: 'center',
       }}>
-        <span style={{ fontSize: 16, fontWeight: 600, marginRight: 24 }}>
+        <span style={{ fontSize: 16, fontWeight: 600, marginRight: 8 }}>
           Excel Block Parser
         </span>
+        {currentFileName && (
+          <>
+            <span style={{
+              fontSize: 12, color: token.colorTextSecondary,
+              maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', marginRight: 4,
+            }} title={currentFileName}>
+              {currentFileName}
+            </span>
+            <Tooltip title="Close file">
+              <Button size="small" type="text" icon={<CloseOutlined />}
+                onClick={handleCloseFile} style={{ marginRight: 12 }} />
+            </Tooltip>
+          </>
+        )}
         <Space>
           <Button icon={<FolderOpenOutlined />} onClick={handleOpenFile}>
             Open Excel
@@ -654,17 +732,6 @@ function AppContent() {
             </Button>
           </Tooltip>
         </Space>
-        <span style={{ flex: 1 }} />
-        {currentFileName && (
-          <span style={{
-            fontSize: 12, color: token.colorTextSecondary,
-            maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }} title={currentFileName}>
-            {currentFileName}
-          </span>
-        )}
-        </Space>
       </Layout.Header>
       {importError && (
         <Alert
@@ -687,6 +754,7 @@ function AppContent() {
                   loadSignal={loadSignal}
                   onFileLoaded={handleFileLoaded}
                   lockedRanges={lockedRanges}
+                  closeSignal={closeSignal}
                 />
               </div>
             </Splitter.Panel>
@@ -740,6 +808,17 @@ function AppContent() {
           Importing will replace ALL blocks and their configurations.
         </p>
         <p>This action cannot be undone.</p>
+      </Modal>
+      <Modal
+        title="Discard unsaved changes?"
+        open={showDiscardConfirm}
+        onCancel={() => { setShowDiscardConfirm(false); pendingFileActionRef.current = null }}
+        onOk={handleConfirmDiscard}
+        okText="Discard"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+      >
+        <p>You have unsaved changes. Discarding will lose all modifications since your last export.</p>
       </Modal>
     </Layout>
   )
