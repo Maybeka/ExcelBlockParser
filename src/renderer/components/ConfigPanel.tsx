@@ -1,6 +1,6 @@
-import { useCallback, useState, useRef, useEffect } from 'react'
-import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Tabs, Typography, AutoComplete } from 'antd'
-import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, LockOutlined, UnlockOutlined, ReloadOutlined, CloseOutlined, AuditOutlined } from '@ant-design/icons'
+import { useCallback, useState, useRef, useEffect, useMemo, Fragment } from 'react'
+import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider } from 'antd'
+import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined } from '@ant-design/icons'
 import type { ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport } from '../types'
 import { useUniver } from '../context/UniverContext'
 import { remapColumns } from '../services/columnMapper'
@@ -69,6 +69,11 @@ function headerRowsToKey(parts: string[]): string {
  * "4" → [3]
  * Returns null for invalid input (empty, letters only, zero, negative).
  */
+const renderOption = (option: { label?: unknown; value?: unknown }) => {
+  const label = typeof option.label === 'string' ? option.label : String(option.value ?? '')
+  return <span title={label}>{option.label as React.ReactNode}</span>
+}
+
 function parseHeaderRowsInput(input: string): number[] | null {
   const trimmed = input.trim()
   if (!trimmed) return null
@@ -109,7 +114,7 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
   onPreviewSheet?: (sheetName: string | null) => void
   onColumnFocus?: (colIndex: number | null) => void
 }) {
-  const [activeTab, setActiveTab] = useState('sheet-range')
+  const [step, setStep] = useState(0)
   const [columns, setColumns] = useState(block.columns)
   const [selectedSheet, setSelectedSheet] = useState(block.activeSheet || '')
   const [selectedRange, setSelectedRange] = useState(block.range)
@@ -134,7 +139,6 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
     if (wb) wb.setActiveSheet(sheetName)
   }
 
-  // Rebuild columns when selectedRange changes (Reselect Range)
   useEffect(() => {
     const range = selectedRange || block.range
     if (!range) return
@@ -155,7 +159,6 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
     .map(c => ({ value: c.key }))
 
   const handleCancel = () => {
-    // Restore Excel view to the block's original sheet
     const api = univerRef.current
     if (api && block.activeSheet) {
       const wb = api.getActiveWorkbook()
@@ -170,94 +173,145 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
     })
   }
 
-  const tabItems = [
-    {
-      key: 'sheet-range',
-      label: 'Sheet & Range',
-      children: (
-        <div style={{ padding: '8px 12px' }}>
-          <div style={{ marginBottom: 8 }}>
-            <Typography.Text style={{ fontSize: 12 }}>Sheet</Typography.Text>
-            <Select
-              size="small"
-              style={{ width: '100%', marginTop: 4 }}
-              value={selectedSheet || undefined}
-              placeholder="Auto (active sheet)"
-              onChange={switchSheet}
-              options={sheetNames.map(s => ({ value: s, label: s }))}
-              allowClear
-            />
-          </div>
-          <Typography.Text style={{ fontSize: 12, fontFamily: 'monospace' }}>{selectedRange?.a1Notation || block.range?.a1Notation}</Typography.Text>
-          <div style={{ marginTop: 8 }}>
-            <Button size="small" onClick={handleReselectRange}>Reselect Range</Button>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'columns',
-      label: 'Columns',
-      children: (
-        <div style={{ padding: '8px 12px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 36px', gap: '4px 6px', alignItems: 'center', padding: '2px 0', fontSize: 11, color: '#999' }}>
-            <span>Col</span>
-            <span>Key</span>
-            <span>Type</span>
-            <span>Skip</span>
-          </div>
-          {columns.map(col => (
-            <div key={col.colIndex} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 36px', gap: '4px 6px', alignItems: 'center', marginBottom: 4,
-              background: hoveredColIndex === col.colIndex ? 'rgba(250, 140, 22, 0.06)' : 'transparent', borderRadius: 4, padding: '2px 6px' }}
-              onMouseEnter={() => { setHoveredColIndex(col.colIndex); onColumnFocus?.(col.colIndex) }}
-              onMouseLeave={() => { setHoveredColIndex(null); onColumnFocus?.(null) }}
-            >
-              <span
-                style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: '#666', cursor: 'pointer' }}
-                onClick={() => {
-                  const range = selectedRange || block.range
-                  if (!range) return
-                  const api = univerRef.current
-                  if (!api) return
-                  const wb = api.getActiveWorkbook()
-                  if (!wb) return
-                  const activeSheet = selectedSheet || block.activeSheet
-                  if (activeSheet) wb.setActiveSheet(activeSheet)
-                  const sheet = activeSheet ? wb.getSheetByName(activeSheet) : wb.getActiveSheet()
-                  if (sheet) sheet.scrollToCell(Math.max(0, range.startRow - 1), Math.max(0, col.colIndex - 3))
-                }}
-              >{col.colLetter}</span>
-              <AutoComplete
-                size="small"
-                value={col.key}
-                onChange={v => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, key: v } : c))}
-                options={existingKeys}
-                style={{ fontSize: 13 }}
-              />
-              <Select size="small" value={col.type} onChange={v => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, type: v } : c))} options={[{value:'auto',label:'auto'},{value:'string',label:'string'},{value:'integer',label:'integer'},{value:'float',label:'float'},{value:'boolean',label:'boolean'},{value:'date',label:'date'}]} style={{ width: 90 }} />
-              <Checkbox checked={col.skip} onChange={e => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, skip: e.target.checked } : c))} />
-            </div>
-          ))}
-        </div>
-      ),
-    },
+  const steps = [
+    { title: 'Sheet', key: 'sheet' },
+    { title: 'Range', key: 'range' },
+    { title: 'Columns', key: 'columns' },
   ]
+
+  const circled = ['①', '②', '③']
+
+  const stepLabel = (i: number) => `${circled[i]} ${steps[i].title}`
+
+  const renderStepIndicator = () => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+      {steps.map((s, i) => (
+        <Fragment key={s.key}>
+          {i > 0 && <span style={{ color: '#d9d9d9', fontSize: 11, margin: '0 2px' }}>→</span>}
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: i === step ? 600 : 400,
+              color: i === step ? '#1677ff' : i < step ? '#52c41a' : '#999',
+              cursor: i < step ? 'pointer' : 'default',
+            }}
+            onClick={i < step ? () => setStep(i) : undefined}
+          >
+            {i < step ? '✓ ' : ''}{stepLabel(i)}
+          </span>
+        </Fragment>
+      ))}
+    </div>
+  )
+
+  const renderFooter = () => (
+    <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderTop: '1px solid #f0f0f0' }}>
+      {step > 0 && (
+        <Button size="small" onClick={() => setStep(step - 1)}>
+          Prev: {steps[step - 1].title}
+        </Button>
+      )}
+      {step < 2 && (
+        <Button type="primary" size="small" onClick={() => setStep(step + 1)}>
+          Next: {steps[step + 1].title}
+        </Button>
+      )}
+      <Button type="primary" size="small" onClick={() => onApply({
+        ...block,
+        columns,
+        activeSheet: selectedSheet || block.activeSheet,
+        range: selectedRange || block.range,
+      })}>
+        Apply & Close
+      </Button>
+      <Button size="small" onClick={handleCancel}>Cancel</Button>
+    </div>
+  )
+
+  const renderStep0 = () => (
+    <div style={{ padding: '8px 12px' }}>
+      <Typography.Text style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
+        Choose which sheet this block should reference.
+      </Typography.Text>
+      <Select
+        size="small"
+        style={{ width: '100%' }}
+        value={selectedSheet || undefined}
+        placeholder="Auto (active sheet)"
+        onChange={switchSheet}
+        options={sheetNames.map(s => ({ value: s, label: s }))}
+        allowClear
+        optionRender={renderOption}
+      />
+    </div>
+  )
+
+  const renderStep1 = () => (
+    <div style={{ padding: '8px 12px' }}>
+      <Typography.Text style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
+        Current range: <span style={{ fontFamily: 'monospace', color: '#1677ff' }}>
+          {selectedRange?.a1Notation || block.range?.a1Notation}
+        </span>
+      </Typography.Text>
+      <Typography.Text style={{ fontSize: 12, color: '#999', display: 'block', marginBottom: 8 }}>
+        {report.issues.filter(i => ['row-shifted', 'content-changed'].includes(i.type)).map(i => i.message).join('; ') || 'No range issues detected.'}
+      </Typography.Text>
+      <Button size="small" onClick={handleReselectRange}>Reselect Range</Button>
+    </div>
+  )
+
+  const renderStep2 = () => (
+    <div style={{ padding: '8px 12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 36px', gap: '4px 6px', alignItems: 'center', padding: '2px 0', fontSize: 11, color: '#999' }}>
+        <span>Col</span>
+        <span>Key</span>
+        <span>Type</span>
+        <span>Skip</span>
+      </div>
+      {columns.map(col => (
+        <div key={col.colIndex} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 36px', gap: '4px 6px', alignItems: 'center', marginBottom: 4,
+          background: hoveredColIndex === col.colIndex ? 'rgba(250, 140, 22, 0.06)' : 'transparent', borderRadius: 4, padding: '2px 6px' }}
+          onMouseEnter={() => { setHoveredColIndex(col.colIndex); onColumnFocus?.(col.colIndex) }}
+          onMouseLeave={() => { setHoveredColIndex(null); onColumnFocus?.(null) }}
+        >
+          <span
+            style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: '#666', cursor: 'pointer' }}
+            onClick={() => {
+              const range = selectedRange || block.range
+              if (!range) return
+              const api = univerRef.current
+              if (!api) return
+              const wb = api.getActiveWorkbook()
+              if (!wb) return
+              const activeSheet = selectedSheet || block.activeSheet
+              if (activeSheet) wb.setActiveSheet(activeSheet)
+              const sheet = activeSheet ? wb.getSheetByName(activeSheet) : wb.getActiveSheet()
+              if (sheet) sheet.scrollToCell(Math.max(0, range.startRow - 1), Math.max(0, col.colIndex - 3))
+            }}
+          >{col.colLetter}</span>
+          <AutoComplete
+            size="small"
+            value={col.key}
+            onChange={v => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, key: v } : c))}
+            options={existingKeys}
+            style={{ fontSize: 13 }}
+          />
+          <Select size="small" value={col.type} onChange={v => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, type: v } : c))} options={[{value:'auto',label:'auto'},{value:'string',label:'string'},{value:'integer',label:'integer'},{value:'float',label:'float'},{value:'boolean',label:'boolean'},{value:'date',label:'date'}]} style={{ width: 90 }} optionRender={renderOption} />
+          <Checkbox checked={col.skip} onChange={e => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, skip: e.target.checked } : c))} />
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={tabItems}
-        size="small"
-        className="recon-tabs"
-        tabBarStyle={{ paddingLeft: 12, paddingRight: 12, marginBottom: 0, borderBottom: '1px solid #f0f0f0' }}
-        style={{ flex: 1, minHeight: 0, overflow: 'hidden', paddingTop: 4 }}
-      />
-      <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderTop: '1px solid #f0f0f0' }}>
-        <Button type="primary" size="small" onClick={() => onApply({ ...block, columns, activeSheet: selectedSheet || block.activeSheet, range: selectedRange || block.range })}>Apply & Close</Button>
-        <Button size="small" onClick={handleCancel}>Cancel</Button>
+      {renderStepIndicator()}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', paddingTop: 4 }}>
+        {step === 0 && renderStep0()}
+        {step === 1 && renderStep1()}
+        {step === 2 && renderStep2()}
       </div>
+      {renderFooter()}
     </div>
   )
 }
@@ -282,12 +336,43 @@ export function ConfigPanel({
 }: ConfigPanelProps) {
   const [expandedMaps, setExpandedMaps] = useState<Set<string>>(new Set())
   const [showSettings, setShowSettings] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ blockId: string; label: string } | null>(null)
   const [reconcilingBlockId, setReconcilingBlockId] = useState<string | null>(null)
   const [reconReports, setReconReports] = useState<Record<string, ReconciliationReport>>({})
   const [reconHeights, setReconHeights] = useState<Record<string, number>>({})
   const normalContentRef = useRef<Record<string, HTMLDivElement | null>>({})
   const { univerAPI, sheetNames } = useUniver()
+
+  const [searchText, setSearchText] = useState('')
+  const [searchTarget, setSearchTarget] = useState<'all' | 'title' | 'columnName'>('all')
+
+  const filteredBlocks = useMemo(() => {
+    if (!searchText.trim()) return blocks
+    const query = searchText.toLowerCase().trim()
+    return blocks.filter(block => {
+      const label = (block.label || '').toLowerCase()
+      const columns = block.columns || []
+
+      switch (searchTarget) {
+        case 'title':
+          return label.includes(query)
+        case 'columnName':
+          return columns.some(c => {
+            const key = (c.key || '').toLowerCase()
+            const suggestedKey = (c.suggestedKey || '').toLowerCase()
+            return key.includes(query) || suggestedKey.includes(query)
+          })
+        default:
+          if (label.includes(query)) return true
+          return columns.some(c => {
+            const key = (c.key || '').toLowerCase()
+            const suggestedKey = (c.suggestedKey || '').toLowerCase()
+            return key.includes(query) || suggestedKey.includes(query)
+          })
+      }
+    })
+  }, [blocks, searchText, searchTarget])
 
   interface ColumnTableState {
     active: boolean
@@ -553,46 +638,109 @@ export function ConfigPanel({
   }
 
   return (
-    <div style={{ padding: 16, height: '100%', overflow: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ margin: 0, fontSize: 16, flex: 1 }}>Blocks</h3>
-        <span style={{ fontSize: 12, color: '#888', marginRight: 8 }}>
-          click a block to make it active for selection
-        </span>
-        <Button size="small" icon={<PlusOutlined />} onClick={onAddBlock}>Add</Button>
-      </div>
-
-      <div style={{ marginBottom: 12, fontSize: 12 }}>
-        <span
-          onClick={() => setShowSettings(s => !s)}
-          style={{ color: '#888', cursor: 'pointer', userSelect: 'none' }}
-        >
-          <SettingOutlined style={{ marginRight: 4 }} />
-          Settings
-          {showSettings ? <CaretDownOutlined style={{ marginLeft: 2, fontSize: 10 }} /> : <CaretRightOutlined style={{ marginLeft: 2, fontSize: 10 }} />}
-        </span>
-        {showSettings && (
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>Lock controls in inactive blocks</span>
-            <Switch
-              size="small"
-              checked={focusMode === 'activate-first'}
-              onChange={v => onFocusModeChange(v ? 'activate-first' : 'always-editable')}
+    <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 16, flex: 1 }}>
+            Blocks
+            <span style={{ fontSize: 12, color: '#999', marginLeft: 8, fontWeight: 400 }}>
+              {searchText ? `${filteredBlocks.length}/${blocks.length}` : blocks.length}
+            </span>
+          </h3>
+          <Tooltip title="Collapse all">
+            <Button
+              size="small" type="text"
+              icon={<CompressOutlined />}
+              onClick={() => blocks.forEach(b => { if (!b.collapsed) onBlockChange(b.id, { collapsed: true }) })}
             />
-          </div>
-        )}
+          </Tooltip>
+          <Tooltip title="Expand all">
+            <Button
+              size="small" type="text"
+              icon={<ExpandOutlined />}
+              onClick={() => blocks.forEach(b => { if (b.collapsed) onBlockChange(b.id, { collapsed: false }) })}
+            />
+          </Tooltip>
+          <Divider type="vertical" style={{ margin: '0 4px' }} />
+          <Tooltip title={showSearch ? 'Hide search' : 'Search blocks'}>
+            <Button
+              size="small" type="text"
+              icon={<SearchOutlined />}
+              onClick={() => {
+                const next = !showSearch
+                setShowSearch(next)
+                if (!next) setSearchText('')
+              }}
+              style={{ color: showSearch ? '#1677ff' : undefined }}
+            />
+          </Tooltip>
+          <Tooltip title="Settings">
+            <Button
+              size="small" type="text"
+              icon={<SettingOutlined />}
+              onClick={() => setShowSettings(s => !s)}
+              style={{ color: showSettings ? '#1677ff' : undefined }}
+            />
+          </Tooltip>
+          <Button size="small" icon={<PlusOutlined />} onClick={onAddBlock} style={{ marginLeft: 12 }}>Add</Button>
+        </div>
+
+      <Divider style={{ margin: '0 0 8px 0' }} />
+
+      {showSettings && (
+        <div style={{ marginBottom: 12, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>Lock controls in inactive blocks</span>
+          <Switch
+            size="small"
+            checked={focusMode === 'activate-first'}
+            onChange={v => onFocusModeChange(v ? 'activate-first' : 'always-editable')}
+          />
+        </div>
+      )}
+
+      {showSearch && (
+        <div style={{ marginBottom: 12, display: 'flex', gap: 6 }}>
+          <Select
+            size="small"
+            value={searchTarget}
+            onChange={setSearchTarget}
+            style={{ width: 96, flexShrink: 0 }}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'title', label: 'Title' },
+              { value: 'columnName', label: 'Column' },
+            ]}
+            optionRender={renderOption}
+          />
+          <Input
+            size="small"
+            placeholder="Search blocks..."
+            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            allowClear
+            style={{ flex: 1 }}
+          />
+        </div>
+      )}
+
+      {(showSearch || showSettings) && <Divider style={{ margin: '0 0 8px 0' }} />}
       </div>
 
-      {blocks.map((block) => {
+      <div style={{ flex: 1, overflow: 'auto' }}>
+      {filteredBlocks.map((block) => {
         const isActive = block.id === activeBlockId
         const controlsLocked = focusMode === 'activate-first' && !isActive
+        const isReconciling = reconcilingBlockId !== null
+        const isOtherBlockInReconciling = isReconciling && block.id !== reconcilingBlockId
+        const effectivelyCollapsed = block.collapsed || isOtherBlockInReconciling
         const headerLabel = block.label?.trim() || `Block ${blocks.indexOf(block) + 1}`
         const visibleColumns = block.columns
 
         return (
           <div
             key={block.id}
-            onMouseDown={() => onActivateBlock(block.id)}
+            onMouseDown={() => { if (!isOtherBlockInReconciling) onActivateBlock(block.id) }}
             style={{
               marginBottom: 8,
               border: `1px solid ${isActive ? '#1677ff' : '#d9d9d9'}`,
@@ -606,14 +754,14 @@ export function ConfigPanel({
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '6px 10px',
-                borderBottom: block.collapsed ? 'none' : '1px solid #f0f0f0',
+                borderBottom: effectivelyCollapsed ? 'none' : '1px solid #f0f0f0',
               }}
             >
               <span
-                onClick={() => onBlockChange(block.id, { collapsed: !block.collapsed })}
-                style={{ color: '#999', cursor: 'pointer', fontSize: 12 }}
+                onClick={() => { if (!isOtherBlockInReconciling) onBlockChange(block.id, { collapsed: !block.collapsed }) }}
+                style={{ color: isOtherBlockInReconciling ? '#d9d9d9' : '#999', cursor: isOtherBlockInReconciling ? 'default' : 'pointer', fontSize: 12 }}
               >
-                {block.collapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
+                {effectivelyCollapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
               </span>
               <Input
                 size="small"
@@ -622,13 +770,15 @@ export function ConfigPanel({
                 placeholder={headerLabel}
                 style={{ flex: 1, fontSize: 13, fontWeight: 600 }}
                 variant="borderless"
-                disabled={controlsLocked}
+                disabled={controlsLocked || isOtherBlockInReconciling}
               />
               {block.range && (
                 <Tooltip title={`${block.activeSheet || '(active sheet)'}!${block.range.a1Notation} — click to go`}>
                   <span
                     onClick={(e) => {
                       e.stopPropagation()
+                      if (isOtherBlockInReconciling) return
+                      onActivateBlock(block.id)
                       const api = univerRef.current
                       if (!api) return
                       const wb = api.getActiveWorkbook()
@@ -649,21 +799,22 @@ export function ConfigPanel({
                   </span>
                 </Tooltip>
               )}
-              <Tooltip title={block.selectionLocked ? 'Unlock selection' : 'Lock selection'}>
-                <Button
-                  size="small" type="text"
-                  icon={block.selectionLocked ? <LockOutlined style={{ color: '#1677ff' }} /> : <UnlockOutlined style={{ color: '#bbb' }} />}
-                  onClick={() => onBlockChange(block.id, { selectionLocked: !block.selectionLocked })}
-                  onMouseDown={e => e.stopPropagation()}
-                  disabled={!block.range || reconcilingBlockId === block.id}
-                  style={{ opacity: block.range ? 1 : 0.3 }}
-                />
-              </Tooltip>
-              <Tooltip title={reconcilingBlockId === block.id ? 'Exit reconciliation' : 'Reconcile'}>
-                <Button
-                  size="small" type="text"
-                  icon={reconcilingBlockId === block.id ? <CloseOutlined /> : <AuditOutlined />}
-                  onClick={async (e) => {
+              {!block.selectionLocked && block.range && !isOtherBlockInReconciling && (
+                <Tooltip title="Confirm block">
+                  <Button
+                    size="small" type="text"
+                    icon={<CheckOutlined style={{ color: '#52c41a' }} />}
+                    onClick={() => onBlockChange(block.id, { selectionLocked: true })}
+                    onMouseDown={e => e.stopPropagation()}
+                  />
+                </Tooltip>
+              )}
+              {block.selectionLocked && (
+                <Tooltip title={reconcilingBlockId === block.id ? 'Discard editing' : 'Edit block'}>
+                  <Button
+                    size="small" type="text"
+                    icon={reconcilingBlockId === block.id ? <CloseOutlined /> : <EditOutlined />}
+                    onClick={async (e) => {
                     e.stopPropagation()
                     if (controlsLocked || !block?.range) return
                     // Activate block so highlights render
@@ -682,10 +833,6 @@ export function ConfigPanel({
                     const api = univerRef.current
                     if (!api) return
                     const wb = api.getActiveWorkbook()
-                    // Ensure locked state for reconciliation
-                    if (!block.selectionLocked) {
-                      onBlockChange(block.id, { selectionLocked: true })
-                    }
                     // Switch Excel to the block's sheet so highlight renders
                     if (block.activeSheet && wb) {
                       wb.setActiveSheet(block.activeSheet)
@@ -709,6 +856,8 @@ export function ConfigPanel({
                   style={{ opacity: block.range ? 1 : 0.3, color: reconcilingBlockId === block.id ? '#1677ff' : undefined }}
                 />
               </Tooltip>
+              )}
+              <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
               <Button
                 size="small" type="text" danger
                 icon={<DeleteOutlined />}
@@ -730,7 +879,7 @@ export function ConfigPanel({
                 }} />
               </div>
             ) : (
-              !block.collapsed && (
+              !effectivelyCollapsed && (
               <div ref={(el) => { normalContentRef.current[block.id] = el }} style={{ padding: '8px 12px', opacity: controlsLocked ? 0.5 : 1 }}>
                 {!block.range ? (
                   <div style={{ color: '#999', fontSize: 13, padding: '8px 0' }}>
@@ -882,6 +1031,7 @@ export function ConfigPanel({
                                 options={TYPE_OPTIONS}
                                 disabled={controlsLocked || col.skip}
                                 style={{ fontSize: 13 }}
+                                optionRender={renderOption}
                               />
                               <Checkbox
                                 checked={col.skip}
@@ -1092,6 +1242,7 @@ export function ConfigPanel({
                                       options={FALLBACK_TYPE_OPTIONS}
                                       disabled={controlsLocked}
                                       style={{ flex: 1, fontSize: 11 }}
+                                      optionRender={renderOption}
                                     />
                                   </div>
                                 )}
@@ -1110,16 +1261,11 @@ export function ConfigPanel({
         )
       })}
 
-      <div style={{ marginTop: 12, marginBottom: 16 }}>
-        <Button
-          type="primary" block
-          icon={<span style={{ marginRight: 4 }}>▶</span>}
-          onClick={onParse}
-          disabled={!blocks.some(b => b.range)}
-        >
-          Parse & Preview
-        </Button>
-      </div>
+      {searchText && filteredBlocks.length === 0 && blocks.length > 0 && (
+        <div style={{ textAlign: 'center', color: '#999', fontSize: 13, padding: '16px 0' }}>
+          No blocks matching "{searchText}"
+        </div>
+      )}
 
       {parseResult && parseResult.success && (
         <div>
@@ -1173,6 +1319,7 @@ export function ConfigPanel({
         Delete "{deleteTarget?.label}"? This cannot be undone.
       </Modal>
 
+    </div>
     </div>
   )
 }
