@@ -20,6 +20,7 @@
   "build": {
     "appId": "com.yourname.excel-block-parser",
     "productName": "Excel Block Parser",
+    "icon": "build/icon.png",
     "directories": {
       "output": "release"
     },
@@ -33,18 +34,33 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
-      ],
-      "icon": null
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "Office"
     },
