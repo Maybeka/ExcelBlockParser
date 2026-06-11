@@ -9,11 +9,39 @@ import (
 )
 
 type App struct {
-	ctx context.Context
+	ctx         context.Context
+	previewData map[string]interface{}
+	previewOpen bool
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.previewData = make(map[string]interface{})
+}
+
+// OpenPreviewWindow emits an event for the frontend to navigate to the preview route.
+// Returns nil (Wails v2 does not natively support multiple windows — the frontend
+// SPA router handles the navigation via hash routing).
+func (a *App) OpenPreviewWindow(blockId string) error {
+	runtime.EventsEmit(a.ctx, "open-preview", blockId)
+	a.previewOpen = true
+	return nil
+}
+
+// SetPreviewData stores parsed block data for the preview window.
+// rawData contains the original [][]interface{} rows;
+// parsedData contains the column-mapped []map[string]interface{} rows.
+func (a *App) SetPreviewData(blockId string, rawData [][]interface{}, parsedData []map[string]interface{}) {
+	a.previewData[blockId] = map[string]interface{}{
+		"rawRows":    rawData,
+		"parsedRows": parsedData,
+	}
+}
+
+// GetPreviewData returns the stored preview data for the given blockId,
+// or nil if no data has been set.
+func (a *App) GetPreviewData(blockId string) interface{} {
+	return a.previewData[blockId]
 }
 
 // OpenXlsx opens a native file dialog filtered to .xlsx/.xls files.
