@@ -12,6 +12,11 @@ export interface BridgeAPI {
   saveJson: (defaultName: string, jsonData: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
   openJson: () => Promise<{ filePath: string; content: string } | null>
   log: (level: string, ...args: unknown[]) => void
+  openPreviewWindow: (blockId: string) => Promise<void>
+  setPreviewData: (blockId: string, data: unknown) => Promise<void>
+  getPreviewData: (blockId: string) => Promise<unknown>
+  closePreviewWindow: () => Promise<void>
+  onPreviewReload: (callback: (blockId: string) => void) => () => void
 }
 
 // ── Wails bridge ────────────────────────────────────────────────────────────
@@ -23,6 +28,10 @@ interface WailsGoAPI {
       ReadFile: (path: string) => Promise<number[]>
       SaveJson: (name: string, data: string) => Promise<{ success: boolean; filePath: string; error: string }>
       OpenJson: () => Promise<{ filePath: string; content: string } | null>
+      OpenPreviewWindow: (blockId: string) => Promise<void>
+      SetPreviewData: (blockId: string, data: unknown) => Promise<void>
+      GetPreviewData: (blockId: string) => Promise<unknown>
+      ClosePreviewWindow: () => Promise<void>
     }
   }
 }
@@ -71,6 +80,22 @@ function createWailsBridge(): BridgeAPI {
     log: (level: string, ...args: unknown[]) => {
       console.log(`[${level}]`, ...args)
     },
+    openPreviewWindow: async (blockId: string) => {
+      await App.OpenPreviewWindow(blockId)
+    },
+    setPreviewData: async (blockId: string, data: unknown) => {
+      await App.SetPreviewData(blockId, data)
+    },
+    getPreviewData: async (blockId: string) => {
+      return App.GetPreviewData(blockId)
+    },
+    closePreviewWindow: async () => {
+      await App.ClosePreviewWindow()
+    },
+    onPreviewReload: () => {
+      console.warn('onPreviewReload not available in Wails')
+      return () => {}
+    },
   }
 }
 
@@ -83,6 +108,14 @@ function createBrowserBridge(): BridgeAPI {
     saveJson: async () => { throw new Error('saveJson requires Electron or Wails') },
     openJson: async () => { throw new Error('openJson requires Electron or Wails') },
     log: (level, ...args) => { console.log(`[${level}]`, ...args) },
+    openPreviewWindow: async () => { console.warn('openPreviewWindow requires Electron or Wails') },
+    setPreviewData: async () => { console.warn('setPreviewData requires Electron or Wails') },
+    getPreviewData: async () => { console.warn('getPreviewData requires Electron or Wails'); return undefined },
+    closePreviewWindow: async () => { console.warn('closePreviewWindow requires Electron or Wails') },
+    onPreviewReload: () => {
+      console.warn('onPreviewReload requires Electron or Wails')
+      return () => {}
+    },
   }
 }
 

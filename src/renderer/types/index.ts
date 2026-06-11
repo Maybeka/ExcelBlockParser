@@ -88,3 +88,31 @@ export interface SuggestedFix {
   autoApply: boolean
   data: unknown
 }
+
+export interface PreviewRow {
+  type: 'raw' | 'parsed'
+  values: unknown[]
+  displayValues: string[]
+}
+
+export interface PreviewData {
+  /** Block identifier matching BlockConfig.id */
+  blockId: string
+  /** Human-readable block label */
+  label: string
+  /** Column header labels to display in table header */
+  columns: string[]
+  /** Positions in rawRows[i] for each column (colIndex - range.startCol) */
+  rawColIndices: number[]
+  /** Raw data rows (2D array from dataSnapshot, excluding header rows) */
+  rawRows: unknown[][]
+  /** Parsed data rows (from parseResult, keyed by column mapping keys) */
+  parsedRows: Record<string, unknown>[]
+  /** Indices of rows treated as headers (displayed above data rows) */
+  headerRows: number[]
+}
+
+export interface PreviewWindowConfig {
+  width: number
+  height: number
+}

@@ -3,6 +3,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 let mainWindow: BrowserWindow | null = null
+let previewWindow: BrowserWindow | null = null
+const previewDataStore = new Map<string, unknown>()
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -79,6 +81,57 @@ ipcMain.handle('file:openJson', async () => {
   }
 })
 
+ipcMain.handle('preview:open', (_event, blockId: string) => {
+  if (previewWindow) {
+    previewWindow.focus()
+    previewWindow.webContents.send('preview:reload', blockId)
+    return
+  }
+
+  previewWindow = new BrowserWindow({
+    width: 800,
+    height: 700,
+    minWidth: 700,
+    minHeight: 400,
+    title: 'Preview',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  })
+
+  const encodedBlock = encodeURIComponent(blockId)
+  const previewUrl = process.env.ELECTRON_RENDERER_URL
+    ? `${process.env.ELECTRON_RENDERER_URL}?preview=true&block=${encodedBlock}`
+    : `file://${join(__dirname, '../renderer/index.html')}?preview=true&block=${encodedBlock}`
+
+  previewWindow.loadURL(previewUrl)
+
+  previewWindow.on('closed', () => {
+    previewWindow = null
+    previewDataStore.clear()
+  })
+})
+
+ipcMain.handle('preview:setData', (_event, blockId: string, data: unknown) => {
+  previewDataStore.set(blockId, data)
+})
+
+ipcMain.handle('preview:getData', (_event, blockId: string) => {
+  return previewDataStore.get(blockId)
+})
+
+ipcMain.handle('preview:close', () => {
+  if (previewWindow) {
+    previewWindow.close()
+  }
+  previewWindow = null
+  previewDataStore.clear()
+})
+
 app.whenReady().then(() => {
   createWindow()
 
@@ -88,5 +141,6 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  if (previewWindow) previewWindow.close()
   if (process.platform !== 'darwin') app.quit()
 })

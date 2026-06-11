@@ -6,6 +6,11 @@ export interface ElectronAPI {
   saveJson: (defaultName: string, jsonData: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
   openJson: () => Promise<{ filePath: string; content: string } | null>
   log: (level: string, ...args: unknown[]) => void
+  openPreviewWindow: (blockId: string) => Promise<void>
+  setPreviewData: (blockId: string, data: unknown) => Promise<void>
+  getPreviewData: (blockId: string) => Promise<unknown>
+  closePreviewWindow: () => Promise<void>
+  onPreviewReload: (callback: (blockId: string) => void) => () => void
 }
 
 const api: ElectronAPI = {
@@ -15,6 +20,15 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('file:save', defaultName, jsonData),
   openJson: () => ipcRenderer.invoke('file:openJson'),
   log: (level: string, ...args: unknown[]) => ipcRenderer.invoke('log', level, ...args),
+  openPreviewWindow: (blockId) => ipcRenderer.invoke('preview:open', blockId),
+  setPreviewData: (blockId, data) => ipcRenderer.invoke('preview:setData', blockId, data),
+  getPreviewData: (blockId) => ipcRenderer.invoke('preview:getData', blockId),
+  closePreviewWindow: () => ipcRenderer.invoke('preview:close'),
+  onPreviewReload: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, blockId: string) => callback(blockId)
+    ipcRenderer.on('preview:reload', handler)
+    return () => { ipcRenderer.removeListener('preview:reload', handler) }
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)
