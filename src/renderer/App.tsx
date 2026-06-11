@@ -3,12 +3,15 @@ import { Button, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip,
 import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined } from '@ant-design/icons'
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
-import { ConfigPanel } from './components/ConfigPanel'
+import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
 import type { CellRange, ColumnMapping, ColumnType, BlockConfig, ParseResult, ExportedSession, ReconciliationReport } from './types'
 import type { FocusMode } from './components/ConfigPanel'
 import { useUniver } from './context/UniverContext'
 import { runReconciliation } from './services/reconciliation'
 import { getBridge } from './services/bridge'
+import { adaptPreviewData } from './services/previewDataAdapter'
+import { PreviewWindow } from './components/PreviewWindow'
+import type { PreviewData } from './types'
 
 function colIndexToLetter(index: number): string {
   let letter = ''
@@ -189,11 +192,11 @@ function nextBlockId(): string {
   return `block-${blockCounter++}-${Date.now()}`
 }
 
-function createDefaultBlock(existingCount: number): BlockConfig {
-  const num = existingCount + 1
+function createDefaultBlock(lastNum: number): BlockConfig {
+  const num = lastNum + 1
   return {
     id: nextBlockId(),
-    label: `Block ${num}`,
+    label: `block_${num}`,
     range: null,
     activeSheet: null,
     headerRows: [0],
@@ -215,6 +218,7 @@ function AppContent() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null)
   const [loadSignal, setLoadSignal] = useState(0)
   const [focusMode, setFocusMode] = useState<FocusMode>('always-editable')
+  const [validationErrors, setValidationErrors] = useState<string[] | null>(null)
   const [activeColIndex, setActiveColIndex] = useState<number | null>(null)
   const [showImportWarning, setShowImportWarning] = useState(false)
   const [pendingImportContent, setPendingImportContent] = useState<string | null>(null)
@@ -225,6 +229,9 @@ function AppContent() {
   const [reconcilingPreviewRange, setReconcilingPreviewRange] = useState<CellRange | null>(null)
   const [shouldReParse, setShouldReParse] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [previewModalData, setPreviewModalData] = useState<Map<string, PreviewData>>(new Map())
+  const [previewActiveBlockId, setPreviewActiveBlockId] = useState<string>('')
   const [currentFileName, setCurrentFileName] = useState<string | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [closeSignal, setCloseSignal] = useState(0)
@@ -312,7 +319,7 @@ function AppContent() {
       seenIds.add(id)
       return {
         id,
-        label: String(block.label || `Block ${idx}`).slice(0, 100),
+        label: String(block.label || `block_${idx}`).slice(0, 100),
         range: block.range || null,
         activeSheet: block.activeSheet || null,
         headerRows: Array.isArray(block.headerRows) ? block.headerRows : [0],
@@ -460,7 +467,11 @@ function AppContent() {
   }, [])
 
   const handleAddBlock = useCallback(() => {
-    const block = createDefaultBlock(blocksRef.current.length)
+    const maxNum = blocksRef.current.reduce((max, b) => {
+      const m = (b.label || '').match(/^block_(\d+)$/)
+      return m ? Math.max(max, parseInt(m[1], 10)) : max
+    }, 0)
+    const block = createDefaultBlock(maxNum)
     setBlocks(prev => [...prev, block])
     setActiveBlockId(block.id)
     setParseResult(null)
@@ -507,6 +518,9 @@ function AppContent() {
     try {
       const blockResults = []
       const namedData: Record<string, unknown> = {}
+      // Capture raw values during parse — handleBlockChange is async (React state),
+      // so dataSnapshot isn't available on the blocks array yet when we call adaptPreviewData below.
+      const rawSnapshots = new Map<string, unknown[][]>()
 
       for (const block of activeBlocks) {
         const sheet = block.activeSheet
@@ -517,7 +531,41 @@ function AppContent() {
 
         const frange = sheet.getRange(block.range!.a1Notation)
         const rawValues = frange.getValues() as unknown[][]
-        handleBlockChange(block.id, { dataSnapshot: [...rawValues] as unknown[][] })
+
+        // Build a filled copy of rawValues for the raw preview view (merged cells show as null otherwise).
+        // Keep original rawValues for parsing — filling merged values into parsed columns
+        // would put the same value into unrelated columns, corrupting the typed output.
+        const filledValues = rawValues.map(row => [...row])
+        try {
+          const mergedRanges = sheet.getMergedRanges?.()
+          if (mergedRanges && mergedRanges.length > 0) {
+          const blockStartRow = block.range!.startRow
+          const blockStartCol = block.range!.startCol
+          const blockEndRow = block.range!.endRow
+          const blockEndCol = block.range!.endCol
+          for (const mr of mergedRanges) {
+            const mrStartRow = mr.getRow()
+            const mrStartCol = mr.getColumn()
+            const mrEndRow = mr.getLastRow()
+            const mrEndCol = mr.getLastColumn()
+            if (mrEndRow < blockStartRow || mrStartRow > blockEndRow || mrEndCol < blockStartCol || mrStartCol > blockEndCol) continue
+            const topLeftVal = mr.getValue()
+            for (let r = Math.max(mrStartRow, blockStartRow); r <= Math.min(mrEndRow, blockEndRow); r++) {
+              for (let c = Math.max(mrStartCol, blockStartCol); c <= Math.min(mrEndCol, blockEndCol); c++) {
+                if (r === mrStartRow && c === mrStartCol) continue
+                const rowIdx = r - blockStartRow
+                const colIdx = c - blockStartCol
+                if (filledValues[rowIdx] && (filledValues[rowIdx][colIdx] == null || filledValues[rowIdx][colIdx] === '')) {
+                  filledValues[rowIdx][colIdx] = topLeftVal
+                }
+              }
+            }
+          }
+          }
+        } catch (_e) { /* Univer may not have merged ranges available */ }
+
+        rawSnapshots.set(block.id, filledValues)
+        handleBlockChange(block.id, { dataSnapshot: filledValues as unknown[][] })
 
         const activeColumns = block.columns.filter(c => !c.skip)
         if (!activeColumns.length) {
@@ -552,13 +600,27 @@ function AppContent() {
         namedData[block.label] = data
       }
 
-      setParseResult({ success: true, data: namedData, blocks: blockResults })
+      const result: ParseResult = { success: true, data: namedData, blocks: blockResults }
+      setParseResult(result)
+
+      // Build preview data for all blocks and open modal
+      const allPreviewData = new Map<string, PreviewData>()
+      for (const block of activeBlocks) {
+        const patchedBlock = {
+          ...block,
+          dataSnapshot: rawSnapshots.get(block.id) ?? block.dataSnapshot,
+        }
+        allPreviewData.set(block.id, adaptPreviewData(patchedBlock, result))
+      }
+      setPreviewModalData(allPreviewData)
+      setPreviewActiveBlockId(activeBlockId || activeBlocks[0]?.id || '')
+      setPreviewModalOpen(true)
     } catch (err) {
       setParseResult({ success: false, data: {}, blocks: [], error: String(err) })
     }
   }, [univerAPI, blocks])
 
-  const handleExportConfig = useCallback(async () => {
+  const doExport = useCallback(async () => {
     try {
       const blocksWithHeaderSnapshots = await Promise.all(blocks.map(async (block) => {
         if (block.headerRows.length === 0 || !block.range) return block
@@ -608,6 +670,18 @@ function AppContent() {
       console.error('Export failed:', err)
     }
   }, [blocks, activeBlockId, focusMode, parseResult, univerAPI])
+
+  const doExportRef = useRef(doExport)
+  doExportRef.current = doExport
+
+  const handleExportConfig = useCallback(async () => {
+    const errors = validateBlocks(blocks)
+    if (errors.length > 0) {
+      setValidationErrors(errors)
+      return
+    }
+    await doExportRef.current()
+  }, [blocks])
 
   const handleImportConfig = useCallback(async () => {
     setImportError(null)
@@ -709,13 +783,15 @@ function AppContent() {
           <Button icon={<FolderOpenOutlined />} onClick={handleOpenFile}>
             Open Excel
           </Button>
-          <Button
-            icon={<PlayCircleOutlined />}
-            onClick={handleParse}
-            disabled={!blocks.some(b => b.range)}
-          >
-            Parse & Preview
-          </Button>
+          <Tooltip title="Parse data and open preview window">
+            <Button
+              icon={<PlayCircleOutlined />}
+              onClick={handleParse}
+              disabled={!blocks.some(b => b.range)}
+            >
+              Parse & Preview
+            </Button>
+          </Tooltip>
           <Tooltip title="Save session (config + data)">
             <Button
               type="primary"
@@ -787,13 +863,48 @@ function AppContent() {
                     }}
                     onReselectRange={handleReconcilingReselectRange}
                     onPreviewSheet={setReconcilingPreviewSheet}
-                    onClearParseResult={() => setParseResult(null)}
                 />
               </div>
             </Splitter.Panel>
           </Splitter>
         </div>
       </Layout.Content>
+      <Modal
+        title={null}
+        open={previewModalOpen}
+        onCancel={() => setPreviewModalOpen(false)}
+        footer={null}
+        width="calc(100vw - 60px)"
+        style={{ top: 30, paddingBottom: 0 }}
+        styles={{ body: { height: 'calc(100vh - 120px)', padding: 0, overflow: 'hidden' } }}
+        closable={false}
+        destroyOnClose
+        maskClosable={false}
+      >
+        <Button
+          type="text"
+          icon={<CloseOutlined style={{ fontSize: 18, color: '#fff' }} />}
+          onClick={() => setPreviewModalOpen(false)}
+          style={{
+            position: 'absolute',
+            top: -18,
+            right: -18,
+            zIndex: 1001,
+            width: 36, height: 36,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.45)', borderRadius: '50%',
+          }}
+        />
+        <PreviewWindow
+          previewData={previewModalData.get(previewActiveBlockId) || null}
+          allBlocks={Array.from(previewModalData.entries()).map(([id, data]) => ({
+            blockId: id,
+            label: data.label,
+          }))}
+          activeBlockId={previewActiveBlockId}
+          onBlockChange={setPreviewActiveBlockId}
+        />
+      </Modal>
       <Modal
         title="Replace Existing Blocks?"
         open={showImportWarning}
@@ -819,6 +930,19 @@ function AppContent() {
         cancelText="Cancel"
       >
         <p>You have unsaved changes. Discarding will lose all modifications since your last export.</p>
+      </Modal>
+      <Modal
+        title="Validation errors"
+        open={validationErrors !== null}
+        onCancel={() => setValidationErrors(null)}
+        onOk={() => { setValidationErrors(null); doExportRef.current() }}
+        okText="Export anyway"
+        cancelText="Cancel"
+      >
+        <div style={{ maxHeight: 200, overflow: 'auto', fontSize: 13 }}>
+          {(validationErrors || []).slice(0, 10).map((e, i) => <div key={i} style={{ marginBottom: 4 }}>{e}</div>)}
+          {(validationErrors || []).length > 10 && <div style={{ color: '#999' }}>...and {(validationErrors || []).length - 10} more</div>}
+        </div>
       </Modal>
     </Layout>
   )

@@ -43,7 +43,6 @@ interface ConfigPanelProps {
   onReconcilingChange?: (blockId: string | null) => void
   onReselectRange?: (onRange: (range: CellRange) => void) => void
   onPreviewSheet?: (sheetName: string | null) => void
-  onClearParseResult: () => void
 }
 
 function parseToValue(raw: string): unknown {
@@ -61,6 +60,39 @@ function headerRowsToKey(parts: string[]): string {
     .join('_')
     .replace(/^(\d)/, '_$1')
     || 'column'
+}
+
+export function isValidVariableName(name: string): boolean {
+  if (!name.trim()) return true
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)
+}
+
+export function validateBlocks(blocks: BlockConfig[]): string[] {
+  const errors: string[] = []
+
+  const labelCounts = new Map<string, number>()
+  blocks.forEach(b => { const l = (b.label || '').trim(); if (l) labelCounts.set(l, (labelCounts.get(l) || 0) + 1) })
+  labelCounts.forEach((count, l) => { if (count > 1) errors.push(`Duplicate block name: "${l}"`) })
+
+  blocks.forEach(b => {
+    if (b.label && !isValidVariableName(b.label)) {
+      errors.push(`Invalid block name: "${b.label}"`)
+    }
+  })
+
+  blocks.forEach(b => {
+    const keyCounts = new Map<string, number>()
+    b.columns.forEach(c => {
+      const k = c.key || c.suggestedKey
+      if (k) {
+        keyCounts.set(k, (keyCounts.get(k) || 0) + 1)
+        if (!isValidVariableName(k)) errors.push(`Invalid key in "${b.label || 'block'}": "${k}"`)
+      }
+    })
+    keyCounts.forEach((count, k) => { if (count > 1) errors.push(`Duplicate key in "${b.label || 'block'}": "${k}"`) })
+  })
+
+  return errors
 }
 
 /**
@@ -260,7 +292,16 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
     </div>
   )
 
-  const renderStep2 = () => (
+  const renderStep2 = () => {
+    const dupKeys = new Set<string>()
+    const keyCounts = new Map<string, number>()
+    columns.filter(c => !c.skip).forEach(c => {
+      const k = c.key || c.suggestedKey
+      keyCounts.set(k, (keyCounts.get(k) || 0) + 1)
+    })
+    keyCounts.forEach((count, k) => { if (count > 1) dupKeys.add(k) })
+
+    return (
     <div style={{ padding: '8px 12px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 36px', gap: '4px 6px', alignItems: 'center', padding: '2px 0', fontSize: 11, color: '#999' }}>
         <span>Col</span>
@@ -295,13 +336,25 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
             onChange={v => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, key: v } : c))}
             options={existingKeys}
             style={{ fontSize: 13 }}
+            status={dupKeys.has(col.key || col.suggestedKey) || (col.key && !isValidVariableName(col.key)) ? 'error' : undefined}
           />
+          {dupKeys.has(col.key || col.suggestedKey) && (
+            <div style={{ gridColumn: '2', fontSize: 10, color: '#ff4d4f', lineHeight: 1.2, marginTop: -2 }}>
+              Duplicate key
+            </div>
+          )}
+          {col.key && !isValidVariableName(col.key) && (
+            <div style={{ gridColumn: '2', fontSize: 10, color: '#ff4d4f', lineHeight: 1.2, marginTop: -2 }}>
+              Invalid variable name
+            </div>
+          )}
           <Select size="small" value={col.type} onChange={v => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, type: v } : c))} options={[{value:'auto',label:'auto'},{value:'string',label:'string'},{value:'integer',label:'integer'},{value:'float',label:'float'},{value:'boolean',label:'boolean'},{value:'date',label:'date'}]} style={{ width: 90 }} optionRender={renderOption} />
           <Checkbox checked={col.skip} onChange={e => setColumns(prev => prev.map(c => c.colIndex === col.colIndex ? { ...c, skip: e.target.checked } : c))} />
         </div>
       ))}
     </div>
   )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -332,7 +385,6 @@ export function ConfigPanel({
   onReconcilingChange,
   onReselectRange,
   onPreviewSheet,
-  onClearParseResult,
 }: ConfigPanelProps) {
   const [expandedMaps, setExpandedMaps] = useState<Set<string>>(new Set())
   const [showSettings, setShowSettings] = useState(false)
@@ -359,16 +411,14 @@ export function ConfigPanel({
           return label.includes(query)
         case 'columnName':
           return columns.some(c => {
-            const key = (c.key || '').toLowerCase()
-            const suggestedKey = (c.suggestedKey || '').toLowerCase()
-            return key.includes(query) || suggestedKey.includes(query)
+            const effectiveKey = (c.key || c.suggestedKey || '').toLowerCase()
+            return effectiveKey.includes(query)
           })
         default:
           if (label.includes(query)) return true
           return columns.some(c => {
-            const key = (c.key || '').toLowerCase()
-            const suggestedKey = (c.suggestedKey || '').toLowerCase()
-            return key.includes(query) || suggestedKey.includes(query)
+            const effectiveKey = (c.key || c.suggestedKey || '').toLowerCase()
+            return effectiveKey.includes(query)
           })
       }
     })
@@ -637,6 +687,14 @@ export function ConfigPanel({
     )
   }
 
+  const dupLabels = new Set<string>()
+  const labelCounts = new Map<string, number>()
+  blocks.forEach(b => {
+    const l = (b.label || '').trim()
+    if (l) labelCounts.set(l, (labelCounts.get(l) || 0) + 1)
+  })
+  labelCounts.forEach((count, l) => { if (count > 1) dupLabels.add(l) })
+
   return (
     <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div>
@@ -698,6 +756,8 @@ export function ConfigPanel({
         </div>
       )}
 
+      {showSettings && showSearch && <Divider style={{ margin: '0 0 8px 0' }} />}
+
       {showSearch && (
         <div style={{ marginBottom: 12, display: 'flex', gap: 6 }}>
           <Select
@@ -708,7 +768,7 @@ export function ConfigPanel({
             options={[
               { value: 'all', label: 'All' },
               { value: 'title', label: 'Title' },
-              { value: 'columnName', label: 'Column' },
+              { value: 'columnName', label: 'Key' },
             ]}
             optionRender={renderOption}
           />
@@ -734,8 +794,16 @@ export function ConfigPanel({
         const isReconciling = reconcilingBlockId !== null
         const isOtherBlockInReconciling = isReconciling && block.id !== reconcilingBlockId
         const effectivelyCollapsed = block.collapsed || isOtherBlockInReconciling
-        const headerLabel = block.label?.trim() || `Block ${blocks.indexOf(block) + 1}`
+        const headerLabel = block.label?.trim() || `block_${blocks.indexOf(block) + 1}`
         const visibleColumns = block.columns
+
+        const dupKeys = new Set<string>()
+        const keyCounts = new Map<string, number>()
+        visibleColumns.filter(c => !c.skip).forEach(c => {
+          const k = c.key || c.suggestedKey
+          keyCounts.set(k, (keyCounts.get(k) || 0) + 1)
+        })
+        keyCounts.forEach((count, k) => { if (count > 1) dupKeys.add(k) })
 
         return (
           <div
@@ -771,6 +839,10 @@ export function ConfigPanel({
                 style={{ flex: 1, fontSize: 13, fontWeight: 600 }}
                 variant="borderless"
                 disabled={controlsLocked || isOtherBlockInReconciling}
+                status={
+                  (block.label && !isValidVariableName(block.label)) || dupLabels.has(block.label?.trim() || '')
+                    ? 'error' : undefined
+                }
               />
               {block.range && (
                 <Tooltip title={`${block.activeSheet || '(active sheet)'}!${block.range.a1Notation} — click to go`}>
@@ -866,6 +938,17 @@ export function ConfigPanel({
                 disabled={controlsLocked}
               />
             </div>
+
+            {block.label && !isValidVariableName(block.label) && (
+              <div style={{ padding: '0 10px 6px 10px', fontSize: 10, color: '#ff4d4f', lineHeight: 1.2 }}>
+                Invalid variable name
+              </div>
+            )}
+            {block.label?.trim() && dupLabels.has(block.label.trim()) && (
+              <div style={{ padding: '0 10px 6px 10px', fontSize: 10, color: '#ff4d4f', lineHeight: 1.2 }}>
+                Duplicate block name
+              </div>
+            )}
 
             {reconcilingBlockId === block.id && reconReports[block.id] ? (
               <div style={{ overflow: 'auto', height: reconHeights[block.id] || 'auto' }}>
@@ -974,8 +1057,8 @@ export function ConfigPanel({
                           <div
                             key={col.colIndex}
                             style={{ marginBottom: 2 }}
-                            onMouseEnter={() => onColumnFocus(col.colIndex)}
-                            onMouseLeave={() => onColumnFocus(null)}
+                            onMouseEnter={() => { if (isActive) onColumnFocus(col.colIndex) }}
+                            onMouseLeave={() => { if (isActive) onColumnFocus(null) }}
                           >
                             <div style={{
                               display: 'grid', gridTemplateColumns: '28px 1fr 100px 36px',
@@ -1006,6 +1089,9 @@ export function ConfigPanel({
                                 value={col.key}
                                 onChange={e => updateColumn(block.id, col.colIndex, { key: e.target.value })}
                                 disabled={controlsLocked || col.skip}
+                                status={dupKeys.has(col.key || col.suggestedKey) || (col.key && !isValidVariableName(col.key)) ? 'error' : undefined}
+                                onFocus={() => { if (isActive) onColumnFocus(col.colIndex) }}
+                                onBlur={() => onColumnFocus(null)}
                                 suffix={
                                   <Tooltip title="Regenerate from header rows">
                                     <ReloadOutlined
@@ -1032,13 +1118,28 @@ export function ConfigPanel({
                                 disabled={controlsLocked || col.skip}
                                 style={{ fontSize: 13 }}
                                 optionRender={renderOption}
+                                onFocus={() => { if (isActive) onColumnFocus(col.colIndex) }}
+                                onBlur={() => onColumnFocus(null)}
                               />
                               <Checkbox
                                 checked={col.skip}
                                 onChange={e => updateColumn(block.id, col.colIndex, { skip: e.target.checked })}
                                 disabled={controlsLocked}
+                                onFocus={() => { if (isActive) onColumnFocus(col.colIndex) }}
+                                onBlur={() => onColumnFocus(null)}
                               />
                             </div>
+
+                            {dupKeys.has(col.key || col.suggestedKey) && (
+                              <div style={{ fontSize: 10, color: '#ff4d4f', padding: '0 6px 4px', lineHeight: 1.2 }}>
+                                Duplicate key
+                              </div>
+                            )}
+                            {col.key && !isValidVariableName(col.key) && (
+                              <div style={{ fontSize: 10, color: '#ff4d4f', padding: '0 6px 4px', lineHeight: 1.2 }}>
+                                Invalid variable name
+                              </div>
+                            )}
 
                             {col.type === 'valueMapping' && (
                               <div style={{ paddingLeft: 34 }}>
@@ -1267,42 +1368,7 @@ export function ConfigPanel({
         </div>
       )}
 
-      {parseResult && parseResult.success && (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <h4 style={{ margin: 0, fontSize: 14 }}>JSON Preview</h4>
-            <Button
-              size="small"
-              type="text"
-              icon={<CloseOutlined />}
-              onClick={onClearParseResult}
-              style={{ color: '#999' }}
-            />
-          </div>
-          {parseResult.blocks.map(br => (
-            <div key={br.blockId} style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: '#1677ff', marginBottom: 4 }}>
-                {br.label} ({br.rowCount} rows)
-              </div>
-              <pre style={{
-                background: '#1e1e1e', color: '#d4d4d4', padding: 10,
-                borderRadius: 6, fontSize: 11, maxHeight: 180, overflow: 'auto',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                margin: 0,
-              }}>
-                {JSON.stringify(br.data.slice(0, 15), null, 2)}
-                {br.data.length > 15 && `\n\n... and ${br.data.length - 15} more rows`}
-              </pre>
-            </div>
-          ))}
-        </div>
-      )}
 
-      {parseResult && !parseResult.success && (
-        <div style={{ color: '#ff4d4f', fontSize: 13, marginTop: 8 }}>
-          Parse error: {parseResult.error}
-        </div>
-      )}
 
       <Modal
         title="Delete block"
