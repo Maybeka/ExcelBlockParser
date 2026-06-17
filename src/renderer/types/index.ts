@@ -36,6 +36,10 @@ export interface BlockConfig {
   selectionLocked: boolean
   columns: ColumnMapping[]
   dataSnapshot: unknown[][] | null
+  ignoreRules?: RowIgnoreRule[]
+  skipEmptyColumns?: boolean
+  tags?: Tag[]
+  computedProperties?: ComputedProperty[]
 }
 
 export interface BlockParseResult {
@@ -49,22 +53,26 @@ export interface ParseResult {
   success: boolean
   data: Record<string, unknown>
   blocks: BlockParseResult[]
+  regionResults?: RegionParseResult[]
   error?: string
 }
 
 export interface ExportedSession {
-  version: 1
+  version: 2 | 1
   exportedAt: string
   sourceFileName?: string
   config: SessionConfig
   data: Record<string, unknown>
   blockResults: BlockParseResult[]
+  regions?: RegionConfig[]
+  regionResults?: RegionParseResult[]
 }
 
 export interface SessionConfig {
   blocks: BlockConfig[]
   activeBlockId: string
   focusMode: 'always-editable' | 'activate-first'
+  regions?: RegionConfig[]
 }
 
 export interface ReconciliationReport {
@@ -115,4 +123,57 @@ export interface PreviewData {
 export interface PreviewWindowConfig {
   width: number
   height: number
+}
+
+export type SplitRuleType = 'keyword' | 'emptyRow' | 'emptyColumn'
+
+export interface SplitRule {
+  type: SplitRuleType
+  keyword?: string
+  minGap?: number
+}
+
+export type RowIgnoreOperator = 'eq' | 'neq' | 'contains' | 'empty' | 'regex'
+
+export interface RowIgnoreRule {
+  column?: string
+  operator: RowIgnoreOperator
+  value?: string
+}
+
+export type TagType = 'label' | 'kv'
+
+export interface Tag {
+  type: TagType
+  key: string
+  value?: string
+}
+
+export interface ComputedProperty {
+  id: string
+  label: string
+  expression: string
+}
+
+export interface RegionConfig {
+  id: string
+  label: string
+  range: CellRange | null
+  activeSheet: string | null
+  splitRules: SplitRule[]
+  blocks: BlockConfig[]
+  collapsed: boolean
+  selectionLocked: boolean
+  tags?: Tag[]
+}
+
+export interface RegionBlockResult {
+  blockLabel: string
+  rows: string[][]
+}
+
+export interface RegionParseResult {
+  regionId: string
+  label: string
+  blocks: RegionBlockResult[]
 }
