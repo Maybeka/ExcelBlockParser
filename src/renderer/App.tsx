@@ -1,15 +1,19 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { Button, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert } from 'antd'
+import { Button, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
 import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined } from '@ant-design/icons'
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
-import type { CellRange, ColumnMapping, ColumnType, BlockConfig, ParseResult, ExportedSession, ReconciliationReport } from './types'
+import type { CellRange, ColumnMapping, ColumnType, BlockConfig, BlockParseResult, ParseResult, ExportedSession, ReconciliationReport, RegionConfig, RegionBlockResult, RegionParseResult } from './types'
 import type { FocusMode } from './components/ConfigPanel'
 import { useUniver } from './context/UniverContext'
 import { runReconciliation } from './services/reconciliation'
+import { detectBlocks } from './services/regionDetector'
+import { applyRowIgnoreRules } from './services/rowFilter'
+import { removeEmptyColumns } from './services/columnFilter'
 import { getBridge } from './services/bridge'
 import { adaptPreviewData } from './services/previewDataAdapter'
+import { serializeSession, deserializeSession } from './services/serializer'
 import { PreviewWindow } from './components/PreviewWindow'
 import type { PreviewData } from './types'
 
@@ -219,6 +223,8 @@ function AppContent() {
   const [loadSignal, setLoadSignal] = useState(0)
   const [focusMode, setFocusMode] = useState<FocusMode>('always-editable')
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null)
+  const [regions, setRegions] = useState<RegionConfig[]>([])
+  const [activeRegionId, setActiveRegionId] = useState<string | null>(null)
   const [activeColIndex, setActiveColIndex] = useState<number | null>(null)
   const [showImportWarning, setShowImportWarning] = useState(false)
   const [pendingImportContent, setPendingImportContent] = useState<string | null>(null)
@@ -232,6 +238,7 @@ function AppContent() {
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [previewModalData, setPreviewModalData] = useState<Map<string, PreviewData>>(new Map())
   const [previewActiveBlockId, setPreviewActiveBlockId] = useState<string>('')
+  const [previewRegionResults, setPreviewRegionResults] = useState<RegionParseResult[]>([])
   const [currentFileName, setCurrentFileName] = useState<string | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [closeSignal, setCloseSignal] = useState(0)
@@ -243,6 +250,11 @@ function AppContent() {
   activeBlockIdRef.current = activeBlockId
   const blocksRef = useRef(blocks)
   blocksRef.current = blocks
+
+  const regionsRef = useRef(regions)
+  regionsRef.current = regions
+  const activeRegionIdRef = useRef(activeRegionId)
+  activeRegionIdRef.current = activeRegionId
 
   const runReconciliationIfNeeded = useCallback(async (importedBlocks: BlockConfig[]) => {
     const hasHeaders = importedBlocks.some(b => b.headerRows.length > 0 && b.range)
@@ -304,41 +316,20 @@ function AppContent() {
       setImportError('Invalid config file: failed to parse JSON')
       return
     }
-    const config = imported.config
 
-    // Filter out null/undefined entries, strip headerSnapshot, handle duplicate IDs, apply defaults
-    const seenIds = new Set<string>()
-    const validBlocks = (config.blocks || []).filter((b: any) => b != null)
-    const cleanBlocks: BlockConfig[] = validBlocks.map((b: any, idx: number) => {
-      // Keep headerSnapshot on the block for reconciliation (not part of BlockConfig type but used at runtime)
-      const { headerSnapshot: _hs, ...block } = b
-      let id: string = block.id || `block_${idx}`
-      if (seenIds.has(id)) {
-        id = `${id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      }
-      seenIds.add(id)
-      return {
-        id,
-        label: String(block.label || `block_${idx}`).slice(0, 100),
-        range: block.range || null,
-        activeSheet: block.activeSheet || null,
-        headerRows: Array.isArray(block.headerRows) ? block.headerRows : [0],
-        collapsed: block.collapsed ?? false,
-        selectionLocked: block.selectionLocked ?? false,
-        columns: Array.isArray(block.columns) ? block.columns : [],
-        dataSnapshot: Array.isArray((block as any).dataSnapshot) ? (block as any).dataSnapshot : null,
-        ...(_hs ? { headerSnapshot: _hs as string[] } : {}),
-      } as BlockConfig & { headerSnapshot?: string[] }
-    })
+    const deserialized = deserializeSession(imported as ExportedSession)
+    const cleanBlocks = deserialized.blocks
+    const cleanRegions = deserialized.regions
 
     setBlocks(cleanBlocks)
-    setActiveBlockId(config.activeBlockId || cleanBlocks[0]?.id || '')
-    setFocusMode(config.focusMode || 'always-editable')
-
-    if (imported.data && imported.blockResults) {
-      setParseResult({ success: true, data: imported.data, blocks: imported.blockResults })
-    } else {
-      setParseResult(null)
+    setRegions(cleanRegions)
+    if (cleanRegions.length > 0) {
+      setActiveRegionId(cleanRegions[0].id)
+    }
+    setActiveBlockId(deserialized.activeBlockId || cleanBlocks[0]?.id || '')
+    setFocusMode(deserialized.focusMode)
+    if (deserialized.parseResult) {
+      setParseResult(deserialized.parseResult)
     }
 
     setShouldReParse(true)
@@ -366,6 +357,8 @@ function AppContent() {
         const freshBlock = createDefaultBlock(0)
         setBlocks([freshBlock])
         setActiveBlockId(freshBlock.id)
+        setRegions([])
+        setActiveRegionId(null)
         setCloseSignal(s => s + 1)
         setCurrentFileName(null)
         setParseResult(null)
@@ -377,6 +370,8 @@ function AppContent() {
     const freshBlock = createDefaultBlock(0)
     setBlocks([freshBlock])
     setActiveBlockId(freshBlock.id)
+    setRegions([])
+    setActiveRegionId(null)
     setCloseSignal(s => s + 1)
     setCurrentFileName(null)
     setParseResult(null)
@@ -394,6 +389,8 @@ function AppContent() {
     const freshBlock = createDefaultBlock(0)
     setBlocks([freshBlock])
     setActiveBlockId(freshBlock.id)
+    setRegions([])
+    setActiveRegionId(null)
     setCurrentFileName(fileName)
     setHasUnsavedChanges(false)
     blockCounter = 1
@@ -402,23 +399,39 @@ function AppContent() {
   const handleSelectionChange = useCallback(async (range: CellRange | null, activeSheet: string | null) => {
     const blockId = activeBlockIdRef.current
     const currentBlock = blocksRef.current.find(b => b.id === blockId)
+    const regionId = activeRegionIdRef.current
+    const currentRegion = regionsRef.current.find(r => r.id === regionId)
 
     // When reconciling, track selection for Reselect Range even if locked
     if (reconcilingBlockIdRef.current && range) {
       pendingReconcilingRangeRef.current = { range, activeSheet }
     }
 
-    if (range && currentBlock?.selectionLocked) return
-
-    // Single-cell click (not a drag-selected range) — treat as no selection
     if (range && range.startRow === range.endRow && range.startCol === range.endCol) {
-      range = null
+      if (currentRegion?.selectionLocked || currentBlock?.selectionLocked) return
+      if (!currentRegion) range = null
     }
 
+    if (range && currentRegion) {
+      if (currentRegion.selectionLocked) return
+      setRegions(prev => prev.map(r =>
+        r.id === regionId ? { ...r, range, activeSheet } : r,
+      ))
+      setParseResult(null)
+      return
+    }
+
+    if (range && currentBlock?.selectionLocked) return
+
     if (!range) {
-      // Don't clear range for locked blocks (e.g. sheet switch triggered by
-      // handleActivateBlock should not wipe the locked block's configured range).
       if (currentBlock?.selectionLocked) return
+      if (currentRegion) {
+        setRegions(prev => prev.map(r =>
+          r.id === regionId ? { ...r, range: null } : r,
+        ))
+        setParseResult(null)
+        return
+      }
       setBlocks(prev => prev.map(b =>
         b.id === blockId ? { ...b, range: null, columns: [] } : b,
       ))
@@ -450,6 +463,7 @@ function AppContent() {
       }
     }
     setActiveBlockId(blockId)
+    setActiveRegionId(null)
   }, [])
 
   const handleReconcilingReselectRange = useCallback((onRange: (range: CellRange) => void) => {
@@ -474,6 +488,7 @@ function AppContent() {
     const block = createDefaultBlock(maxNum)
     setBlocks(prev => [...prev, block])
     setActiveBlockId(block.id)
+    setActiveRegionId(null)
     setParseResult(null)
     setHasUnsavedChanges(true)
   }, [])
@@ -496,7 +511,139 @@ function AppContent() {
     setHasUnsavedChanges(true)
   }, [])
 
+  const handleAddRegion = useCallback(() => {
+    const region: RegionConfig = {
+      id: `region-${Date.now()}`,
+      label: `region_${regions.length + 1}`,
+      range: null,
+      activeSheet: null,
+      splitRules: [],
+      blocks: [],
+      collapsed: false,
+      selectionLocked: false,
+    }
+    setRegions(prev => [...prev, region])
+    setActiveRegionId(region.id)
+    setActiveBlockId('')
+    setHasUnsavedChanges(true)
+  }, [regions.length])
 
+  const handleDeleteRegion = useCallback((regionId: string) => {
+    setRegions(prev => prev.filter(r => r.id !== regionId))
+    if (activeRegionId === regionId) setActiveRegionId(null)
+    setHasUnsavedChanges(true)
+  }, [activeRegionId])
+
+  const handleRegionChange = useCallback((regionId: string, partial: Partial<RegionConfig>) => {
+    setRegions(prev => prev.map(r => r.id === regionId ? { ...r, ...partial } : r))
+    setHasUnsavedChanges(true)
+  }, [])
+
+  const handleActivateRegion = useCallback((regionId: string) => {
+    setActiveRegionId(regionId)
+    setActiveBlockId('')
+  }, [])
+
+  const handleRegionRangeClick = useCallback((regionId: string) => {
+    const region = regionsRef.current.find(r => r.id === regionId)
+    if (!region?.range) return
+    const api = univerAPIRef.current
+    if (!api) return
+    const wb = api.getActiveWorkbook()
+    if (!wb) return
+    if (region.activeSheet) wb.setActiveSheet(region.activeSheet)
+    const sheet = region.activeSheet ? wb.getSheetByName(region.activeSheet) : wb.getActiveSheet()
+    if (sheet && region.range) {
+      sheet.scrollToCell(Math.max(0, region.range.startRow - 3), Math.max(0, region.range.startCol - 1))
+    }
+    setActiveRegionId(regionId)
+  }, [])
+
+  function performParse(
+    workbook: any,
+    regions: RegionConfig[],
+    blocks: BlockConfig[],
+  ): ParseResult | null {
+    const regionResults: RegionParseResult[] = []
+
+    for (const region of regions) {
+      if (!region.range) continue
+      const sheet = region.activeSheet
+        ? workbook.getSheetByName(region.activeSheet)
+        : workbook.getActiveSheet()
+      if (!sheet) continue
+
+      const frange = sheet.getRange(region.range.a1Notation)
+      const rawValues = frange.getValues() as unknown[][]
+      const stringRows: string[][] = rawValues.map(row =>
+        row.map(cell => cell === null || cell === undefined ? '' : String(cell))
+      )
+
+      const blockRanges = detectBlocks(region.range, region.splitRules, (r, c) => {
+        const rr = r - region.range!.startRow
+        const cc = c - region.range!.startCol
+        return (stringRows[rr] && stringRows[rr][cc]) || ''
+      })
+
+      const regionBlocks: RegionBlockResult[] = []
+      for (let i = 0; i < blockRanges.length; i++) {
+        const br = blockRanges[i]
+        const blockRows = stringRows.slice(br.startRow - region.range.startRow, br.endRow - region.range.startRow + 1)
+        regionBlocks.push({ blockLabel: `block_${i + 1}`, rows: blockRows })
+      }
+
+      regionResults.push({ regionId: region.id, label: region.label, blocks: regionBlocks })
+    }
+
+    const activeBlocks = blocks.filter(b => b.range)
+    if (!activeBlocks.length) return null
+
+    const blockResults: BlockParseResult[] = []
+    const namedData: Record<string, unknown> = {}
+
+    for (const block of activeBlocks) {
+      const sheet = block.activeSheet
+        ? workbook.getSheetByName(block.activeSheet)
+        : workbook.getActiveSheet()
+      if (!sheet) continue
+
+      const frange = sheet.getRange(block.range!.a1Notation)
+      const rawValues = frange.getValues() as unknown[][]
+
+      const activeColumns = block.columns.filter(c => !c.skip)
+      if (!activeColumns.length) {
+        blockResults.push({ blockId: block.id, label: block.label, data: [], rowCount: 0 })
+        namedData[block.label] = []
+        continue
+      }
+
+      const headers = activeColumns.map(c => c.key || c.suggestedKey)
+      const headerSet = new Set(block.headerRows)
+      const dataRows = rawValues.filter((_, i) => !headerSet.has(i))
+
+      const data = dataRows.map(row => {
+        const entry: Record<string, unknown> = {}
+        activeColumns.forEach((col, mappedIdx) => {
+          const raw = col.colIndex < row.length ? row[col.colIndex] : null
+          const effectiveType = col.type === 'valueMapping'
+            ? (col.valueMapFallbackType ?? 'auto')
+            : col.type
+          if (col.valueMap.length > 0) {
+            const { mapped, value } = applyValueMap(raw, col.valueMap)
+            entry[headers[mappedIdx]] = mapped ? value : convertValue(value, effectiveType)
+          } else {
+            entry[headers[mappedIdx]] = convertValue(raw, effectiveType)
+          }
+        })
+        return entry
+      })
+
+      blockResults.push({ blockId: block.id, label: block.label, data, rowCount: data.length })
+      namedData[block.label] = data
+    }
+
+    return { success: true, data: namedData, blocks: blockResults, regionResults }
+  }
 
   const handleParse = useCallback(async () => {
     if (!univerAPI) {
@@ -515,30 +662,24 @@ function AppContent() {
       return
     }
 
-    try {
-      const blockResults = []
-      const namedData: Record<string, unknown> = {}
-      // Capture raw values during parse — handleBlockChange is async (React state),
-      // so dataSnapshot isn't available on the blocks array yet when we call adaptPreviewData below.
-      const rawSnapshots = new Map<string, unknown[][]>()
+    const rawSnapshots = new Map<string, unknown[][]>()
+    const result = performParse(workbook, regions, blocks)
+    if (!result || !result.success) {
+      if (result) setParseResult(result)
+      return
+    }
 
-      for (const block of activeBlocks) {
-        const sheet = block.activeSheet
-          ? workbook.getSheetByName(block.activeSheet)
-          : workbook.getActiveSheet()
-
-        if (!sheet) continue
-
-        const frange = sheet.getRange(block.range!.a1Notation)
-        const rawValues = frange.getValues() as unknown[][]
-
-        // Build a filled copy of rawValues for the raw preview view (merged cells show as null otherwise).
-        // Keep original rawValues for parsing — filling merged values into parsed columns
-        // would put the same value into unrelated columns, corrupting the typed output.
-        const filledValues = rawValues.map(row => [...row])
-        try {
-          const mergedRanges = sheet.getMergedRanges?.()
-          if (mergedRanges && mergedRanges.length > 0) {
+    for (const block of activeBlocks) {
+      const sheet = block.activeSheet
+        ? workbook.getSheetByName(block.activeSheet)
+        : workbook.getActiveSheet()
+      if (!sheet) continue
+      const frange = sheet.getRange(block.range!.a1Notation)
+      const rawValues = frange.getValues() as unknown[][]
+      const filledValues = rawValues.map(row => [...row])
+      try {
+        const mergedRanges = sheet.getMergedRanges?.()
+        if (mergedRanges && mergedRanges.length > 0) {
           const blockStartRow = block.range!.startRow
           const blockStartCol = block.range!.startCol
           const blockEndRow = block.range!.endRow
@@ -561,64 +702,28 @@ function AppContent() {
               }
             }
           }
-          }
-        } catch (_e) { /* Univer may not have merged ranges available */ }
-
-        rawSnapshots.set(block.id, filledValues)
-        handleBlockChange(block.id, { dataSnapshot: filledValues as unknown[][] })
-
-        const activeColumns = block.columns.filter(c => !c.skip)
-        if (!activeColumns.length) {
-          blockResults.push({ blockId: block.id, label: block.label, data: [], rowCount: 0 })
-          namedData[block.label] = []
-          continue
         }
-
-        const headers = activeColumns.map(c => c.key || c.suggestedKey)
-        const headerSet = new Set(block.headerRows)
-        const dataRows = rawValues.filter((_, i) => !headerSet.has(i))
-        const startCol = block.range!.startCol
-
-        const data = dataRows.map(row => {
-          const entry: Record<string, unknown> = {}
-          activeColumns.forEach((col, mappedIdx) => {
-            const raw = row[col.colIndex - startCol]
-            const effectiveType = col.type === 'valueMapping'
-              ? (col.valueMapFallbackType ?? 'auto')
-              : col.type
-            if (col.valueMap.length > 0) {
-              const { mapped, value } = applyValueMap(raw, col.valueMap)
-              entry[headers[mappedIdx]] = mapped ? value : convertValue(value, effectiveType)
-            } else {
-              entry[headers[mappedIdx]] = convertValue(raw, effectiveType)
-            }
-          })
-          return entry
-        })
-
-        blockResults.push({ blockId: block.id, label: block.label, data, rowCount: data.length })
-        namedData[block.label] = data
-      }
-
-      const result: ParseResult = { success: true, data: namedData, blocks: blockResults }
-      setParseResult(result)
-
-      // Build preview data for all blocks and open modal
-      const allPreviewData = new Map<string, PreviewData>()
-      for (const block of activeBlocks) {
-        const patchedBlock = {
-          ...block,
-          dataSnapshot: rawSnapshots.get(block.id) ?? block.dataSnapshot,
-        }
-        allPreviewData.set(block.id, adaptPreviewData(patchedBlock, result))
-      }
-      setPreviewModalData(allPreviewData)
-      setPreviewActiveBlockId(activeBlockId || activeBlocks[0]?.id || '')
-      setPreviewModalOpen(true)
-    } catch (err) {
-      setParseResult({ success: false, data: {}, blocks: [], error: String(err) })
+      } catch (_e) { /* Univer may not have merged ranges available */ }
+      rawSnapshots.set(block.id, filledValues)
+      handleBlockChange(block.id, { dataSnapshot: filledValues as unknown[][] })
     }
-  }, [univerAPI, blocks])
+
+    setParseResult(result)
+
+    // Build preview data for all blocks and open modal
+    const allPreviewData = new Map<string, PreviewData>()
+    for (const block of activeBlocks) {
+      const patchedBlock = {
+        ...block,
+        dataSnapshot: rawSnapshots.get(block.id) ?? block.dataSnapshot,
+      }
+      allPreviewData.set(block.id, adaptPreviewData(patchedBlock, result))
+    }
+    setPreviewModalData(allPreviewData)
+    setPreviewRegionResults(result.regionResults || [])
+    setPreviewActiveBlockId(activeBlockId || activeBlocks[0]?.id || '')
+    setPreviewModalOpen(true)
+  }, [univerAPI, blocks, regions, activeBlockId])
 
   const doExport = useCallback(async () => {
     try {
@@ -636,7 +741,6 @@ function AppContent() {
         for (const r of block.headerRows) {
           if (r >= values.length) break
           const row = (values[r] || []).map(v => String(v ?? ''))
-          // Replicate merged-cell values left-to-right (Univer returns empty for merged cells)
           for (let c = 1; c < row.length; c++) {
             if (row[c] === 'undefined' || row[c] === 'null' || row[c] === '') {
               row[c] = row[c - 1]
@@ -647,17 +751,26 @@ function AppContent() {
         return { ...block, headerSnapshot }
       }))
 
-      const session: ExportedSession = {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        config: {
-          blocks: blocksWithHeaderSnapshots as BlockConfig[] & { headerSnapshot?: string[][] }[],
-          activeBlockId,
-          focusMode,
-        },
-        data: parseResult?.data || {},
-        blockResults: parseResult?.blocks || [],
-      }
+      const regionsWithSnapshots = regions.map(region => ({
+        ...region,
+        blocks: region.blocks.map((b, i) => ({
+          ...b,
+          label: b.label || `block_${i + 1}`,
+        })),
+      }))
+
+      const workbook = univerAPI.getActiveWorkbook()
+      const freshParseResult = workbook
+        ? performParse(workbook, regions, blocks)
+        : parseResult
+
+      const session = serializeSession(
+        blocksWithHeaderSnapshots as BlockConfig[],
+        regionsWithSnapshots,
+        activeBlockId,
+        focusMode,
+        freshParseResult,
+      )
 
       const jsonStr = JSON.stringify(session, null, 2)
       const result = await getBridge().saveJson('session.json', jsonStr)
@@ -669,7 +782,7 @@ function AppContent() {
     } catch (err) {
       console.error('Export failed:', err)
     }
-  }, [blocks, activeBlockId, focusMode, parseResult, univerAPI])
+  }, [blocks, regions, activeBlockId, focusMode, parseResult, univerAPI])
 
   const doExportRef = useRef(doExport)
   doExportRef.current = doExport
@@ -689,7 +802,7 @@ function AppContent() {
     if (!result) return // cancelled
     try {
       const parsed = JSON.parse(result.content)
-      if (parsed.version !== 1) {
+      if (parsed.version !== 1 && parsed.version !== 2) {
         if (typeof parsed.version === 'number') {
           message.warning(`Config was created by a different version (v${parsed.version}). Import may not work correctly.`)
         } else {
@@ -735,14 +848,18 @@ function AppContent() {
       .filter(b => b.selectionLocked && b.range)
       .map(b => ({ blockId: b.id, range: b.range!, activeSheet: b.activeSheet, color: '#1677ff' }))
 
+    const regionLocked = regions
+      .filter(r => r.selectionLocked && r.range)
+      .map(r => ({ blockId: r.id, range: r.range!, activeSheet: r.activeSheet, color: '#1677ff' }))
+
     const reconciling = reconcilingBlockId
       ? blocks
           .filter(b => b.id === reconcilingBlockId && (reconcilingPreviewRange || b.range))
           .map(b => ({ blockId: b.id, range: reconcilingPreviewRange || b.range!, activeSheet: reconcilingPreviewSheet || b.activeSheet, color: '#fa8c16' }))
       : []
 
-    return [...selectionLocked, ...reconciling]
-  }, [blocks, reconcilingBlockId, reconcilingPreviewSheet, reconcilingPreviewRange])
+    return [...selectionLocked, ...regionLocked, ...reconciling]
+  }, [blocks, regions, reconcilingBlockId, reconcilingPreviewSheet, reconcilingPreviewRange])
 
   useEffect(() => {
     if (shouldReParse && blocks.length > 0) {
@@ -825,6 +942,7 @@ function AppContent() {
               <div style={{ height: '100%', overflow: 'hidden' }}>
                 <SpreadsheetPanel
                   activeBlockId={activeBlockId}
+                  activeRegionId={activeRegionId}
                   activeColIndex={activeColIndex}
                   onSelectionChange={handleSelectionChange}
                   loadSignal={loadSignal}
@@ -846,10 +964,17 @@ function AppContent() {
                   activeColIndex={activeColIndex}
                   focusMode={focusMode}
                   parseResult={parseResult}
+                  regions={regions}
+                  activeRegionId={activeRegionId}
                   onActivateBlock={handleActivateBlock}
                   onBlockChange={handleBlockChange}
                   onAddBlock={handleAddBlock}
                   onDeleteBlock={handleDeleteBlock}
+                  onAddRegion={handleAddRegion}
+                  onDeleteRegion={handleDeleteRegion}
+                  onRegionChange={handleRegionChange}
+                  onActivateRegion={handleActivateRegion}
+                  onRegionRangeClick={handleRegionRangeClick}
                   onFocusModeChange={setFocusMode}
                   onColumnFocus={setActiveColIndex}
                   onParse={handleParse}
@@ -895,15 +1020,83 @@ function AppContent() {
             background: 'rgba(0,0,0,0.45)', borderRadius: '50%',
           }}
         />
-        <PreviewWindow
-          previewData={previewModalData.get(previewActiveBlockId) || null}
-          allBlocks={Array.from(previewModalData.entries()).map(([id, data]) => ({
-            blockId: id,
-            label: data.label,
-          }))}
-          activeBlockId={previewActiveBlockId}
-          onBlockChange={setPreviewActiveBlockId}
-        />
+        {previewRegionResults.length > 0 ? (
+          <Tabs
+            defaultActiveKey="blocks"
+            size="small"
+            tabBarStyle={{ padding: '0 12px', marginBottom: 0, background: '#fafafa' }}
+            style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+            items={[
+              {
+                key: 'blocks',
+                label: `Blocks (${previewModalData.size})`,
+                children: (
+                  <div style={{ flex: 1, overflow: 'auto', height: 'calc(100vh - 170px)' }}>
+                    <PreviewWindow
+                      previewData={previewModalData.get(previewActiveBlockId) || null}
+                      allBlocks={Array.from(previewModalData.entries()).map(([id, data]) => ({
+                        blockId: id,
+                        label: data.label,
+                      }))}
+                      activeBlockId={previewActiveBlockId}
+                      onBlockChange={setPreviewActiveBlockId}
+                    />
+                  </div>
+                ),
+              },
+              {
+                key: 'regions',
+                label: `Regions (${previewRegionResults.length})`,
+                children: (
+                  <div style={{ flex: 1, overflow: 'auto', height: 'calc(100vh - 170px)', padding: 12 }}>
+                    {previewRegionResults.map(region => (
+                      <div key={region.regionId} style={{ marginBottom: 24 }}>
+                        <h4 style={{ margin: '0 0 8px', fontSize: 14, color: '#1677ff', fontWeight: 600 }}>
+                          {region.label || 'Region'}
+                        </h4>
+                        {region.blocks.length === 0 ? (
+                          <Empty description="No blocks detected" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                        ) : (
+                          region.blocks.map((block, bi) => (
+                            <div key={bi} style={{ marginBottom: 12 }}>
+                              <div style={{ fontSize: 12, color: '#666', marginBottom: 4, fontWeight: 500 }}>
+                                {block.blockLabel} ({block.rows.length} rows × {block.rows[0]?.length ?? 0} cols)
+                              </div>
+                              <Table
+                                dataSource={block.rows.map((row, ri) => ({ key: ri, ...Object.fromEntries(row.map((cell, ci) => [`c${ci}`, cell])) }))}
+                                columns={Array.from({ length: Math.max(...block.rows.map(r => r.length), 0) }, (_, ci) => ({
+                                  title: String(ci),
+                                  dataIndex: `c${ci}`,
+                                  key: `c${ci}`,
+                                  width: 120,
+                                  ellipsis: true,
+                                }))}
+                                size="small"
+                                pagination={false}
+                                bordered
+                                scroll={{ x: 'max-content' }}
+                              />
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <PreviewWindow
+            previewData={previewModalData.get(previewActiveBlockId) || null}
+            allBlocks={Array.from(previewModalData.entries()).map(([id, data]) => ({
+              blockId: id,
+              label: data.label,
+            }))}
+            activeBlockId={previewActiveBlockId}
+            onBlockChange={setPreviewActiveBlockId}
+          />
+        )}
       </Modal>
       <Modal
         title="Replace Existing Blocks?"

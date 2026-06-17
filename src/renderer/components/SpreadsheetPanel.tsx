@@ -15,6 +15,7 @@ interface LockedRangeInfo {
 
 interface SpreadsheetPanelProps {
   activeBlockId: string
+  activeRegionId: string | null
   activeColIndex: number | null
   onSelectionChange: (range: CellRange | null, activeSheet: string | null) => void
   loadSignal: number
@@ -23,7 +24,7 @@ interface SpreadsheetPanelProps {
   lockedRanges: LockedRangeInfo[]
 }
 
-export function SpreadsheetPanel({ activeBlockId, activeColIndex, onSelectionChange, loadSignal, onFileLoaded, lockedRanges, closeSignal }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex, onSelectionChange, loadSignal, onFileLoaded, lockedRanges, closeSignal }: SpreadsheetPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { univerAPI, setUniverAPI, setSheetNames } = useUniver()
   const univerAPIRef = useRef(univerAPI)
@@ -67,7 +68,7 @@ export function SpreadsheetPanel({ activeBlockId, activeColIndex, onSelectionCha
     if (!workbook) return
 
     for (const lr of lockedRanges) {
-      if (lr.blockId !== activeBlockId) continue
+      if (lr.blockId !== activeBlockId && lr.blockId !== activeRegionId) continue
 
       const sheet = lr.activeSheet ? workbook.getSheetByName(lr.activeSheet) : workbook.getActiveSheet()
       if (!sheet) continue
@@ -87,7 +88,7 @@ export function SpreadsheetPanel({ activeBlockId, activeColIndex, onSelectionCha
       highlightDisposablesRef.current.forEach(d => { try { d.dispose() } catch { /* ignore */ } })
       highlightDisposablesRef.current = []
     }
-  }, [lockedRanges, activeBlockId, hasFile])
+  }, [lockedRanges, activeBlockId, activeRegionId, hasFile])
 
   const colHighlightRef = useRef<{ dispose: () => void } | null>(null)
 

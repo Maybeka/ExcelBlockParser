@@ -1,10 +1,14 @@
 import { useCallback, useState, useRef, useEffect, useMemo, Fragment } from 'react'
-import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider } from 'antd'
-import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined } from '@ant-design/icons'
-import type { ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport } from '../types'
+import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider, Tag, Dropdown } from 'antd'
+import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined, TagOutlined } from '@ant-design/icons'
+import type { ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, RegionConfig } from '../types'
 import { useUniver } from '../context/UniverContext'
 import { remapColumns } from '../services/columnMapper'
 import { runReconciliation } from '../services/reconciliation'
+import { addTag, removeTag, filterBlocksByTag, getAllTags } from '../services/tagUtils'
+import { validateExpression } from '../services/pythonValidator'
+import { RegionPanel } from './RegionPanel'
+import { BlockCard } from './BlockCard'
 
 const TYPE_OPTIONS: { value: ColumnType; label: string }[] = [
   { value: 'auto', label: 'auto' },
@@ -33,10 +37,17 @@ interface ConfigPanelProps {
   activeColIndex: number | null
   focusMode: FocusMode
   parseResult: ParseResult | null
+  regions: RegionConfig[]
+  activeRegionId: string | null
   onActivateBlock: (blockId: string) => void
   onBlockChange: (blockId: string, partial: Partial<BlockConfig>) => void
   onAddBlock: () => void
   onDeleteBlock: (blockId: string) => void
+  onAddRegion: () => void
+  onDeleteRegion: (regionId: string) => void
+  onRegionChange: (regionId: string, partial: Partial<RegionConfig>) => void
+  onActivateRegion?: (regionId: string) => void
+  onRegionRangeClick?: (regionId: string) => void
   onFocusModeChange: (mode: FocusMode) => void
   onColumnFocus: (colIndex: number | null) => void
   onParse: () => void
@@ -375,10 +386,17 @@ export function ConfigPanel({
   activeColIndex,
   focusMode,
   parseResult,
+  regions,
+  activeRegionId,
   onActivateBlock,
   onBlockChange,
   onAddBlock,
   onDeleteBlock,
+  onAddRegion,
+  onDeleteRegion,
+  onRegionChange,
+  onActivateRegion,
+  onRegionRangeClick,
   onFocusModeChange,
   onColumnFocus,
   onParse,
@@ -389,40 +407,64 @@ export function ConfigPanel({
   const [expandedMaps, setExpandedMaps] = useState<Set<string>>(new Set())
   const [showSettings, setShowSettings] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<{ blockId: string; label: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string; type: 'block' | 'region' } | null>(null)
   const [reconcilingBlockId, setReconcilingBlockId] = useState<string | null>(null)
   const [reconReports, setReconReports] = useState<Record<string, ReconciliationReport>>({})
   const [reconHeights, setReconHeights] = useState<Record<string, number>>({})
   const normalContentRef = useRef<Record<string, HTMLDivElement | null>>({})
+  const blockContainerRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const blockInputRefs = useRef<Record<string, { focus: () => void; select: () => void } | null>>({})
+  const shouldAutoFocus = useRef(false)
+  const prevBlockCountRef = useRef(blocks.length)
   const { univerAPI, sheetNames } = useUniver()
 
   const [searchText, setSearchText] = useState('')
-  const [searchTarget, setSearchTarget] = useState<'all' | 'title' | 'columnName'>('all')
+  const [searchTarget, setSearchTarget] = useState<'all' | 'title' | 'columnName' | 'tag'>('all')
+  const [tagFilter, setTagFilter] = useState<string | undefined>(undefined)
+  const [expandedRowFilters, setExpandedRowFilters] = useState<Set<string>>(new Set())
+  const [expandedComputedProps, setExpandedComputedProps] = useState<Set<string>>(new Set())
+  const [showTagsBlocks, setShowTagsBlocks] = useState<Set<string>>(new Set())
+  const [addingTagForBlock, setAddingTagForBlock] = useState<string | null>(null)
+  const [newTagInput, setNewTagInput] = useState('')
+
+  const allTags = useMemo(() => getAllTags(blocks), [blocks])
 
   const filteredBlocks = useMemo(() => {
-    if (!searchText.trim()) return blocks
-    const query = searchText.toLowerCase().trim()
-    return blocks.filter(block => {
-      const label = (block.label || '').toLowerCase()
-      const columns = block.columns || []
+    let result = blocks
+    if (searchText.trim()) {
+      const query = searchText.toLowerCase().trim()
+      result = result.filter(block => {
+        const label = (block.label || '').toLowerCase()
+        const columns = block.columns || []
 
-      switch (searchTarget) {
-        case 'title':
-          return label.includes(query)
-        case 'columnName':
-          return columns.some(c => {
-            const effectiveKey = (c.key || c.suggestedKey || '').toLowerCase()
-            return effectiveKey.includes(query)
-          })
-        default:
-          if (label.includes(query)) return true
-          return columns.some(c => {
-            const effectiveKey = (c.key || c.suggestedKey || '').toLowerCase()
-            return effectiveKey.includes(query)
-          })
-      }
-    })
-  }, [blocks, searchText, searchTarget])
+        switch (searchTarget) {
+          case 'title':
+            return label.includes(query)
+          case 'columnName':
+            return columns.some(c => {
+              const effectiveKey = (c.key || c.suggestedKey || '').toLowerCase()
+              return effectiveKey.includes(query)
+            })
+          case 'tag':
+            return (block.tags || []).some(t => {
+              const tagKey = t.key.toLowerCase()
+              const tagVal = (t.value || '').toLowerCase()
+              return tagKey.includes(query) || tagVal.includes(query)
+            })
+          default:
+            if (label.includes(query)) return true
+            return columns.some(c => {
+              const effectiveKey = (c.key || c.suggestedKey || '').toLowerCase()
+              return effectiveKey.includes(query)
+            })
+        }
+      })
+    }
+    if (tagFilter) {
+      result = filterBlocksByTag(result, tagFilter)
+    }
+    return result
+  }, [blocks, searchText, searchTarget, tagFilter])
 
   interface ColumnTableState {
     active: boolean
@@ -435,6 +477,25 @@ export function ConfigPanel({
   blocksRef.current = blocks
   const univerRef = useRef(univerAPI)
   univerRef.current = univerAPI
+
+  const handleAdd = useCallback(() => {
+    shouldAutoFocus.current = true
+    onAddBlock()
+  }, [onAddBlock])
+
+  useEffect(() => {
+    if (shouldAutoFocus.current && blocks.length > prevBlockCountRef.current) {
+      shouldAutoFocus.current = false
+      const lastBlock = blocks[blocks.length - 1]
+      requestAnimationFrame(() => {
+        blockContainerRefs.current[lastBlock.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        const input = blockInputRefs.current[lastBlock.id]
+        input?.focus()
+        input?.select()
+      })
+    }
+    prevBlockCountRef.current = blocks.length
+  }, [blocks])
 
   const scrollToCellCenter = (sheet: any, row: number, col: number) => {
     sheet.scrollToCell(Math.max(0, row - 3), Math.max(0, col - 1))
@@ -683,7 +744,7 @@ export function ConfigPanel({
 
   if (!blocks.length) {
     return (
-      <div style={{ padding: 16 }}><Button block icon={<PlusOutlined />} onClick={onAddBlock}>Add Block</Button></div>
+      <div style={{ padding: 16 }}><Dropdown.Button block icon={<PlusOutlined />} onClick={handleAdd} menu={{ items: [{ key: 'add-region', label: 'Add Region', onClick: onAddRegion }] }}>Add</Dropdown.Button></div>
     )
   }
 
@@ -709,14 +770,20 @@ export function ConfigPanel({
             <Button
               size="small" type="text"
               icon={<CompressOutlined />}
-              onClick={() => blocks.forEach(b => { if (!b.collapsed) onBlockChange(b.id, { collapsed: true }) })}
+              onClick={() => {
+                blocks.forEach(b => { if (!b.collapsed) onBlockChange(b.id, { collapsed: true }) })
+                regions.forEach(r => { if (!r.collapsed) onRegionChange(r.id, { collapsed: true }) })
+              }}
             />
           </Tooltip>
           <Tooltip title="Expand all">
             <Button
               size="small" type="text"
               icon={<ExpandOutlined />}
-              onClick={() => blocks.forEach(b => { if (b.collapsed) onBlockChange(b.id, { collapsed: false }) })}
+              onClick={() => {
+                blocks.forEach(b => { if (b.collapsed) onBlockChange(b.id, { collapsed: false }) })
+                regions.forEach(r => { if (r.collapsed) onRegionChange(r.id, { collapsed: false }) })
+              }}
             />
           </Tooltip>
           <Divider type="vertical" style={{ margin: '0 4px' }} />
@@ -740,7 +807,18 @@ export function ConfigPanel({
               style={{ color: showSettings ? '#1677ff' : undefined }}
             />
           </Tooltip>
-          <Button size="small" icon={<PlusOutlined />} onClick={onAddBlock} style={{ marginLeft: 12 }}>Add</Button>
+          <span style={{ marginLeft: 12, flexShrink: 0 }}>
+            <Dropdown.Button
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={handleAdd}
+              menu={{
+                items: [{ key: 'add-region', label: 'Add Region', onClick: onAddRegion }],
+              }}
+            >
+              Add
+            </Dropdown.Button>
+          </span>
         </div>
 
       <Divider style={{ margin: '0 0 8px 0' }} />
@@ -759,33 +837,59 @@ export function ConfigPanel({
       {showSettings && showSearch && <Divider style={{ margin: '0 0 8px 0' }} />}
 
       {showSearch && (
-        <div style={{ marginBottom: 12, display: 'flex', gap: 6 }}>
-          <Select
-            size="small"
-            value={searchTarget}
-            onChange={setSearchTarget}
-            style={{ width: 96, flexShrink: 0 }}
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'title', label: 'Title' },
-              { value: 'columnName', label: 'Key' },
-            ]}
-            optionRender={renderOption}
-          />
-          <Input
-            size="small"
-            placeholder="Search blocks..."
-            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            allowClear
-            style={{ flex: 1 }}
-          />
-        </div>
+        <>
+          <div style={{ marginBottom: 12, display: 'flex', gap: 6 }}>
+            <Select
+              size="small"
+              value={searchTarget}
+              onChange={setSearchTarget}
+              style={{ width: 96, flexShrink: 0 }}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'title', label: 'Title' },
+                { value: 'columnName', label: 'Key' },
+                { value: 'tag', label: 'Tag' },
+              ]}
+              optionRender={renderOption}
+            />
+            <Input
+              size="small"
+              placeholder="Search blocks..."
+              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              allowClear
+              style={{ flex: 1 }}
+            />
+          </div>
+          {allTags.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <Select
+                size="small"
+                value={tagFilter}
+                onChange={setTagFilter}
+                allowClear
+                placeholder="Filter by tag..."
+                style={{ width: '100%' }}
+                options={allTags.map(t => ({ value: t.key, label: t.type === 'kv' ? `${t.key}:${t.value || ''}` : t.key }))}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {(showSearch || showSettings) && <Divider style={{ margin: '0 0 8px 0' }} />}
       </div>
+
+      <RegionPanel
+        regions={regions}
+        activeRegionId={activeRegionId}
+        onActivateRegion={onActivateRegion || (() => {})}
+        onRegionChange={onRegionChange}
+        onAddRegion={onAddRegion}
+        onDeleteRegion={(regionId, label) => setDeleteTarget({ id: regionId, label, type: 'region' })}
+        onRangeClick={onRegionRangeClick}
+      />
 
       <div style={{ flex: 1, overflow: 'auto' }}>
       {filteredBlocks.map((block) => {
@@ -803,11 +907,16 @@ export function ConfigPanel({
           const k = c.key || c.suggestedKey
           keyCounts.set(k, (keyCounts.get(k) || 0) + 1)
         })
+        ;(block.computedProperties || []).forEach(p => {
+          const l = p.label?.trim()
+          if (l) keyCounts.set(l, (keyCounts.get(l) || 0) + 1)
+        })
         keyCounts.forEach((count, k) => { if (count > 1) dupKeys.add(k) })
 
         return (
           <div
             key={block.id}
+            ref={(el) => { blockContainerRefs.current[block.id] = el }}
             onMouseDown={() => { if (!isOtherBlockInReconciling) onActivateBlock(block.id) }}
             style={{
               marginBottom: 8,
@@ -833,6 +942,7 @@ export function ConfigPanel({
               </span>
               <Input
                 size="small"
+                ref={(el) => { blockInputRefs.current[block.id] = el }}
                 value={block.label}
                 onChange={e => onBlockChange(block.id, { label: e.target.value })}
                 placeholder={headerLabel}
@@ -889,10 +999,8 @@ export function ConfigPanel({
                     onClick={async (e) => {
                     e.stopPropagation()
                     if (controlsLocked || !block?.range) return
-                    // Activate block so highlights render
                     onActivateBlock(block.id)
                     if (reconcilingBlockId === block.id) {
-                      // Restore Excel view to block's original sheet
                       const a = univerRef.current
                       if (a && block.activeSheet) {
                         const w = a.getActiveWorkbook()
@@ -905,11 +1013,9 @@ export function ConfigPanel({
                     const api = univerRef.current
                     if (!api) return
                     const wb = api.getActiveWorkbook()
-                    // Switch Excel to the block's sheet so highlight renders
                     if (block.activeSheet && wb) {
                       wb.setActiveSheet(block.activeSheet)
                     }
-                    // Capture normal content height before switching
                     const el = normalContentRef.current[block.id]
                     if (el) setReconHeights(prev => ({ ...prev, [block.id]: el.offsetHeight }))
                     const sheets: string[] = []
@@ -919,7 +1025,6 @@ export function ConfigPanel({
                     }
                     const report = await runReconciliation(block, api, sheets)
                     setReconReports(prev => ({ ...prev, [block.id]: report }))
-                    // Initialize preview sheet from block or current active sheet
                     onPreviewSheet?.(block.activeSheet || wb?.getActiveSheet()?.getSheetName() || null)
                     setReconcilingBlockId(block.id)
                     onReconcilingChange?.(block.id)
@@ -930,14 +1035,90 @@ export function ConfigPanel({
               </Tooltip>
               )}
               <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
+              <Tooltip title={showTagsBlocks.has(block.id) ? 'Hide tags' : 'Show tags'}>
+                <Button
+                  size="small" type="text"
+                  icon={<TagOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const next = new Set(showTagsBlocks)
+                    showTagsBlocks.has(block.id) ? next.delete(block.id) : next.add(block.id)
+                    setShowTagsBlocks(next)
+                  }}
+                  onMouseDown={e => e.stopPropagation()}
+                  style={{ color: showTagsBlocks.has(block.id) ? '#1677ff' : undefined }}
+                >
+                  {block.tags?.length ? <span style={{ fontSize: 11, marginLeft: 4 }}>{block.tags.length}</span> : null}
+                </Button>
+              </Tooltip>
+              <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
               <Button
                 size="small" type="text" danger
                 icon={<DeleteOutlined />}
-                onClick={() => setDeleteTarget({ blockId: block.id, label: headerLabel })}
+                onClick={() => setDeleteTarget({ id: block.id, label: headerLabel, type: 'block' })}
                 onMouseDown={e => e.stopPropagation()}
                 disabled={controlsLocked}
               />
             </div>
+
+            {/* Tag chips */}
+            {!effectivelyCollapsed && showTagsBlocks.has(block.id) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px 4px 34px', overflow: 'auto' }}>
+                {(block.tags || []).map((tag, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, fontSize: 11, color: '#1677ff', whiteSpace: 'nowrap' }}>
+                    {i > 0 && <span style={{ color: '#bbb', margin: '0 2px' }}>/</span>}
+                    <Tag
+                      closable
+                      onClose={() => {
+                        const tags = removeTag({ ...block, tags: block.tags }, tag.key).tags || []
+                        onBlockChange(block.id, { tags })
+                      }}
+                      style={{ margin: 0, fontSize: 11 }}
+                    >
+                      {tag.type === 'kv' ? `${tag.key}:${tag.value || ''}` : tag.key}
+                    </Tag>
+                  </span>
+                ))}
+                {block.tags && block.tags.length > 0 && <span style={{ color: '#bbb', margin: '0 2px' }}>/</span>}
+                <Button size="small" type="dashed" icon={<PlusOutlined />}
+                  onClick={() => setAddingTagForBlock(block.id)}
+                  style={{ fontSize: 11, height: 22, padding: '0 6px', flexShrink: 0 }}>
+                  Tag
+                </Button>
+                {addingTagForBlock === block.id && (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                    <Input
+                      size="small"
+                      value={newTagInput}
+                      onChange={e => setNewTagInput(e.target.value)}
+                      placeholder="tag or key:value"
+                      onPressEnter={() => {
+                        if (!newTagInput.trim()) return
+                        const colonIdx = newTagInput.indexOf(':')
+                        const tag: Tag = colonIdx > 0
+                          ? { type: 'kv', key: newTagInput.slice(0, colonIdx).trim(), value: newTagInput.slice(colonIdx + 1).trim() || undefined }
+                          : { type: 'label', key: newTagInput.trim() }
+                        onBlockChange(block.id, { tags: addTag({ ...block, tags: block.tags }, tag).tags })
+                        setAddingTagForBlock(null)
+                        setNewTagInput('')
+                      }}
+                      style={{ width: 130, fontSize: 12 }}
+                    />
+                    <Button size="small" type="link" onClick={() => {
+                      if (!newTagInput.trim()) return
+                      const colonIdx = newTagInput.indexOf(':')
+                      const tag: Tag = colonIdx > 0
+                        ? { type: 'kv', key: newTagInput.slice(0, colonIdx).trim(), value: newTagInput.slice(colonIdx + 1).trim() || undefined }
+                        : { type: 'label', key: newTagInput.trim() }
+                      onBlockChange(block.id, { tags: addTag({ ...block, tags: block.tags }, tag).tags })
+                      setAddingTagForBlock(null)
+                      setNewTagInput('')
+                    }}>✓</Button>
+                    <Button size="small" type="text" onClick={() => { setAddingTagForBlock(null); setNewTagInput('') }}>✗</Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {block.label && !isValidVariableName(block.label) && (
               <div style={{ padding: '0 10px 6px 10px', fontSize: 10, color: '#ff4d4f', lineHeight: 1.2 }}>
@@ -1006,7 +1187,7 @@ export function ConfigPanel({
                           }
                         }}
                         placeholder="e.g. 1-3, 5"
-                        style={{ flex: 1 }}
+                        style={{ flex: 1, fontSize: 13 }}
                       />
                       <span style={{ fontSize: 11, color: '#8c8c8c', whiteSpace: 'nowrap' }}>
                         → {block.headerRows.length === 0 ? '1 header row' : block.headerRows.length === 1 ? '1 header row' : `${block.headerRows.length} header rows`}
@@ -1353,6 +1534,152 @@ export function ConfigPanel({
                         )
                       })}
                     </div>
+
+                    {/* Row Filters */}
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: '#999', cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            const next = new Set(expandedRowFilters)
+                            expandedRowFilters.has(block.id) ? next.delete(block.id) : next.add(block.id)
+                            setExpandedRowFilters(next)
+                          }}>
+                          {expandedRowFilters.has(block.id) ? <CaretDownOutlined /> : <CaretRightOutlined />}
+                          {' '}Row Filters {block.ignoreRules?.length ? `(${block.ignoreRules.length})` : ''}
+                        </span>
+                        {expandedRowFilters.has(block.id) && (
+                          <Button size="small" type="link" icon={<PlusOutlined />}
+                            onClick={() => {
+                              const rules = [...(block.ignoreRules || []), { operator: 'eq' as const, column: '', value: '' }]
+                              onBlockChange(block.id, { ignoreRules: rules })
+                            }}>
+                            Add Rule
+                          </Button>
+                        )}
+                      </div>
+                      {expandedRowFilters.has(block.id) && (block.ignoreRules || []).map((rule, i) => {
+                        const columnKeys = block.columns.filter(c => !c.skip).map(c => c.key || c.suggestedKey)
+                        return (
+                          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+                            <Select size="small" value={rule.column || ''} style={{ width: 100, height: 22, fontSize: 13 }}
+                              onChange={v => {
+                                const rules = [...(block.ignoreRules || [])]
+                                rules[i] = { ...rules[i], column: v || undefined }
+                                onBlockChange(block.id, { ignoreRules: rules })
+                              }}
+                              options={[
+                                { value: '$row', label: '$row (index)' },
+                                ...columnKeys.map(k => ({ value: k, label: k })),
+                              ]}
+                            />
+                            <Select size="small" value={rule.operator} style={{ width: 90, height: 22, fontSize: 13 }}
+                              onChange={v => {
+                                const rules = [...(block.ignoreRules || [])]
+                                rules[i] = { ...rules[i], operator: v }
+                                onBlockChange(block.id, { ignoreRules: rules })
+                              }}
+                              options={[
+                                { value: 'eq', label: 'equals' },
+                                { value: 'neq', label: 'not equals' },
+                                { value: 'contains', label: 'contains' },
+                                { value: 'empty', label: 'empty' },
+                                { value: 'regex', label: 'regex' },
+                              ]}
+                            />
+                            {rule.operator !== 'empty' && (
+                              <Input size="small" value={rule.value || ''} placeholder="value"
+                                onChange={e => {
+                                  const rules = [...(block.ignoreRules || [])]
+                                  rules[i] = { ...rules[i], value: e.target.value }
+                                  onBlockChange(block.id, { ignoreRules: rules })
+                                }}
+                                style={{ flex: 1, height: 22, fontSize: 13 }}
+                              />
+                            )}
+                            <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                              onClick={() => {
+                                const rules = (block.ignoreRules || []).filter((_, j) => j !== i)
+                                onBlockChange(block.id, { ignoreRules: rules })
+                              }}
+                            />
+                          </div>
+                        )
+                      })}
+                      {expandedRowFilters.has(block.id) && (!block.ignoreRules || block.ignoreRules.length === 0) && (
+                        <div style={{ fontSize: 11, color: '#bbb' }}>No row filters</div>
+                      )}
+                    </div>
+
+                    {/* Computed Properties */}
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: '#999', cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            const next = new Set(expandedComputedProps)
+                            expandedComputedProps.has(block.id) ? next.delete(block.id) : next.add(block.id)
+                            setExpandedComputedProps(next)
+                          }}>
+                          {expandedComputedProps.has(block.id) ? <CaretDownOutlined /> : <CaretRightOutlined />}
+                          {' '}Computed Properties {block.computedProperties?.length ? `(${block.computedProperties.length})` : ''}
+                        </span>
+                        {expandedComputedProps.has(block.id) && (
+                          <Button size="small" type="link" icon={<PlusOutlined />}
+                            onClick={() => {
+                              const props = [...(block.computedProperties || []), { id: `cp-${Date.now()}`, label: '', expression: '' }]
+                              onBlockChange(block.id, { computedProperties: props })
+                            }}>
+                            Add
+                          </Button>
+                        )}
+                      </div>
+                      {expandedComputedProps.has(block.id) && (block.computedProperties || []).map((prop, i) => {
+                        const validation = prop.expression ? validateExpression(prop.expression,
+                          block.columns.filter(c => !c.skip).map(c => c.key || c.suggestedKey)
+                        ) : { valid: true, errors: [] }
+                        return (
+                          <div key={prop.id} style={{ marginBottom: 6 }}>
+                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                              <Input size="small" value={prop.label} placeholder="name"
+                                status={dupKeys.has(prop.label?.trim() || '') ? 'error' : undefined}
+                                onChange={e => {
+                                  const props = [...(block.computedProperties || [])]
+                                  props[i] = { ...props[i], label: e.target.value }
+                                  onBlockChange(block.id, { computedProperties: props })
+                                }}
+                                style={{ width: 100, height: 22, fontSize: 13 }}
+                              />
+                              <Input size="small" value={prop.expression} placeholder="key1 * key2"
+                                onChange={e => {
+                                  const props = [...(block.computedProperties || [])]
+                                  props[i] = { ...props[i], expression: e.target.value }
+                                  onBlockChange(block.id, { computedProperties: props })
+                                }}
+                                style={{ flex: 1, fontFamily: 'monospace', height: 22, fontSize: 13 }}
+                                status={prop.expression && !validation.valid ? 'error' : undefined}
+                              />
+                              <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                                onClick={() => {
+                                  const props = (block.computedProperties || []).filter((_, j) => j !== i)
+                                  onBlockChange(block.id, { computedProperties: props })
+                                }}
+                              />
+                            </div>
+                            {prop.expression && !validation.valid && validation.errors.map((err, ei) => (
+                              <div key={ei} style={{ fontSize: 10, color: '#ff4d4f' }}>{err}</div>
+                            ))}
+                            {prop.expression && validation.valid && (
+                              <div style={{ fontSize: 10, color: '#52c41a' }}>✓ Valid</div>
+                            )}
+                            {dupKeys.has(prop.label?.trim() || '') && (
+                              <div style={{ fontSize: 10, color: '#ff4d4f' }}>Duplicate property label</div>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {expandedComputedProps.has(block.id) && (!block.computedProperties || block.computedProperties.length === 0) && (
+                        <div style={{ fontSize: 11, color: '#bbb' }}>No computed properties</div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
@@ -1371,10 +1698,13 @@ export function ConfigPanel({
 
 
       <Modal
-        title="Delete block"
+        title={deleteTarget?.type === 'region' ? 'Delete region' : 'Delete block'}
         open={!!deleteTarget}
         onOk={() => {
-          if (deleteTarget) onDeleteBlock(deleteTarget.blockId)
+          if (deleteTarget) {
+            if (deleteTarget.type === 'region') onDeleteRegion(deleteTarget.id)
+            else onDeleteBlock(deleteTarget.id)
+          }
           setDeleteTarget(null)
         }}
         onCancel={() => setDeleteTarget(null)}
