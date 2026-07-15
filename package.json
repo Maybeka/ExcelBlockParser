@@ -2,7 +2,7 @@
   "name": "excel-block-parser",
   "version": "0.1.0",
   "description": "Load Excel, select a block, configure parsing, export JSON",
-  "author": "Your Name",
+  "author": "Excel Block Parser contributors",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -12,16 +12,18 @@
     "test:ui": "npx playwright test --ui",
     "test:unit": "vitest run",
     "test:main": "vitest run --config vitest.main.config.ts",
+    "test:native": "npm run build && playwright test --config playwright.electron.config.ts",
     "test:unit:watch": "vitest",
-    "pack:mac": "npm run build && electron-builder --mac --x64 --arm64",
-    "pack:win": "npm run build && electron-builder --win --x64",
-    "pack:linux": "npm run build && electron-builder --linux",
-    "pack:all": "npm run build && electron-builder --mac --win --linux",
+    "pack:mac": "npm run build && electron-builder --mac --x64 --arm64 --publish never",
+    "pack:win": "npm run build && electron-builder --win --x64 --publish never",
+    "pack:linux": "npm run build && electron-builder --linux --x64 --publish never",
+    "pack:all": "npm run build && electron-builder --mac --win --linux --publish never",
+    "pack:dir": "npm run build && electron-builder --dir --publish never",
     "build:vite": "vite build --config vite.config.ts",
     "dev:vite": "vite --config vite.config.ts"
   },
   "build": {
-    "appId": "com.yourname.excel-block-parser",
+    "appId": "io.excelblockparser.desktop",
     "productName": "Excel Block Parser",
     "icon": "build/icon.png",
     "directories": {
@@ -34,8 +36,15 @@
       "!node_modules/**/aws-sdk/**",
       "!node_modules/**/@esbuild/**"
     ],
+    "asar": true,
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
       "target": [
         {
           "target": "dmg",
@@ -47,6 +56,8 @@
       ]
     },
     "win": {
+      "publisherName": ["Excel Block Parser"],
+      "signingHashAlgorithms": ["sha256"],
       "target": [
         {
           "target": "nsis",

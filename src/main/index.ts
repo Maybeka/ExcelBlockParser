@@ -7,6 +7,7 @@ let mainWindow: BrowserWindow | null = null
 let previewWindow: BrowserWindow | null = null
 const previewDataStore = new Map<string, unknown>()
 const approvedWorkbookPaths = new Set<string>()
+const isElectronE2E = process.env.ELECTRON_E2E === '1'
 
 function assertMainWindowSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender.id !== mainWindow.webContents.id) {
@@ -25,6 +26,16 @@ async function recoveryPath(): Promise<string> {
   const directory = join(app.getPath('userData'), 'recovery')
   await mkdir(directory, { recursive: true })
   return join(directory, 'workspace-session.json')
+}
+
+async function approveWorkbook(selectedPath: string): Promise<string> {
+  const selected = await realpath(selectedPath)
+  if (!isSupportedWorkbookPath(selected)) throw new Error('Select an .xlsx or .xls workbook.')
+  const info = await stat(selected)
+  if (!info.isFile() || info.size > MAX_WORKBOOK_BYTES) throw new Error('The workbook is unavailable or exceeds the 100 MB limit.')
+  approvedWorkbookPaths.clear()
+  approvedWorkbookPaths.add(selected)
+  return selected
 }
 
 function createWindow(): void {
@@ -61,19 +72,15 @@ ipcMain.handle('log', (_event, level: string, ...args: unknown[]) => {
 ipcMain.handle('file:open', async (event) => {
   assertMainWindowSender(event)
   if (!mainWindow) return null
+  if (isElectronE2E && process.env.ELECTRON_E2E_CANCEL_DIALOGS === '1') return null
+  if (isElectronE2E && process.env.ELECTRON_E2E_OPEN_PATH) return approveWorkbook(process.env.ELECTRON_E2E_OPEN_PATH)
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Open Excel File',
     filters: [{ name: 'Excel Files', extensions: ['xlsx', 'xls'] }],
     properties: ['openFile'],
   })
   if (result.canceled || !result.filePaths.length) return null
-  const selected = await realpath(result.filePaths[0])
-  if (!isSupportedWorkbookPath(selected)) throw new Error('Select an .xlsx or .xls workbook.')
-  const info = await stat(selected)
-  if (!info.isFile() || info.size > MAX_WORKBOOK_BYTES) throw new Error('The workbook is unavailable or exceeds the 100 MB limit.')
-  approvedWorkbookPaths.clear()
-  approvedWorkbookPaths.add(selected)
-  return selected
+  return approveWorkbook(result.filePaths[0])
 })
 
 ipcMain.handle('file:read', async (event, requestedPath: unknown) => {
@@ -91,7 +98,9 @@ ipcMain.handle('file:save', async (event, defaultName: unknown, jsonData: unknow
   if (typeof jsonData !== 'string') return { success: false, error: 'Export data must be JSON text.' }
   if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) return { success: false, error: 'Export exceeds the 25 MB limit.' }
   try { JSON.parse(jsonData) } catch { return { success: false, error: 'Export data is not valid JSON.' } }
-  const result = await dialog.showSaveDialog(mainWindow, {
+  if (isElectronE2E && process.env.ELECTRON_E2E_CANCEL_DIALOGS === '1') return { success: false, error: 'Cancelled' }
+  const testSavePath = isElectronE2E ? process.env.ELECTRON_E2E_SAVE_PATH : undefined
+  const result = testSavePath ? { canceled: false, filePath: testSavePath } : await dialog.showSaveDialog(mainWindow, {
     title: 'Save JSON',
     defaultPath: sanitizeJsonFileName(defaultName, 'session.json'),
     filters: [{ name: 'JSON Files', extensions: ['json'] }],
@@ -108,7 +117,9 @@ ipcMain.handle('file:save', async (event, defaultName: unknown, jsonData: unknow
 ipcMain.handle('file:openJson', async (event) => {
   assertMainWindowSender(event)
   if (!mainWindow) return null
-  const result = await dialog.showOpenDialog(mainWindow, {
+  if (isElectronE2E && process.env.ELECTRON_E2E_CANCEL_DIALOGS === '1') return null
+  const testImportPath = isElectronE2E ? process.env.ELECTRON_E2E_IMPORT_PATH : undefined
+  const result = testImportPath ? { canceled: false, filePaths: [testImportPath] } : await dialog.showOpenDialog(mainWindow, {
     title: 'Import Config',
     filters: [{ name: 'JSON Files', extensions: ['json'] }],
     properties: ['openFile'],
