@@ -11,6 +11,7 @@
     "test": "npx playwright test",
     "test:ui": "npx playwright test --ui",
     "test:unit": "vitest run",
+    "test:main": "vitest run --config vitest.main.config.ts",
     "test:unit:watch": "vitest",
     "pack:mac": "npm run build && electron-builder --mac --x64 --arm64",
     "pack:win": "npm run build && electron-builder --win --x64",

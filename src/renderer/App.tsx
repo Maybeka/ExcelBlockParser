@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Badge, Button, Drawer, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
-import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined, MenuOutlined, WarningOutlined } from '@ant-design/icons'
+import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined, MenuOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
@@ -18,6 +18,7 @@ import { PreviewWindow } from './components/PreviewWindow'
 import type { PreviewData } from './types'
 import { WorkspaceNavigator } from './components/WorkspaceNavigator'
 import { DiagnosticsDrawer } from './components/DiagnosticsDrawer'
+import { WorkspaceHistory, type WorkspaceSnapshot } from './services/workspaceHistory'
 
 function colIndexToLetter(index: number): string {
   let letter = ''
@@ -248,6 +249,9 @@ function AppContent() {
   const [activeSheetName, setActiveSheetName] = useState<string | null>(null)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
+  const historyRef = useRef(new WorkspaceHistory())
+  const [historyVersion, setHistoryVersion] = useState(0)
   const pendingFileActionRef = useRef<(() => void) | null>(null)
   const pendingReconcilingRangeRef = useRef<{ range: CellRange; activeSheet: string | null } | null>(null)
 
@@ -260,6 +264,43 @@ function AppContent() {
   regionsRef.current = regions
   const activeRegionIdRef = useRef(activeRegionId)
   activeRegionIdRef.current = activeRegionId
+  const focusModeRef = useRef(focusMode)
+  focusModeRef.current = focusMode
+
+  const workspaceSnapshot = useCallback((): WorkspaceSnapshot => ({
+    blocks: blocksRef.current,
+    regions: regionsRef.current,
+    activeBlockId: activeBlockIdRef.current,
+    activeRegionId: activeRegionIdRef.current,
+    focusMode: focusModeRef.current,
+  }), [])
+
+  const rememberWorkspace = useCallback(() => {
+    historyRef.current.push(workspaceSnapshot())
+    setHistoryVersion(version => version + 1)
+  }, [workspaceSnapshot])
+
+  const restoreWorkspace = useCallback((snapshot: WorkspaceSnapshot) => {
+    setBlocks(snapshot.blocks)
+    setRegions(snapshot.regions)
+    setActiveBlockId(snapshot.activeBlockId)
+    setActiveRegionId(snapshot.activeRegionId)
+    setFocusMode(snapshot.focusMode)
+    setParseResult(null)
+    setHasUnsavedChanges(true)
+  }, [])
+
+  const handleUndo = useCallback(() => {
+    const previous = historyRef.current.undo(workspaceSnapshot())
+    if (previous) restoreWorkspace(previous)
+    setHistoryVersion(version => version + 1)
+  }, [restoreWorkspace, workspaceSnapshot])
+
+  const handleRedo = useCallback(() => {
+    const next = historyRef.current.redo(workspaceSnapshot())
+    if (next) restoreWorkspace(next)
+    setHistoryVersion(version => version + 1)
+  }, [restoreWorkspace, workspaceSnapshot])
 
   const runReconciliationIfNeeded = useCallback(async (importedBlocks: BlockConfig[]) => {
     const hasHeaders = importedBlocks.some(b => b.headerRows.length > 0 && b.range)
@@ -344,10 +385,41 @@ function AppContent() {
     }
 
     setShouldReParse(true)
+    historyRef.current.clear()
+    setHistoryVersion(version => version + 1)
+    setHasUnsavedChanges(true)
     setTimeout(() => {
       runReconciliationIfNeededRef.current(cleanBlocks)
     }, 300)
   }, [])
+
+  useEffect(() => {
+    let active = true
+    void getBridge().loadRecovery().then((content) => {
+      if (!active || !content) return
+      try {
+        const loaded = loadSession(JSON.parse(content))
+        if (loaded.session) setRecoveryContent(content)
+        else void getBridge().clearRecovery()
+      } catch {
+        void getBridge().clearRecovery()
+      }
+    }).catch(() => {
+      // Recovery is optional; a filesystem issue must not prevent startup.
+    })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const timer = window.setTimeout(() => {
+      const session = serializeSession(blocks, regions, activeBlockId, focusMode, parseResult)
+      void getBridge().saveRecovery(JSON.stringify({ ...session, sourceFileName: currentFileName ?? undefined })).catch((error) => {
+        console.warn('Unable to save workspace recovery data:', error)
+      })
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [activeBlockId, blocks, currentFileName, focusMode, hasUnsavedChanges, parseResult, regions])
 
   const handleOpenFile = useCallback(() => {
     if (hasUnsavedChanges) {
@@ -394,6 +466,9 @@ function AppContent() {
     pendingFileActionRef.current = null
     setShowDiscardConfirm(false)
     setHasUnsavedChanges(false)
+    historyRef.current.clear()
+    setHistoryVersion(version => version + 1)
+    void getBridge().clearRecovery()
   }, [])
 
   const handleFileLoaded = useCallback((fileName: string) => {
@@ -426,6 +501,7 @@ function AppContent() {
 
     if (range && currentRegion) {
       if (currentRegion.selectionLocked) return
+      rememberWorkspace()
       setRegions(prev => prev.map(r =>
         r.id === regionId ? { ...r, range, activeSheet } : r,
       ))
@@ -438,12 +514,14 @@ function AppContent() {
     if (!range) {
       if (currentBlock?.selectionLocked) return
       if (currentRegion) {
+        rememberWorkspace()
         setRegions(prev => prev.map(r =>
           r.id === regionId ? { ...r, range: null } : r,
         ))
         setParseResult(null)
         return
       }
+      rememberWorkspace()
       setBlocks(prev => prev.map(b =>
         b.id === blockId ? { ...b, range: null, columns: [] } : b,
       ))
@@ -457,6 +535,7 @@ function AppContent() {
       ? suggestMappingsForWorkbook(createUniverWorkbookReader(workbook), range, headerRows, currentBlock?.activeSheet ?? activeSheet)
       : generateColumnMappings(range)
 
+    rememberWorkspace()
     setBlocks(prev => prev.map(b =>
       b.id === blockId ? { ...b, range, activeSheet, columns: mappings } : b,
     ))
@@ -489,11 +568,13 @@ function AppContent() {
   }, [])
 
   const handleBlockChange = useCallback((blockId: string, partial: Partial<BlockConfig>) => {
+    rememberWorkspace()
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, ...partial } : b))
     setHasUnsavedChanges(true)
-  }, [])
+  }, [rememberWorkspace])
 
   const handleAddBlock = useCallback(() => {
+    rememberWorkspace()
     const maxNum = blocksRef.current.reduce((max, b) => {
       const m = (b.label || '').match(/^block_(\d+)$/)
       return m ? Math.max(max, parseInt(m[1], 10)) : max
@@ -504,9 +585,10 @@ function AppContent() {
     setActiveRegionId(null)
     setParseResult(null)
     setHasUnsavedChanges(true)
-  }, [])
+  }, [rememberWorkspace])
 
   const handleDeleteBlock = useCallback((blockId: string) => {
+    rememberWorkspace()
     setBlocks(prev => {
       const next = prev.filter(b => b.id !== blockId)
       if (next.length === 0) {
@@ -522,9 +604,10 @@ function AppContent() {
     })
     setParseResult(null)
     setHasUnsavedChanges(true)
-  }, [])
+  }, [rememberWorkspace])
 
   const handleAddRegion = useCallback(() => {
+    rememberWorkspace()
     const region: RegionConfig = {
       id: `region-${Date.now()}`,
       label: `region_${regions.length + 1}`,
@@ -539,18 +622,20 @@ function AppContent() {
     setActiveRegionId(region.id)
     setActiveBlockId('')
     setHasUnsavedChanges(true)
-  }, [regions.length])
+  }, [regions.length, rememberWorkspace])
 
   const handleDeleteRegion = useCallback((regionId: string) => {
+    rememberWorkspace()
     setRegions(prev => prev.filter(r => r.id !== regionId))
     if (activeRegionId === regionId) setActiveRegionId(null)
     setHasUnsavedChanges(true)
-  }, [activeRegionId])
+  }, [activeRegionId, rememberWorkspace])
 
   const handleRegionChange = useCallback((regionId: string, partial: Partial<RegionConfig>) => {
+    rememberWorkspace()
     setRegions(prev => prev.map(r => r.id === regionId ? { ...r, ...partial } : r))
     setHasUnsavedChanges(true)
-  }, [])
+  }, [rememberWorkspace])
 
   const handleActivateRegion = useCallback((regionId: string) => {
     const region = regionsRef.current.find(item => item.id === regionId)
@@ -580,14 +665,23 @@ function AppContent() {
   }
 
   const handleMoveBlock = useCallback((blockId: string, direction: -1 | 1) => {
+    rememberWorkspace()
     setBlocks(current => moveItem(current, blockId, direction))
     setHasUnsavedChanges(true)
-  }, [])
+  }, [rememberWorkspace])
 
   const handleMoveRegion = useCallback((regionId: string, direction: -1 | 1) => {
+    rememberWorkspace()
     setRegions(current => moveItem(current, regionId, direction))
     setHasUnsavedChanges(true)
-  }, [])
+  }, [rememberWorkspace])
+
+  const handleFocusModeChange = useCallback((mode: FocusMode) => {
+    if (mode === focusModeRef.current) return
+    rememberWorkspace()
+    setFocusMode(mode)
+    setHasUnsavedChanges(true)
+  }, [rememberWorkspace])
 
   const handleRegionRangeClick = useCallback((regionId: string) => {
     const region = regionsRef.current.find(r => r.id === regionId)
@@ -795,10 +889,13 @@ function AppContent() {
       const result = await getBridge().saveJson('session.json', jsonStr)
       if (result.success) {
         setHasUnsavedChanges(false)
+        void getBridge().clearRecovery()
       } else {
+        message.error(result.error || 'Unable to save the JSON file. Your workspace recovery remains available.')
         console.error('Save failed:', result.error)
       }
     } catch (err) {
+      message.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
       console.error('Export failed:', err)
     }
   }, [blocks, regions, activeBlockId, focusMode, parseResult, univerAPI])
@@ -902,13 +999,15 @@ function AppContent() {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return
       const target = event.target as HTMLElement | null
       if (target?.matches('input, textarea, [contenteditable="true"]')) return
+      if (event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) handleRedo(); else handleUndo(); return }
+      if (event.key.toLowerCase() === 'y') { event.preventDefault(); handleRedo(); return }
       if (event.key.toLowerCase() === 'o') { event.preventDefault(); handleOpenFile(); return }
       if (event.key.toLowerCase() === 's') { event.preventDefault(); handleExportConfig(); return }
       if (event.key === 'Enter' && blocksRef.current.some(block => block.range)) { event.preventDefault(); handleParse() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleExportConfig, handleOpenFile, handleParse])
+  }, [handleExportConfig, handleOpenFile, handleParse, handleRedo, handleUndo])
 
   const navigator = <WorkspaceNavigator
     fileName={currentFileName}
@@ -956,6 +1055,12 @@ function AppContent() {
           </>
         )}
         <Space>
+          <Tooltip title="Undo">
+            <Button aria-keyshortcuts="Control+Z Meta+Z" aria-label="Undo" icon={<UndoOutlined />} onClick={handleUndo} disabled={!historyRef.current.canUndo} />
+          </Tooltip>
+          <Tooltip title="Redo">
+            <Button aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" aria-label="Redo" icon={<RedoOutlined />} onClick={handleRedo} disabled={!historyRef.current.canRedo} />
+          </Tooltip>
           <Button aria-keyshortcuts="Control+O Meta+O" icon={<FolderOpenOutlined />} onClick={handleOpenFile}>
             Open Excel
           </Button>
@@ -1044,7 +1149,7 @@ function AppContent() {
                   onRegionChange={handleRegionChange}
                   onActivateRegion={handleActivateRegion}
                   onRegionRangeClick={handleRegionRangeClick}
-                  onFocusModeChange={setFocusMode}
+                  onFocusModeChange={handleFocusModeChange}
                   onColumnFocus={setActiveColIndex}
                   onParse={handleParse}
                     onReconcilingChange={(id) => {
@@ -1202,6 +1307,25 @@ function AppContent() {
         cancelText="Cancel"
       >
         <p>You have unsaved changes. Discarding will lose all modifications since your last export.</p>
+      </Modal>
+      <Modal
+        title="Recover unsaved workspace?"
+        open={recoveryContent !== null}
+        closable={false}
+        maskClosable={false}
+        okText="Recover"
+        cancelText="Discard"
+        onOk={() => {
+          if (recoveryContent) applyImportContent(recoveryContent)
+          setRecoveryContent(null)
+        }}
+        onCancel={() => {
+          setRecoveryContent(null)
+          void getBridge().clearRecovery()
+        }}
+      >
+        <p>An unsaved workspace from a previous session is available.</p>
+        <p>Recover it to continue where you left off, or discard it to start fresh.</p>
       </Modal>
       <Modal
         title="Validation errors"

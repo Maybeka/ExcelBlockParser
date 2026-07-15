@@ -1,10 +1,31 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { isSupportedWorkbookPath, MAX_SESSION_BYTES, MAX_WORKBOOK_BYTES, sanitizeJsonFileName, withTimeout } from './fileSafety'
 
 let mainWindow: BrowserWindow | null = null
 let previewWindow: BrowserWindow | null = null
 const previewDataStore = new Map<string, unknown>()
+const approvedWorkbookPaths = new Set<string>()
+
+function assertMainWindowSender(event: Electron.IpcMainInvokeEvent): void {
+  if (!mainWindow || event.sender.id !== mainWindow.webContents.id) {
+    throw new Error('This operation is only available from the main application window.')
+  }
+}
+
+async function readLimitedFile(filePath: string, maxBytes: number, label: string): Promise<Buffer> {
+  const info = await stat(filePath)
+  if (!info.isFile()) throw new Error(`${label} is not a regular file.`)
+  if (info.size > maxBytes) throw new Error(`${label} is too large. The limit is ${Math.floor(maxBytes / 1024 / 1024)} MB.`)
+  return withTimeout(readFile(filePath), `Reading ${label.toLowerCase()} timed out after 30 seconds.`)
+}
+
+async function recoveryPath(): Promise<string> {
+  const directory = join(app.getPath('userData'), 'recovery')
+  await mkdir(directory, { recursive: true })
+  return join(directory, 'workspace-session.json')
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -37,7 +58,8 @@ ipcMain.handle('log', (_event, level: string, ...args: unknown[]) => {
   else console.log(prefix, ...args)
 })
 
-ipcMain.handle('file:open', async () => {
+ipcMain.handle('file:open', async (event) => {
+  assertMainWindowSender(event)
   if (!mainWindow) return null
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Open Excel File',
@@ -45,27 +67,46 @@ ipcMain.handle('file:open', async () => {
     properties: ['openFile'],
   })
   if (result.canceled || !result.filePaths.length) return null
-  return result.filePaths[0]
+  const selected = await realpath(result.filePaths[0])
+  if (!isSupportedWorkbookPath(selected)) throw new Error('Select an .xlsx or .xls workbook.')
+  const info = await stat(selected)
+  if (!info.isFile() || info.size > MAX_WORKBOOK_BYTES) throw new Error('The workbook is unavailable or exceeds the 100 MB limit.')
+  approvedWorkbookPaths.clear()
+  approvedWorkbookPaths.add(selected)
+  return selected
 })
 
-ipcMain.handle('file:read', async (_event, filePath: string) => {
-  const buffer = await readFile(filePath)
-  return buffer.buffer
+ipcMain.handle('file:read', async (event, requestedPath: unknown) => {
+  assertMainWindowSender(event)
+  if (typeof requestedPath !== 'string') throw new Error('Invalid workbook path.')
+  const filePath = await realpath(requestedPath)
+  if (!approvedWorkbookPaths.has(filePath)) throw new Error('The workbook must be selected through the Open dialog.')
+  const buffer = await readLimitedFile(filePath, MAX_WORKBOOK_BYTES, 'Workbook')
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 })
 
-ipcMain.handle('file:save', async (_event, defaultName: string, jsonData: string) => {
+ipcMain.handle('file:save', async (event, defaultName: unknown, jsonData: unknown) => {
+  assertMainWindowSender(event)
   if (!mainWindow) return { success: false, error: 'No window' }
+  if (typeof jsonData !== 'string') return { success: false, error: 'Export data must be JSON text.' }
+  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) return { success: false, error: 'Export exceeds the 25 MB limit.' }
+  try { JSON.parse(jsonData) } catch { return { success: false, error: 'Export data is not valid JSON.' } }
   const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Save JSON',
-    defaultPath: defaultName,
+    defaultPath: sanitizeJsonFileName(defaultName, 'session.json'),
     filters: [{ name: 'JSON Files', extensions: ['json'] }],
   })
   if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' }
-  await writeFile(result.filePath, jsonData, 'utf-8')
-  return { success: true, filePath: result.filePath }
+  try {
+    await withTimeout(writeFile(result.filePath, jsonData, 'utf-8'), 'Writing the JSON file timed out after 30 seconds.')
+    return { success: true, filePath: result.filePath }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Unable to write the JSON file.' }
+  }
 })
 
-ipcMain.handle('file:openJson', async () => {
+ipcMain.handle('file:openJson', async (event) => {
+  assertMainWindowSender(event)
   if (!mainWindow) return null
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Import Config',
@@ -74,11 +115,36 @@ ipcMain.handle('file:openJson', async () => {
   })
   if (result.canceled || !result.filePaths.length) return null
   try {
-    const content = await readFile(result.filePaths[0], 'utf-8')
+    const content = (await readLimitedFile(result.filePaths[0], MAX_SESSION_BYTES, 'Session file')).toString('utf-8')
     return { filePath: result.filePaths[0], content }
-  } catch {
-    return null
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : 'Unable to read the session file.')
   }
+})
+
+ipcMain.handle('recovery:save', async (event, jsonData: unknown) => {
+  assertMainWindowSender(event)
+  if (typeof jsonData !== 'string') throw new Error('Recovery data must be JSON text.')
+  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) throw new Error('Recovery data exceeds the 25 MB limit.')
+  JSON.parse(jsonData)
+  const target = await recoveryPath()
+  const temporary = `${target}.tmp`
+  await writeFile(temporary, jsonData, 'utf-8')
+  await rename(temporary, target)
+})
+
+ipcMain.handle('recovery:load', async (event) => {
+  assertMainWindowSender(event)
+  const target = await recoveryPath()
+  try { return (await readLimitedFile(target, MAX_SESSION_BYTES, 'Recovery data')).toString('utf-8') } catch (error: any) {
+    if (error?.code === 'ENOENT') return null
+    throw new Error(error instanceof Error ? error.message : 'Unable to read recovery data.')
+  }
+})
+
+ipcMain.handle('recovery:clear', async (event) => {
+  assertMainWindowSender(event)
+  try { await unlink(await recoveryPath()) } catch (error: any) { if (error?.code !== 'ENOENT') throw error }
 })
 
 ipcMain.handle('preview:open', (_event, blockId: string) => {

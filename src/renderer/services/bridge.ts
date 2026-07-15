@@ -11,6 +11,9 @@ export interface BridgeAPI {
   readFile: (filePath: string) => Promise<ArrayBuffer>
   saveJson: (defaultName: string, jsonData: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
   openJson: () => Promise<{ filePath: string; content: string } | null>
+  saveRecovery: (jsonData: string) => Promise<void>
+  loadRecovery: () => Promise<string | null>
+  clearRecovery: () => Promise<void>
   log: (level: string, ...args: unknown[]) => void
   openPreviewWindow: (blockId: string) => Promise<void>
   setPreviewData: (blockId: string, data: unknown) => Promise<void>
@@ -28,6 +31,9 @@ interface WailsGoAPI {
       ReadFile: (path: string) => Promise<number[]>
       SaveJson: (name: string, data: string) => Promise<{ success: boolean; filePath: string; error: string }>
       OpenJson: () => Promise<{ filePath: string; content: string } | null>
+      SaveRecovery?: (data: string) => Promise<void>
+      LoadRecovery?: () => Promise<string | null>
+      ClearRecovery?: () => Promise<void>
       OpenPreviewWindow: (blockId: string) => Promise<void>
       SetPreviewData: (blockId: string, data: unknown) => Promise<void>
       GetPreviewData: (blockId: string) => Promise<unknown>
@@ -77,6 +83,9 @@ function createWailsBridge(): BridgeAPI {
     openJson: async () => {
       return App.OpenJson()
     },
+    saveRecovery: async (jsonData) => { if (App.SaveRecovery) await App.SaveRecovery(jsonData); else localStorage.setItem('excel-block-parser.recovery', jsonData) },
+    loadRecovery: async () => App.LoadRecovery ? App.LoadRecovery() : localStorage.getItem('excel-block-parser.recovery'),
+    clearRecovery: async () => { if (App.ClearRecovery) await App.ClearRecovery(); else localStorage.removeItem('excel-block-parser.recovery') },
     log: (level: string, ...args: unknown[]) => {
       console.log(`[${level}]`, ...args)
     },
@@ -107,6 +116,9 @@ function createBrowserBridge(): BridgeAPI {
     readFile: async () => { throw new Error('readFile requires Electron or Wails') },
     saveJson: async () => { throw new Error('saveJson requires Electron or Wails') },
     openJson: async () => { throw new Error('openJson requires Electron or Wails') },
+    saveRecovery: async (jsonData) => { localStorage.setItem('excel-block-parser.recovery', jsonData) },
+    loadRecovery: async () => localStorage.getItem('excel-block-parser.recovery'),
+    clearRecovery: async () => { localStorage.removeItem('excel-block-parser.recovery') },
     log: (level, ...args) => { console.log(`[${level}]`, ...args) },
     openPreviewWindow: async () => { console.warn('openPreviewWindow requires Electron or Wails') },
     setPreviewData: async () => { console.warn('setPreviewData requires Electron or Wails') },

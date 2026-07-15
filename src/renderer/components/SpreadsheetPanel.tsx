@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { Spin } from 'antd'
+import { Button, Spin } from 'antd'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
 import type { CellRange } from '../types'
@@ -51,6 +51,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasFile, setHasFile] = useState(false)
+  const [retrySignal, setRetrySignal] = useState(0)
   const initializedRef = useRef(false)
   const selectionDisposableRef = useRef<{ dispose: () => void } | null>(null)
   const commandDisposableRef = useRef<{ dispose: () => void } | null>(null)
@@ -250,7 +251,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
   }, [])
 
   useEffect(() => {
-    if (loadSignal === 0) return
+    if (loadSignal === 0 && retrySignal === 0) return
 
     const doLoad = async () => {
       try {
@@ -261,7 +262,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
         setLoading(true)
         setError(null)
 
-        const arrayBuffer = await bridge.readFile(filePath)
+        const arrayBuffer = await withTimeout(bridge.readFile(filePath), 'Reading the workbook timed out after 30 seconds.')
         const fileName = filePath.split(/[/\\]/).pop() ?? 'workbook.xlsx'
 
         const api = univerAPIRef.current
@@ -270,7 +271,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
         const activeWorkbook = api.getActiveWorkbook()
         if (activeWorkbook) api.disposeUnit(activeWorkbook.getId())
 
-        const { workbookData, fonts } = await convertXlsxToWorkbookData(arrayBuffer, fileName)
+        const { workbookData, fonts } = await withTimeout(convertXlsxToWorkbookData(arrayBuffer, fileName), 'Converting the workbook timed out after 30 seconds.')
 
         const newWorkbook = api.createWorkbook(workbookData)
         if (!newWorkbook) throw new Error('createWorkbook failed')
@@ -306,7 +307,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
     }
 
     doLoad()
-  }, [loadSignal])
+  }, [loadSignal, retrySignal])
 
   useEffect(() => {
     if (closeSignal === 0) return
@@ -332,12 +333,19 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
         </div>
       )}
       {error && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff4d4f', fontSize: 14 }}>
-          {error}
+        <div role="alert" style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', color: '#cf1322', fontSize: 14, padding: 24, textAlign: 'center' }}>
+          <span>{error}</span>
+          <Button onClick={() => setRetrySignal(value => value + 1)}>Choose another workbook</Button>
         </div>
       )}
     </div>
   )
+}
+
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), 30_000) })
+  return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer) })
 }
 
 function colToA1(col: number): string {
