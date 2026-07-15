@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { Button, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
-import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined } from '@ant-design/icons'
+import { Badge, Button, Drawer, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
+import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined, MenuOutlined, WarningOutlined } from '@ant-design/icons'
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
@@ -16,6 +16,8 @@ import { createUniverWorkbookReader } from './services/workbook'
 import { parseWorkbook, suggestMappingsForWorkbook } from './services/extraction'
 import { PreviewWindow } from './components/PreviewWindow'
 import type { PreviewData } from './types'
+import { WorkspaceNavigator } from './components/WorkspaceNavigator'
+import { DiagnosticsDrawer } from './components/DiagnosticsDrawer'
 
 function colIndexToLetter(index: number): string {
   let letter = ''
@@ -212,7 +214,7 @@ function createDefaultBlock(lastNum: number): BlockConfig {
 }
 
 function AppContent() {
-  const { univerAPI } = useUniver()
+  const { univerAPI, sheetNames } = useUniver()
   const univerAPIRef = useRef(univerAPI)
   univerAPIRef.current = univerAPI
 
@@ -243,6 +245,9 @@ function AppContent() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [closeSignal, setCloseSignal] = useState(0)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const [activeSheetName, setActiveSheetName] = useState<string | null>(null)
+  const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const pendingFileActionRef = useRef<(() => void) | null>(null)
   const pendingReconcilingRangeRef = useRef<{ range: CellRange; activeSheet: string | null } | null>(null)
 
@@ -403,6 +408,7 @@ function AppContent() {
   }, [])
 
   const handleSelectionChange = useCallback(async (range: CellRange | null, activeSheet: string | null) => {
+    setActiveSheetName(activeSheet)
     const blockId = activeBlockIdRef.current
     const currentBlock = blocksRef.current.find(b => b.id === blockId)
     const regionId = activeRegionIdRef.current
@@ -468,6 +474,7 @@ function AppContent() {
         }
       }
     }
+    setActiveSheetName(block?.activeSheet ?? null)
     setActiveBlockId(blockId)
     setActiveRegionId(null)
   }, [])
@@ -546,8 +553,40 @@ function AppContent() {
   }, [])
 
   const handleActivateRegion = useCallback((regionId: string) => {
+    const region = regionsRef.current.find(item => item.id === regionId)
+    if (region?.activeSheet) {
+      const workbook = univerAPIRef.current?.getActiveWorkbook()
+      workbook?.setActiveSheet(region.activeSheet)
+      setActiveSheetName(region.activeSheet)
+    }
     setActiveRegionId(regionId)
     setActiveBlockId('')
+  }, [])
+
+  const handleSelectSheet = useCallback((sheetName: string) => {
+    const workbook = univerAPIRef.current?.getActiveWorkbook()
+    if (!workbook) return
+    workbook.setActiveSheet(sheetName)
+    setActiveSheetName(sheetName)
+  }, [])
+
+  const moveItem = <T extends { id: string }>(items: T[], id: string, direction: -1 | 1): T[] => {
+    const index = items.findIndex(item => item.id === id)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= items.length) return items
+    const next = [...items]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    return next
+  }
+
+  const handleMoveBlock = useCallback((blockId: string, direction: -1 | 1) => {
+    setBlocks(current => moveItem(current, blockId, direction))
+    setHasUnsavedChanges(true)
+  }, [])
+
+  const handleMoveRegion = useCallback((regionId: string, direction: -1 | 1) => {
+    setRegions(current => moveItem(current, regionId, direction))
+    setHasUnsavedChanges(true)
   }, [])
 
   const handleRegionRangeClick = useCallback((regionId: string) => {
@@ -834,6 +873,59 @@ function AppContent() {
     }
   }, [shouldReParse, blocks, handleParse])
 
+  useEffect(() => {
+    if (!activeSheetName && sheetNames[0]) setActiveSheetName(sheetNames[0])
+  }, [activeSheetName, sheetNames])
+
+  const configurationDiagnostics = useMemo(() => validateBlocks(blocks), [blocks])
+  const parseDiagnostics = parseResult?.diagnostics ?? []
+  const diagnosticCount = configurationDiagnostics.length + parseDiagnostics.length
+
+  const handleFocusDiagnostic = useCallback((diagnostic: NonNullable<ParseResult['diagnostics']>[number]) => {
+    if (diagnostic.blockId) {
+      const block = blocksRef.current.find(item => item.id === diagnostic.blockId)
+      if (block) {
+        handleActivateBlock(block.id)
+        const workbook = univerAPIRef.current?.getActiveWorkbook()
+        const sheet = block.activeSheet ? workbook?.getSheetByName(block.activeSheet) : workbook?.getActiveSheet()
+        if (sheet && block.range) sheet.scrollToCell(Math.max(0, block.range.startRow - 2), Math.max(0, block.range.startCol - 1))
+      }
+    } else if (diagnostic.regionId) {
+      handleActivateRegion(diagnostic.regionId)
+      handleRegionRangeClick(diagnostic.regionId)
+    }
+    setDiagnosticsOpen(false)
+  }, [handleActivateBlock, handleActivateRegion, handleRegionRangeClick])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.matches('input, textarea, [contenteditable="true"]')) return
+      if (event.key.toLowerCase() === 'o') { event.preventDefault(); handleOpenFile(); return }
+      if (event.key.toLowerCase() === 's') { event.preventDefault(); handleExportConfig(); return }
+      if (event.key === 'Enter' && blocksRef.current.some(block => block.range)) { event.preventDefault(); handleParse() }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleExportConfig, handleOpenFile, handleParse])
+
+  const navigator = <WorkspaceNavigator
+    fileName={currentFileName}
+    sheetNames={sheetNames}
+    activeSheet={activeSheetName}
+    blocks={blocks}
+    regions={regions}
+    activeBlockId={activeBlockId}
+    activeRegionId={activeRegionId}
+    onOpen={handleOpenFile}
+    onSelectSheet={handleSelectSheet}
+    onSelectBlock={handleActivateBlock}
+    onSelectRegion={handleActivateRegion}
+    onMoveBlock={handleMoveBlock}
+    onMoveRegion={handleMoveRegion}
+  />
+
   return (
     <Layout style={{ height: '100vh' }}>
       <Layout.Header style={{
@@ -845,6 +937,9 @@ function AppContent() {
         <span style={{ fontSize: 16, fontWeight: 600, marginRight: 8 }}>
           Excel Block Parser
         </span>
+        <Tooltip title="Workspace navigation">
+          <Button className="workspace-mobile-nav" aria-label="Workspace navigation" size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} style={{ marginRight: 4 }} />
+        </Tooltip>
         {currentFileName && (
           <>
             <span style={{
@@ -861,12 +956,13 @@ function AppContent() {
           </>
         )}
         <Space>
-          <Button icon={<FolderOpenOutlined />} onClick={handleOpenFile}>
+          <Button aria-keyshortcuts="Control+O Meta+O" icon={<FolderOpenOutlined />} onClick={handleOpenFile}>
             Open Excel
           </Button>
           <Tooltip title="Parse data and open preview window">
             <Button
               icon={<PlayCircleOutlined />}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
               onClick={handleParse}
               disabled={!blocks.some(b => b.range)}
             >
@@ -877,6 +973,7 @@ function AppContent() {
             <Button
               type="primary"
               icon={<ExportOutlined />}
+              aria-keyshortcuts="Control+S Meta+S"
               disabled={blocks.length === 0}
               onClick={handleExportConfig}
             >
@@ -887,6 +984,11 @@ function AppContent() {
             <Button icon={<ImportOutlined />} onClick={handleImportConfig}>
               Import
             </Button>
+          </Tooltip>
+          <Tooltip title="Diagnostics">
+            <Badge count={diagnosticCount} size="small" offset={[-2, 3]}>
+              <Button aria-label="Diagnostics" icon={<WarningOutlined />} onClick={() => setDiagnosticsOpen(true)} />
+            </Badge>
           </Tooltip>
         </Space>
       </Layout.Header>
@@ -899,10 +1001,13 @@ function AppContent() {
           style={{ borderRadius: 0, borderLeft: 'none', borderRight: 'none' }}
         />
       )}
-      <Layout.Content style={{ overflow: 'hidden' }}>
-        <div style={{ height: '100%', padding: 0 }}>
+      <Layout.Content style={{ overflow: 'hidden', display: 'flex' }}>
+        <aside className="workspace-desktop-nav" style={{ width: 224, flex: '0 0 224px', borderRight: `1px solid ${token.colorBorderSecondary}` }}>
+          {navigator}
+        </aside>
+        <div style={{ height: '100%', minWidth: 0, flex: 1 }}>
           <Splitter style={{ height: '100%' }}>
-            <Splitter.Panel defaultSize="65%" min="40%" max="80%">
+            <Splitter.Panel defaultSize="70%" min="45%" max="82%">
               <div style={{ height: '100%', overflow: 'hidden' }}>
                 <SpreadsheetPanel
                   activeBlockId={activeBlockId}
@@ -916,7 +1021,7 @@ function AppContent() {
                 />
               </div>
             </Splitter.Panel>
-            <Splitter.Panel defaultSize="35%" min="20%">
+            <Splitter.Panel defaultSize="30%" min="18%">
               <div style={{
                 height: '100%', overflow: 'auto',
                 borderLeft: `1px solid ${token.colorBorderSecondary}`,
@@ -958,6 +1063,16 @@ function AppContent() {
           </Splitter>
         </div>
       </Layout.Content>
+      <Drawer title="Workspace" open={workspaceNavOpen} onClose={() => setWorkspaceNavOpen(false)} placement="left" width={300} destroyOnClose styles={{ body: { padding: 0 } }}>
+        {navigator}
+      </Drawer>
+      <DiagnosticsDrawer
+        open={diagnosticsOpen}
+        onClose={() => setDiagnosticsOpen(false)}
+        parseDiagnostics={parseDiagnostics}
+        validationErrors={configurationDiagnostics}
+        onFocus={handleFocusDiagnostic}
+      />
       <Modal
         title={null}
         open={previewModalOpen}

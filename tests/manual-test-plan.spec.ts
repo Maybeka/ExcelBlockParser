@@ -138,11 +138,11 @@ test.describe('TC-15: Edge Cases', () => {
       await page.getByRole('button', { name: 'Add' }).click()
     }
 
-    // Rapidly click through blocks
-    const blocks = page.locator('[style*="border"]') // Block containers have border styling
-    const count = await blocks.count()
+    // Rapidly activate each block label without coupling to layout styles.
+    const blockInputs = page.locator('input[value^="block_"]')
+    const count = await blockInputs.count()
     for (let i = 0; i < Math.min(count, 6); i++) {
-      await blocks.nth(i).click()
+      await blockInputs.nth(i).click()
     }
 
     // App should still be functional
