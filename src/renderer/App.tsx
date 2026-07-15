@@ -726,6 +726,11 @@ function AppContent() {
   }, [univerAPI, blocks, regions, activeBlockId])
 
   const doExport = useCallback(async () => {
+    if (!univerAPI) {
+      message.error('Spreadsheet is not initialized')
+      return
+    }
+
     try {
       const blocksWithHeaderSnapshots = await Promise.all(blocks.map(async (block) => {
         if (block.headerRows.length === 0 || !block.range) return block

@@ -1,7 +1,7 @@
 import { useCallback, useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider, Tag, Dropdown } from 'antd'
 import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined, TagOutlined } from '@ant-design/icons'
-import type { ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, RegionConfig } from '../types'
+import type { CellRange, ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, RegionConfig, Tag as TagType } from '../types'
 import { useUniver } from '../context/UniverContext'
 import { remapColumns } from '../services/columnMapper'
 import { runReconciliation } from '../services/reconciliation'
@@ -744,7 +744,7 @@ export function ConfigPanel({
 
   if (!blocks.length) {
     return (
-      <div style={{ padding: 16 }}><Dropdown.Button block icon={<PlusOutlined />} onClick={handleAdd} menu={{ items: [{ key: 'add-region', label: 'Add Region', onClick: onAddRegion }] }}>Add</Dropdown.Button></div>
+      <div style={{ padding: 16 }}><Dropdown.Button style={{ width: '100%' }} icon={<PlusOutlined />} onClick={handleAdd} menu={{ items: [{ key: 'add-region', label: 'Add Region', onClick: onAddRegion }] }}>Add</Dropdown.Button></div>
     )
   }
 
@@ -886,7 +886,6 @@ export function ConfigPanel({
         activeRegionId={activeRegionId}
         onActivateRegion={onActivateRegion || (() => {})}
         onRegionChange={onRegionChange}
-        onAddRegion={onAddRegion}
         onDeleteRegion={(regionId, label) => setDeleteTarget({ id: regionId, label, type: 'region' })}
         onRangeClick={onRegionRangeClick}
       />
@@ -1095,7 +1094,7 @@ export function ConfigPanel({
                       onPressEnter={() => {
                         if (!newTagInput.trim()) return
                         const colonIdx = newTagInput.indexOf(':')
-                        const tag: Tag = colonIdx > 0
+                        const tag: TagType = colonIdx > 0
                           ? { type: 'kv', key: newTagInput.slice(0, colonIdx).trim(), value: newTagInput.slice(colonIdx + 1).trim() || undefined }
                           : { type: 'label', key: newTagInput.trim() }
                         onBlockChange(block.id, { tags: addTag({ ...block, tags: block.tags }, tag).tags })
@@ -1107,7 +1106,7 @@ export function ConfigPanel({
                     <Button size="small" type="link" onClick={() => {
                       if (!newTagInput.trim()) return
                       const colonIdx = newTagInput.indexOf(':')
-                      const tag: Tag = colonIdx > 0
+                      const tag: TagType = colonIdx > 0
                         ? { type: 'kv', key: newTagInput.slice(0, colonIdx).trim(), value: newTagInput.slice(colonIdx + 1).trim() || undefined }
                         : { type: 'label', key: newTagInput.trim() }
                       onBlockChange(block.id, { tags: addTag({ ...block, tags: block.tags }, tag).tags })
