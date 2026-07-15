@@ -8,8 +8,17 @@
         "label": "Block 1",
         "range": {
           "startRow": 0,
-
-        "selecti  ue,
+          "startCol": 0,
+          "endRow": 8,
+          "endCol": 3,
+          "a1Notation": "A1:D9"
+        },
+        "activeSheet": "Sheet1",
+        "headerRows": [
+          0
+        ],
+        "collapsed": false,
+        "selectionLocked": true,
         "columns": [
           {
             "colIndex": 0,
