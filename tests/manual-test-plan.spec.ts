@@ -1,7 +1,7 @@
 /**
  * Manual Test Plan — Automated E2E tests (Browser mode)
  *
- * These tests run against the Electron renderer in browser mode (via electron-vite dev).
+ * These tests run against the renderer in browser mode (via Vite).
  * Electron IPC APIs (file:open, file:read, etc.) are NOT available in browser mode,
  * so file-related tests are marked as requiring Electron.
  *
@@ -24,7 +24,7 @@ test.describe('TC-1: Application Initial State', () => {
 
     // Config panel: one default block
     await expect(page.locator('text=Blocks')).toBeVisible()
-    await expect(page.locator('text=Block 1')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
 
     // Placeholder text in spreadsheet area
     await expect(page.locator('text=Open an XLSX file to get started')).toBeVisible()
@@ -37,20 +37,20 @@ test.describe('TC-3: Block Management', () => {
 
     // Click Add button
     await page.getByRole('button', { name: 'Add' }).click()
-    await expect(page.locator('text=Block 2')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'block_2' })).toBeVisible()
 
     // Add more
     await page.getByRole('button', { name: 'Add' }).click()
     await page.getByRole('button', { name: 'Add' }).click()
-    await expect(page.locator('text=Block 3')).toBeVisible()
-    await expect(page.locator('text=Block 4')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'block_3' })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'block_4' })).toBeVisible()
   })
 
   test('TC-3.3: Delete blocks keeps at least one', async ({ page }) => {
     await page.goto('/')
 
-    // Hover over Block 1 to show delete button
-    const block = page.locator('text=Block 1').first()
+    // Hover over the first block to show its delete button.
+    const block = page.getByRole('textbox', { name: 'block_1' })
     await block.hover()
 
     // Find and click delete icon
@@ -58,47 +58,36 @@ test.describe('TC-3: Block Management', () => {
     await deleteBtn.click()
 
     // Confirm in modal
-    await page.getByRole('button', { name: 'Delete' }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
 
     // A new default block should exist (at least one)
-    await expect(page.locator('text=Block').first()).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
   })
 
   test('TC-3.4: Rename block and verify label updates', async ({ page }) => {
     await page.goto('/')
 
     // Block label should be editable
-    const label = page.locator('text=Block 1').first()
-    await label.click()
-    // The label becomes an input; type new name
-    await page.keyboard.press('Control+a')
-    await page.keyboard.type('Products Table')
-    await page.keyboard.press('Enter')
-    await expect(page.locator('text=Products Table')).toBeVisible()
+    const label = page.getByRole('textbox', { name: 'block_1' })
+    await label.fill('products_table')
+    await expect(page.getByRole('textbox', { name: 'products_table' })).toBeVisible()
   })
 })
 
 test.describe('TC-5: Column Configuration', () => {
-  test('TC-5.3: Skip column checkbox visible', async ({ page }) => {
+  test('TC-5.1: No-range state explains how to configure columns', async ({ page }) => {
     await page.goto('/')
 
-    // Without a loaded file, columns section shows "No columns in range"
-    await expect(page.locator('text=No columns in range')).toBeVisible()
+    await expect(page.getByText('Click and drag in the spreadsheet to select a data range.')).toBeVisible()
   })
 })
 
-test.describe('TC-7: Value Mapping', () => {
-  test('TC-7.1: Value mapping type option exists', async ({ page }) => {
+test.describe('TC-7: Configuration Controls', () => {
+  test('TC-7.1: Settings toggle reveals focus-mode control', async ({ page }) => {
     await page.goto('/')
 
-    // The type select options include "value mapping"
-    // (Cannot verify dropdown content without a range + columns loaded)
-    // Verifying the constant is defined in source is sufficient
-    await expect(page.locator('text=Settings')).toBeVisible()
-    // Settings toggle works
-    await page.locator('text=Settings').click()
-    // Lock controls toggle appears
-    await expect(page.locator('text=Lock controls in inactive blocks')).toBeVisible()
+    await page.getByRole('button', { name: 'setting' }).click()
+    await expect(page.getByText('Lock controls in inactive blocks')).toBeVisible()
   })
 })
 
@@ -133,14 +122,10 @@ test.describe('TC-11: Config Import', () => {
   })
 })
 
-test.describe('TC-12: Reconciliation', () => {
-  test('TC-12.1: Reconciliation button shows on block with range', async ({ page }) => {
-    await page.goto('/')
-
-    // Without range, there's no sync button
-    // Settings area is visible though
-    await page.locator('text=Settings').click()
-    await expect(page.locator('text=Lock controls in inactive blocks')).toBeVisible()
+test.describe('TC-12: Reconciliation (Electron fixture required)', () => {
+  test.skip('TC-12.1: Reconciliation is available for a block with a source range', () => {
+    // Requires a loaded workbook and a configured range. Cover this in a
+    // future Electron-native fixture test rather than asserting unrelated UI.
   })
 })
 
