@@ -13,6 +13,7 @@
     "test:unit": "vitest run",
     "test:main": "vitest run --config vitest.main.config.ts",
     "test:native": "npm run build && playwright test --config playwright.electron.config.ts",
+    "test:packaged": "npm run pack:dir && node scripts/run-packaged-e2e.mjs",
     "test:unit:watch": "vitest",
     "pack:mac": "npm run build && electron-builder --mac --x64 --arm64 --publish never",
     "pack:win": "npm run build && electron-builder --win --x64 --publish never",

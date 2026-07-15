@@ -8,8 +8,9 @@ const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
 const sessionPath = resolve(root, 'examples', 'session.json')
 
 async function launch(extraEnv: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page }> {
+  const executablePath = process.env.ELECTRON_E2E_EXECUTABLE
   const app = await electron.launch({
-    args: [resolve(root, 'out', 'main', 'index.js')],
+    ...(executablePath ? { executablePath, args: [] } : { args: [resolve(root, 'out', 'main', 'index.js')] }),
     env: { ...process.env, ELECTRON_E2E: '1', ...extraEnv },
   })
   const page = await app.firstWindow()

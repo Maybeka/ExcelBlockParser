@@ -40,7 +40,7 @@ jobs:
       - name: Unpacked package smoke test
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npm run pack:dir
+        run: npm run test:packaged
       - uses: actions/upload-artifact@v4
         with:
           name: unpacked-${{ runner.os }}
