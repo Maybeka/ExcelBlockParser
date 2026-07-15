@@ -12,5 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    include: ['**/*.{test,spec,integration.test}.?(c|m)[jt]s?(x)'],
+    exclude: ['**/node_modules/**', '**/.git/**'],
   },
 })

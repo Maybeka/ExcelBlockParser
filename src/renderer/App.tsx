@@ -9,11 +9,11 @@ import type { FocusMode } from './components/ConfigPanel'
 import { useUniver } from './context/UniverContext'
 import { runReconciliation } from './services/reconciliation'
 import { detectBlocks } from './services/regionDetector'
-import { applyRowIgnoreRules } from './services/rowFilter'
-import { removeEmptyColumns } from './services/columnFilter'
 import { getBridge } from './services/bridge'
 import { adaptPreviewData } from './services/previewDataAdapter'
-import { serializeSession, deserializeSession } from './services/serializer'
+import { serializeSession, loadSession } from './services/serializer'
+import { createUniverWorkbookReader } from './services/workbook'
+import { parseWorkbook, suggestMappingsForWorkbook } from './services/extraction'
 import { PreviewWindow } from './components/PreviewWindow'
 import type { PreviewData } from './types'
 
@@ -317,7 +317,13 @@ function AppContent() {
       return
     }
 
-    const deserialized = deserializeSession(imported as ExportedSession)
+    const loaded = loadSession(imported)
+    if (!loaded.session) {
+      setImportError(loaded.errors.join(' '))
+      return
+    }
+    if (loaded.migratedFrom) message.info(`Migrated session v${loaded.migratedFrom} to v2.`)
+    const deserialized = loaded.session
     const cleanBlocks = deserialized.blocks
     const cleanRegions = deserialized.regions
 
@@ -440,9 +446,9 @@ function AppContent() {
     }
 
     const headerRows = currentBlock?.headerRows ?? [0]
-    const api = univerAPIRef.current
-    const mappings = api
-      ? await suggestColumnMappings(range, headerRows, currentBlock?.activeSheet ?? null, api)
+    const workbook = univerAPIRef.current?.getActiveWorkbook()
+    const mappings = workbook
+      ? suggestMappingsForWorkbook(createUniverWorkbookReader(workbook), range, headerRows, currentBlock?.activeSheet ?? activeSheet)
       : generateColumnMappings(range)
 
     setBlocks(prev => prev.map(b =>
@@ -559,6 +565,7 @@ function AppContent() {
     setActiveRegionId(regionId)
   }, [])
 
+  /* Superseded by parseWorkbook in services/extraction.ts.
   function performParse(
     workbook: any,
     regions: RegionConfig[],
@@ -645,6 +652,7 @@ function AppContent() {
     return { success: true, data: namedData, blocks: blockResults, regionResults }
   }
 
+  */
   const handleParse = useCallback(async () => {
     if (!univerAPI) {
       setParseResult({ success: false, data: {}, blocks: [], error: 'Univer not initialized' })
@@ -662,49 +670,16 @@ function AppContent() {
       return
     }
 
-    const rawSnapshots = new Map<string, unknown[][]>()
-    const result = performParse(workbook, regions, blocks)
-    if (!result || !result.success) {
-      if (result) setParseResult(result)
+    const execution = parseWorkbook(createUniverWorkbookReader(workbook), blocks, regions)
+    const result = execution.result
+    if (!result.success) {
+      setParseResult(result)
       return
     }
 
     for (const block of activeBlocks) {
-      const sheet = block.activeSheet
-        ? workbook.getSheetByName(block.activeSheet)
-        : workbook.getActiveSheet()
-      if (!sheet) continue
-      const frange = sheet.getRange(block.range!.a1Notation)
-      const rawValues = frange.getValues() as unknown[][]
-      const filledValues = rawValues.map(row => [...row])
-      try {
-        const mergedRanges = sheet.getMergedRanges?.()
-        if (mergedRanges && mergedRanges.length > 0) {
-          const blockStartRow = block.range!.startRow
-          const blockStartCol = block.range!.startCol
-          const blockEndRow = block.range!.endRow
-          const blockEndCol = block.range!.endCol
-          for (const mr of mergedRanges) {
-            const mrStartRow = mr.getRow()
-            const mrStartCol = mr.getColumn()
-            const mrEndRow = mr.getLastRow()
-            const mrEndCol = mr.getLastColumn()
-            if (mrEndRow < blockStartRow || mrStartRow > blockEndRow || mrEndCol < blockStartCol || mrStartCol > blockEndCol) continue
-            const topLeftVal = mr.getValue()
-            for (let r = Math.max(mrStartRow, blockStartRow); r <= Math.min(mrEndRow, blockEndRow); r++) {
-              for (let c = Math.max(mrStartCol, blockStartCol); c <= Math.min(mrEndCol, blockEndCol); c++) {
-                if (r === mrStartRow && c === mrStartCol) continue
-                const rowIdx = r - blockStartRow
-                const colIdx = c - blockStartCol
-                if (filledValues[rowIdx] && (filledValues[rowIdx][colIdx] == null || filledValues[rowIdx][colIdx] === '')) {
-                  filledValues[rowIdx][colIdx] = topLeftVal
-                }
-              }
-            }
-          }
-        }
-      } catch (_e) { /* Univer may not have merged ranges available */ }
-      rawSnapshots.set(block.id, filledValues)
+      const filledValues = execution.snapshots.get(block.id)
+      if (!filledValues) continue
       handleBlockChange(block.id, { dataSnapshot: filledValues as unknown[][] })
     }
 
@@ -715,7 +690,7 @@ function AppContent() {
     for (const block of activeBlocks) {
       const patchedBlock = {
         ...block,
-        dataSnapshot: rawSnapshots.get(block.id) ?? block.dataSnapshot,
+        dataSnapshot: execution.snapshots.get(block.id) ?? block.dataSnapshot,
       }
       allPreviewData.set(block.id, adaptPreviewData(patchedBlock, result))
     }
@@ -766,7 +741,7 @@ function AppContent() {
 
       const workbook = univerAPI.getActiveWorkbook()
       const freshParseResult = workbook
-        ? performParse(workbook, regions, blocks)
+        ? parseWorkbook(createUniverWorkbookReader(workbook), blocks, regions).result
         : parseResult
 
       const session = serializeSession(
@@ -806,23 +781,7 @@ function AppContent() {
     const result = await getBridge().openJson()
     if (!result) return // cancelled
     try {
-      const parsed = JSON.parse(result.content)
-      if (parsed.version !== 1 && parsed.version !== 2) {
-        if (typeof parsed.version === 'number') {
-          message.warning(`Config was created by a different version (v${parsed.version}). Import may not work correctly.`)
-        } else {
-          setImportError('Invalid config file: missing or unsupported version')
-          return
-        }
-      }
-      if (!parsed.config || !Array.isArray(parsed.config.blocks)) {
-        setImportError('Invalid config file: missing or invalid blocks array')
-        return
-      }
-      if (typeof parsed.config.activeBlockId !== 'string') {
-        setImportError('Invalid config file: missing or invalid activeBlockId')
-        return
-      }
+      JSON.parse(result.content)
 
       const activeCount = blocksRef.current.filter(b => b.range).length
       if (activeCount > 0) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { serializeSession, deserializeSession } from '../services/serializer'
+import { serializeSession, deserializeSession, loadSession } from '../services/serializer'
 import type { BlockConfig, RegionConfig, ExportedSession } from '../types'
 
 const mockBlock: BlockConfig = {
@@ -26,7 +26,7 @@ const mockRegion: RegionConfig = {
 }
 
 describe('serializeSession', () => {
-  it('creates v1 session without regions', () => {
+  it('creates canonical v2 session without regions', () => {
     const result = serializeSession(
       [mockBlock],
       [],
@@ -35,10 +35,9 @@ describe('serializeSession', () => {
       null,
     )
 
-    expect(result.version).toBe(1)
+    expect(result.version).toBe(2)
     expect(result.config.blocks).toHaveLength(1)
-    expect(result.config.regions).toBeUndefined()
-    expect(result.config).not.toHaveProperty('regions')
+    expect(result.config.regions).toEqual([])
     expect(result.data).toEqual({})
     expect(result.blockResults).toEqual([])
   })
@@ -102,9 +101,9 @@ describe('serializeSession', () => {
       null,
     )
 
-    expect(result.version).toBe(1)
+    expect(result.version).toBe(2)
     expect(result.config.blocks).toEqual([])
-    expect(result.config.regions).toBeUndefined()
+    expect(result.config.regions).toEqual([])
   })
 })
 
@@ -306,7 +305,7 @@ describe('backward compatibility', () => {
     expect(result.parseResult!.data).toEqual({ order: 42 })
   })
 
-  it('v1 JSON round-trip still produces version 1', () => {
+  it('v1 JSON round-trip migrates to canonical version 2', () => {
     const serialized = serializeSession([mockBlock], [], 'block-1', 'always-editable', null)
     const roundTripped = serializeSession(
       serialized.config.blocks,
@@ -316,7 +315,20 @@ describe('backward compatibility', () => {
       null,
     )
 
-    expect(roundTripped.version).toBe(1)
-    expect(roundTripped.config.regions).toBeUndefined()
+    expect(roundTripped.version).toBe(2)
+    expect(roundTripped.config.regions).toEqual([])
+  })
+})
+
+describe('loadSession', () => {
+  it('reports malformed templates without throwing', () => {
+    expect(loadSession({ version: 2, config: { blocks: [] } }).errors).toContain('Invalid config file: activeBlockId must be a string.')
+    expect(loadSession({ version: 3 }).errors).toContain('Invalid config file: unsupported session version.')
+  })
+
+  it('marks v1 sessions as migrated', () => {
+    const result = loadSession({ version: 1, config: { blocks: [mockBlock], activeBlockId: 'block-1', focusMode: 'always-editable' }, data: {}, blockResults: [] })
+    expect(result.migratedFrom).toBe(1)
+    expect(result.session?.regions).toEqual([])
   })
 })

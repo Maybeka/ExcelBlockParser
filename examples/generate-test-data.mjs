@@ -1,7 +1,7 @@
 /**
  * Generates test Excel files for manual QA of excel-block-parser.
  * Usage: node examples/generate-test-data.mjs
- * Output: examples/test_data.xlsx, test_data_v2.xlsx, multi_sheet.xlsx, empty.xlsx
+ * Output: examples/test_data.xlsx, test_data_v2.xlsx, multi_sheet.xlsx, empty.xlsx, m2_integration.xlsx
  */
 import ExcelJS from 'exceljs';
 import { writeFile } from 'node:fs/promises';
@@ -163,6 +163,28 @@ async function generateEmpty() {
   await writeWorkbook(wb, 'empty.xlsx');
 }
 
+// ──── 5. M2 integration fixture ─────────────────────────────────────────────
+async function generateM2Integration() {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Data');
+  ws.mergeCells('A1:D1');
+  ws.getCell('A1').value = 'Quarterly report';
+  ws.addRow(['Name', 'Status', 'Count', 'Unused']);
+  ws.addRow(['Alice', 'active', 2, '']);
+  ws.addRow(['Bob', 'inactive', 3, '']);
+  ws.addRow(['', '', '', '']);
+
+  const regions = wb.addWorksheet('Regions');
+  regions.addRows([
+    ['Group A', ''],
+    ['One', 'Two'],
+    ['', ''],
+    ['Group B', ''],
+    ['Three', 'Four'],
+  ]);
+  await writeWorkbook(wb, 'm2_integration.xlsx');
+}
+
 // ──── Main ────────────────────────────────────────────────────────────────────
 async function main() {
   console.log('Generating test Excel files in examples/ ...\n');
@@ -170,7 +192,8 @@ async function main() {
   await generateTestDataV2();
   await generateMultiSheet();
   await generateEmpty();
-  console.log('\nDone. All 4 files generated.');
+  await generateM2Integration();
+  console.log('\nDone. All 5 files generated.');
 }
 
 main().catch(err => {

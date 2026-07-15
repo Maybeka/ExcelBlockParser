@@ -54,7 +54,18 @@ export interface ParseResult {
   data: Record<string, unknown>
   blocks: BlockParseResult[]
   regionResults?: RegionParseResult[]
+  diagnostics?: ParseDiagnostic[]
   error?: string
+}
+
+export interface ParseDiagnostic {
+  code: 'invalid-range' | 'duplicate-key' | 'type-conversion' | 'sheet-missing' | 'unsupported-content'
+  severity: 'warning' | 'error'
+  message: string
+  blockId?: string
+  regionId?: string
+  row?: number
+  column?: string
 }
 
 export interface ExportedSession {
