@@ -43,7 +43,8 @@ npm run test:packaged # fresh unpacked package plus native smoke test
 
 See [Session and JSON Contract](docs/SESSION_SCHEMA.md),
 [Support and Limitations](docs/SUPPORT.md), and
-[Release Process](docs/RELEASE.md).
+[Release Process](docs/RELEASE.md). Test packaged artifacts with the
+[Manual Acceptance Test Plan](docs/MANUAL_ACCEPTANCE_TEST_PLAN.md).
 
 ## Scope
 
