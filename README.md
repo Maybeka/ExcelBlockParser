@@ -38,10 +38,12 @@ npm run test:main     # main-process file-safety policy
 npm run test:unit     # renderer/unit and real-workbook integration tests
 npm test              # browser-mode UI tests
 npm run test:native   # built Electron end-to-end workflow
-npm run pack:dir      # unpacked package smoke build
+npm run test:packaged # fresh unpacked package plus native smoke test
 ```
 
-See [Support and Limitations](docs/SUPPORT.md) and [Release Process](docs/RELEASE.md).
+See [Session and JSON Contract](docs/SESSION_SCHEMA.md),
+[Support and Limitations](docs/SUPPORT.md), and
+[Release Process](docs/RELEASE.md).
 
 ## Scope
 

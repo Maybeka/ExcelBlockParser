@@ -1,8 +1,8 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** Prototype / active development
+**Status:** Stabilization release 1.0.0
 **Primary runtime:** Electron, React, TypeScript
-**Last assessed:** 2026-07-15
+**Last assessed:** 2026-07-16
 
 ## 1. Product Intent
 

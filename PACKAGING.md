@@ -1,6 +1,6 @@
-# Packaging Guide — Excel Block Parser
+# Packaging Guide - Excel Block Parser
 
-## Quick Start — Electron
+## Electron Release Packaging
 
 ```bash
 # 1. Build the source
@@ -19,7 +19,11 @@ Output in `release/` directory.
 
 ---
 
-## Quick Start — Wails
+## Legacy Wails Path
+
+Wails is not a supported release runtime. The instructions below are retained
+only for development investigation; release artifacts are built through the
+Electron scripts above.
 
 ```bash
 # 1. Prerequisites (one time)
@@ -80,8 +84,8 @@ This produces `out/` with:
 ```bash
 npm run pack:mac
 ```
-Output: `release/Excel Block Parser-0.1.0-arm64.dmg` (Apple Silicon)
-Output: `release/Excel Block Parser-0.1.0-x64.dmg` (Intel)
+Output: `release/Excel Block Parser-1.0.0-mac-arm64.dmg` (Apple Silicon)
+Output: `release/Excel Block Parser-1.0.0-mac-x64.dmg` (Intel)
 
 #### Windows (produces `.exe` installer)
 ```bash
@@ -91,7 +95,7 @@ npm run pack:win
 # From Windows (native):
 npm run pack:win
 ```
-Output: `release/Excel Block Parser Setup 0.1.0.exe`
+Output: `release/Excel Block Parser-1.0.0-win-x64.exe`
 
 #### Linux (produces `.AppImage`)
 ```bash

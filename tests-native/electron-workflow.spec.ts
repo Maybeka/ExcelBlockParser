@@ -76,4 +76,27 @@ test.describe('Electron native workflow', () => {
       await app.close()
     }
   })
+
+  test('persists and clears a valid recovery session through native IPC', async () => {
+    const { app, page } = await launch()
+    const recovery = JSON.stringify({
+      version: 2,
+      exportedAt: '2026-07-16T00:00:00.000Z',
+      config: { blocks: [], activeBlockId: '', focusMode: 'always-editable', regions: [] },
+      data: {},
+      blockResults: [],
+    })
+    try {
+      await page.evaluate(async (content) => {
+        const api = (window as any).electronAPI
+        await api.clearRecovery()
+        await api.saveRecovery(content)
+      }, recovery)
+      await expect.poll(() => page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toBe(recovery)
+      await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
+      await expect.poll(() => page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toBeNull()
+    } finally {
+      await app.close()
+    }
+  })
 })
