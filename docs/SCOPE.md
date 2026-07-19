@@ -238,7 +238,7 @@ generators require an explicit user trust decision.
   troubleshooting.
 - Publish a compatibility matrix for Excel features and platform support.
 - Define versioning, changelog, migration, crash reporting, and support policy.
-- Establish code signing and notarization for distributed desktop installers.
+- Establish Windows code signing for the distributed desktop installer.
 
 ## 9. Delivery Boundary
 

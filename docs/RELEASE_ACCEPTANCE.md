@@ -50,8 +50,8 @@ produce release artifacts.
    Electron packages are not release candidates.
 4. Install, upgrade, launch, open, export, recovery, and uninstall behavior is
    documented and manually accepted on the release platforms.
-5. Signing, notarization, installer metadata, and release artifact retention
-   are configured for the platforms declared in `SUPPORT.md`.
+5. Windows Authenticode signing, installer metadata, and release artifact
+   retention are configured for the Windows target declared in `SUPPORT.md`.
 
 ## Performance Gate
 

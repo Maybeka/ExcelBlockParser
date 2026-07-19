@@ -8,17 +8,14 @@
 | Electron | Development-only | Fast renderer development and diagnostic E2E |
 | Browser mode | Development-only | Renderer tests without native bridge behavior |
 
-Release platforms, installers, signing, and minimum operating-system versions
-remain provisional until Wails packaging and acceptance testing are complete.
+The v1.0 release platform is Windows x64 through Wails. The minimum supported
+Windows version and installer format remain provisional until Wails packaging
+and acceptance testing are complete.
 Electron packaging is not a supported distribution channel.
 
-The tag workflow builds a macOS Wails release-candidate artifact for review;
-it does not publish a release. Publishing waits for the v1 signing,
-notarization, installer, and manual-acceptance gates.
-
-The candidate is a versioned arm64 ZIP plus a SHA-256 sidecar, produced by
-`npm run package:wails:mac` on macOS. It is not a signed or notarized release
-artifact.
+No Wails Windows release candidate has been accepted yet. Publishing waits for
+Windows packaging, Authenticode signing, installer, and manual-acceptance
+gates.
 
 ## Supported Workbook Behavior
 
