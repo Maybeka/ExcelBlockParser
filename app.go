@@ -14,11 +14,13 @@ type App struct {
 	previewOpen bool
 	filePolicy  filePolicy
 	recoveryDir string
+	emitEvent   func(context.Context, string, ...interface{})
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.previewData = make(map[string]interface{})
+	a.emitEvent = runtime.EventsEmit
 	baseDir, err := os.UserConfigDir()
 	if err != nil {
 		baseDir = os.TempDir()
@@ -30,7 +32,7 @@ func (a *App) startup(ctx context.Context) {
 // Returns nil (Wails v2 does not natively support multiple windows — the frontend
 // SPA router handles the navigation via hash routing).
 func (a *App) OpenPreviewWindow(blockId string) error {
-	runtime.EventsEmit(a.ctx, "open-preview", blockId)
+	a.emit("open-preview", blockId)
 	a.previewOpen = true
 	return nil
 }
@@ -147,5 +149,11 @@ func (a *App) ClearRecovery() error {
 func (a *App) ClosePreviewWindow() {
 	a.previewOpen = false
 	a.previewData = make(map[string]interface{})
-	runtime.EventsEmit(a.ctx, "close-preview")
+	a.emit("close-preview")
+}
+
+func (a *App) emit(event string, data ...interface{}) {
+	if a.emitEvent != nil {
+		a.emitEvent(a.ctx, event, data...)
+	}
 }
