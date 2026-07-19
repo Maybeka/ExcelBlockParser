@@ -8,6 +8,7 @@ let previewWindow: BrowserWindow | null = null
 const previewDataStore = new Map<string, unknown>()
 const approvedWorkbookPaths = new Set<string>()
 const isElectronE2E = process.env.ELECTRON_E2E === '1'
+const showElectronE2EWindows = process.env.ELECTRON_E2E_SHOW_WINDOWS === '1'
 const e2eUserDataDirectory = isElectronE2E ? process.env.ELECTRON_E2E_USER_DATA_DIR : undefined
 
 if (e2eUserDataDirectory) app.setPath('userData', e2eUserDataDirectory)
@@ -48,7 +49,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 600,
     title: 'Excel Block Parser',
-    show: !isElectronE2E,
+    show: !isElectronE2E || showElectronE2EWindows,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -175,7 +176,7 @@ ipcMain.handle('preview:open', (_event, blockId: string) => {
     minWidth: 700,
     minHeight: 400,
     title: 'Preview',
-    show: !isElectronE2E,
+    show: !isElectronE2E || showElectronE2EWindows,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

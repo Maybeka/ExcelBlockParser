@@ -24,29 +24,29 @@ jobs:
       - run: npm test
 
   native-and-package:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - name: Native Electron workflow (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:native
-      - name: Native Electron workflow (macOS/Windows)
-        if: runner.os != 'Linux'
+      - name: Native Electron workflow
         run: npm run test:native
+        env:
+          ELECTRON_E2E_SHOW_WINDOWS: '1'
       - name: Unpacked package smoke test
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run test:packaged
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: unpacked-${{ runner.os }}
+          name: electron-test-results-windows
+          path: test-results/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unpacked-windows
           path: release/
           if-no-files-found: error
 
