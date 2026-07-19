@@ -2,9 +2,11 @@
 
 ## Supported Artifacts
 
-- macOS universal DMG: hardened runtime, Developer ID signing, Apple notarization.
-- Windows x64 NSIS: SHA-256 Authenticode signing.
-- Linux x64 AppImage: unsigned distribution artifact with published checksum.
+The v1 production artifact is a Wails Windows x64 package. The current tag
+workflow produces an unsigned ZIP candidate with a SHA-256 sidecar; an
+installer is not a release artifact until it has been selected and accepted.
+
+Electron packages are development-only artifacts and are not v1 releases.
 
 ## Required Release Secrets
 
@@ -13,22 +15,22 @@ release builds:
 
 | Platform | Secrets/environment |
 | --- | --- |
-| macOS signing | `CSC_LINK`, `CSC_KEY_PASSWORD` |
-| macOS notarization | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` or Apple API key credentials |
-| Windows signing | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` |
+| Windows signing | Windows certificate reference and password, configured as protected CI secrets |
 
-`electron-builder` performs macOS notarization automatically when the Apple
-credentials are present. Release builds must fail rather than be published as
-unsigned on macOS or Windows.
+The Wails Windows release workflow must fail rather than publish an unsigned
+release once Authenticode signing is configured. Candidate ZIP artifacts remain
+unsigned until that protected-release gate is implemented.
 
 ## Release Checklist
 
 1. Run `npm run test:main`, `npm run test:unit`, `npm test`, and `npm run test:native`.
-2. Build unpacked packages with `npm run pack:dir` on each supported platform.
-3. Tag the approved version as `vX.Y.Z` and start the Release workflow.
-4. Install each generated artifact in a clean VM and run the example workflow.
+2. Tag the approved version as `vX.Y.Z` and start the Windows Wails candidate
+   workflow.
+3. Install the generated artifact in a clean Windows VM and run the example
+   workflow.
+4. Verify Authenticode signing and installer behavior before publishing.
 5. Publish checksums and note supported/unsupported behavior from `docs/SUPPORT.md`.
 
-The CI package smoke workflow deliberately disables signing. It validates a
-clean-clone package layout; only the protected release workflow receives
-signing/notarization credentials.
+Electron package smoke tests deliberately disable signing. They validate a
+development package layout; only the protected Wails release workflow may
+receive signing credentials.

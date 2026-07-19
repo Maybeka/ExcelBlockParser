@@ -13,9 +13,9 @@ Windows version and installer format remain provisional until Wails packaging
 and acceptance testing are complete.
 Electron packaging is not a supported distribution channel.
 
-No Wails Windows release candidate has been accepted yet. Publishing waits for
-Windows packaging, Authenticode signing, installer, and manual-acceptance
-gates.
+The tag workflow builds an unsigned Windows x64 Wails ZIP candidate plus a
+SHA-256 sidecar. Publishing waits for Authenticode signing, installer, and
+manual-acceptance gates.
 
 ## Supported Workbook Behavior
 
