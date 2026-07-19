@@ -1,15 +1,16 @@
 # Support And Limitations
 
-## Supported Runtime
+## Runtime Status
 
-| Platform | Status | Package |
+| Runtime | Status | Purpose |
 | --- | --- | --- |
-| macOS 13+ (Apple Silicon and Intel) | Supported release target | Signed, notarized DMG |
-| Windows 10/11 x64 | Supported release target | Authenticode-signed NSIS installer |
-| Ubuntu 22.04+ x64 | Supported release target | AppImage |
-| Browser/Wails paths | Development only | Not a release target |
+| Wails | v1.0 production target | Distributed desktop application |
+| Electron | Development-only | Fast renderer development and diagnostic E2E |
+| Browser mode | Development-only | Renderer tests without native bridge behavior |
 
-Use Node.js 22 LTS or newer and npm 10 or newer when building from source.
+Release platforms, installers, signing, and minimum operating-system versions
+remain provisional until Wails packaging and acceptance testing are complete.
+Electron packaging is not a supported distribution channel.
 
 ## Supported Workbook Behavior
 
@@ -17,7 +18,7 @@ Use Node.js 22 LTS or newer and npm 10 or newer when building from source.
 - Worksheet navigation, selected ranges, merged values, headers, mappings,
   row filters, regions, previews, sessions, and reconciliation.
 - Session/recovery JSON up to 25 MB. Unsaved workspace configuration is
-  recovered after an interrupted session.
+  recovered after an interrupted session when the production host supports it.
 
 ## Known Limitations
 
@@ -25,8 +26,7 @@ Use Node.js 22 LTS or newer and npm 10 or newer when building from source.
   recommended input format.
 - Macros, external links, pivot tables, charts, and every Excel formula/result
   are not preserved or executed.
-- Browser tests do not cover native dialogs; use `npm run test:native` for the
-  Electron open, import, export, preview, and cancellation path.
+- Browser and Electron tests do not constitute Wails production acceptance.
 - The application protects workbook access with a 100 MB and 30-second read/
   conversion guard. Larger workbooks are intentionally rejected.
 - Autosave preserves workspace configuration and current parsed state, not an

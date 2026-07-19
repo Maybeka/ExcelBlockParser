@@ -881,15 +881,6 @@ export function ConfigPanel({
       {(showSearch || showSettings) && <Divider style={{ margin: '0 0 8px 0' }} />}
       </div>
 
-      <RegionPanel
-        regions={regions}
-        activeRegionId={activeRegionId}
-        onActivateRegion={onActivateRegion || (() => {})}
-        onRegionChange={onRegionChange}
-        onDeleteRegion={(regionId, label) => setDeleteTarget({ id: regionId, label, type: 'region' })}
-        onRangeClick={onRegionRangeClick}
-      />
-
       <div style={{ flex: 1, overflow: 'auto' }}>
       {filteredBlocks.map((block) => {
         const isActive = block.id === activeBlockId
@@ -1694,6 +1685,14 @@ export function ConfigPanel({
         </div>
       )}
 
+      <RegionPanel
+        regions={regions}
+        activeRegionId={activeRegionId}
+        onActivateRegion={onActivateRegion || (() => {})}
+        onRegionChange={onRegionChange}
+        onDeleteRegion={(regionId, label) => setDeleteTarget({ id: regionId, label, type: 'region' })}
+        onRangeClick={onRegionRangeClick}
+      />
 
 
       <Modal

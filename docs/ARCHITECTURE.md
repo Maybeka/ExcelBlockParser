@@ -12,7 +12,7 @@ not define the production parsing contract.
 | Template | `services/serializer.ts` | Session serialization, v1-to-v2 normalization, import validation. |
 | Validation | `services/extraction.ts`, `components/ConfigPanel.tsx` | Parse-time deterministic diagnostics and UI-time configuration checks. |
 | UI | `App.tsx`, `components/` | User interactions, rendering, previews, and notifications. |
-| Platform | `services/bridge.ts`, Electron main/preload | Native file dialogs and filesystem boundaries. |
+| Platform | `services/bridge.ts`, Wails Go bindings, Electron dev adapter | Native file dialogs and filesystem boundaries. |
 
 ## Session schema
 
@@ -37,3 +37,9 @@ loads them through the same workbook abstraction used by the parser. It covers
 headers, value mappings, merged cells, empty rows and columns, multiple sheets,
 regions, malformed templates, missing sheets, and reconciliation against a
 changed source workbook.
+
+## Deferred Architecture
+
+The v1.0 architecture is limited to the extraction product and a host-neutral
+desktop bridge, with Wails as the production adapter. Extension and generator
+architecture is intentionally deferred until after v1.0.

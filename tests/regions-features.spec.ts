@@ -28,17 +28,25 @@ test.describe('Region Creation', () => {
   test('Region expand/collapse controls its empty-range guidance', async ({ page }) => {
     await addRegion(page)
 
+    const regionCard = page.getByRole('textbox', { name: 'Region 1' }).locator('xpath=../..')
     await expect(page.getByText('Click and drag in the spreadsheet to select a region range.')).toBeVisible()
-    await page.locator('.anticon-caret-down').first().click()
+    const collapse = regionCard.locator('.anticon-caret-down')
+    await expect(collapse).toHaveCount(1)
+    await collapse.click()
     await expect(page.getByText('Click and drag in the spreadsheet to select a region range.')).not.toBeVisible()
-    await page.locator('.anticon-caret-right').first().click()
+    const expand = regionCard.locator('.anticon-caret-right')
+    await expect(expand).toHaveCount(1)
+    await expand.click()
     await expect(page.getByText('Click and drag in the spreadsheet to select a region range.')).toBeVisible()
   })
 
   test('Delete region removes its card', async ({ page }) => {
     await addRegion(page)
 
-    await page.getByRole('button', { name: 'delete', exact: true }).first().click()
+    const regionCard = page.getByRole('textbox', { name: 'Region 1' }).locator('xpath=../..')
+    const deleteButton = regionCard.getByRole('button', { name: 'delete', exact: true })
+    await expect(deleteButton).toHaveCount(1)
+    await deleteButton.click()
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(page.getByRole('textbox', { name: 'Region 1' })).not.toBeVisible()
   })

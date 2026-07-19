@@ -1,20 +1,22 @@
 # Changelog
 
-## 1.0.0 - 2026-07-16
+## Unreleased: v0.1 refinement toward v1.0
 
-Stabilization release for the Electron desktop workflow.
+This repository remains at `0.1.0`. The prior `1.0.0` entry was planning
+material, not a shipped release.
 
 - Stable session and JSON output contract at schema version 2, including v1
   import migration.
 - Workbook extraction, region detection, validation, reconciliation, previews,
   autosave/recovery, and undo/redo.
-- Electron-native and packaged-app verification for workbook open, session
-  import/export, preview, cancellation, and recovery persistence.
-- Signed/notarized release configuration for macOS and signed Windows release
-  configuration; Linux AppImage packaging.
+- Electron-native verification for workbook open, session import/export,
+  preview, cancellation, and recovery persistence.
+- Wails is the intended production runtime; Electron is retained as a
+  development and diagnostic harness while Wails parity is completed.
 
 ## Compatibility
 
 - Session version 1 imports and migrates to version 2.
-- Version 2 is stable throughout the 1.x line. See
+- Version 2 is the current working schema and must remain compatible through
+  the v1.0 release. See
   [docs/SESSION_SCHEMA.md](docs/SESSION_SCHEMA.md).

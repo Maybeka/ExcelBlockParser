@@ -18,13 +18,15 @@ interface SpreadsheetPanelProps {
   activeRegionId: string | null
   activeColIndex: number | null
   onSelectionChange: (range: CellRange | null, activeSheet: string | null) => void
+  onActiveSheetChange: (sheetName: string | null) => void
   loadSignal: number
   onFileLoaded: (fileName: string) => void
   closeSignal: number
   lockedRanges: LockedRangeInfo[]
+  onOpenWorkbook: () => void
 }
 
-export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex, onSelectionChange, loadSignal, onFileLoaded, lockedRanges, closeSignal }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, onFileLoaded, lockedRanges, closeSignal, onOpenWorkbook }: SpreadsheetPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { univerAPI, setUniverAPI, setSheetNames } = useUniver()
   const univerAPIRef = useRef(univerAPI)
@@ -32,6 +34,8 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
 
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
+  const onActiveSheetChangeRef = useRef(onActiveSheetChange)
+  onActiveSheetChangeRef.current = onActiveSheetChange
 
   const refreshSheetNames = () => {
     const api = univerAPIRef.current
@@ -132,6 +136,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
   const tryAttachListener = () => {
     try {
       selectionDisposableRef.current?.dispose()
+      commandDisposableRef.current?.dispose()
       const api = univerAPIRef.current
       if (!api) return
 
@@ -158,6 +163,17 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
       })
 
       selectionDisposableRef.current = disposable
+
+      commandDisposableRef.current = workbook.onCommandExecuted((command) => {
+        const commandId = (command as any)?.id?.toLowerCase() || ''
+        if (commandId.includes('set-worksheet-active') || commandId.includes('set-worksheet-activate')) {
+          const sheetName = workbook.getActiveSheet()?.getSheetName() ?? null
+          onActiveSheetChangeRef.current(sheetName)
+        }
+        if (commandId.includes('sheet') || commandId.includes('worksheet')) {
+          setTimeout(() => refreshSheetNames(), 50)
+        }
+      })
 
       setTimeout(() => refreshSheetNames(), 50)
     } catch { /* selection listener setup failed, non-fatal */ }
@@ -224,18 +240,6 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
         }
       })
 
-      const workbook = api.getActiveWorkbook()
-      if (workbook) {
-        const cmdDisposable = workbook.onCommandExecuted((command) => {
-          const cmdId = (command as any)?.id?.toLowerCase() || ''
-          if (cmdId.includes('sheet') || cmdId.includes('worksheet')) {
-            setTimeout(() => refreshSheetNames(), 50)
-            onSelectionChangeRef.current(null, null)
-          }
-        })
-        commandDisposableRef.current = cmdDisposable
-      }
-
       setTimeout(() => refreshSheetNames(), 100)
     } catch (err) {
       setError(`Univer init failed: ${String(err)}`)
@@ -291,6 +295,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
         }
 
         setHasFile(true)
+        onActiveSheetChangeRef.current(newWorkbook.getActiveSheet()?.getSheetName() ?? null)
         onSelectionChangeRef.current(null, null)
         onFileLoaded(fileName)
 
@@ -316,15 +321,20 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
     const wb = api.getActiveWorkbook()
     if (wb) api.disposeUnit(wb.getId())
     setHasFile(false)
+    setSheetNames([])
+    onSelectionChangeRef.current(null, null)
     setError(null)
-  }, [closeSignal])
+  }, [closeSignal, setSheetNames])
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       {!hasFile && !error && !loading && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: 14, pointerEvents: 'none' }}>
-          Open an XLSX file to get started
+        <div className="workbook-empty-state">
+          <div className="workbook-empty-icon">XLSX</div>
+          <strong>Open a workbook to begin</strong>
+          <span>Select an Excel file, then choose the ranges you want to turn into structured data.</span>
+          <Button type="primary" onClick={onOpenWorkbook}>Open workbook</Button>
         </div>
       )}
       {loading && (

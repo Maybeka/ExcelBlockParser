@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Layout, Segmented, Input, Space, Spin, Typography, Empty, Result, Alert, Button, theme, Select } from 'antd'
-import { CodeOutlined } from '@ant-design/icons'
+import { Layout, Segmented, Input, Spin, Typography, Empty, Result, Alert, Button, Select, Tooltip } from 'antd'
+import { CodeOutlined, CloseOutlined, DatabaseOutlined, FileTextOutlined, SearchOutlined } from '@ant-design/icons'
 import { PreviewTable } from './PreviewTable'
 import { getBridge } from '../services/bridge'
 import ReactJson from '@microlink/react-json-view'
@@ -18,11 +18,12 @@ interface PreviewWindowProps {
   activeBlockId?: string
   /** Called when user switches block (modal mode) */
   onBlockChange?: (blockId: string) => void
+  /** Closes the modal preview when rendered inside the main workspace. */
+  onClose?: () => void
 }
 
-export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId: propBlockId, onBlockChange }: PreviewWindowProps = {}) {
+export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId: propBlockId, onBlockChange, onClose }: PreviewWindowProps = {}) {
   const isModal = !!propData || !!allBlocks
-  const { token } = theme.useToken()
   const [previewData, setPreviewData] = useState<PreviewData | null>(propData || null)
   const [visibleModes, setVisibleModes] = useState<('raw' | 'parsed')[]>(['raw', 'parsed'])
   const [searchText, setSearchText] = useState('')
@@ -129,47 +130,27 @@ export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId:
   }
 
   const modeValue = visibleModes.length === 2 ? 'both' : visibleModes[0]
+  const matchingRows = Math.max(previewData.rawRows.length, previewData.parsedRows.length)
 
   return (
-    <Layout style={{ height: isModal ? '100%' : '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 12px',
-          background: '#fff',
-          borderBottom: `1px solid ${token.colorBorderSecondary}`,
-        }}
-      >
-        <Space>
-          {isModal && allBlocks && allBlocks.length > 1 && (
-            <Select
-              size="small"
-              value={blockId}
-              onChange={v => onBlockChange?.(v)}
-              style={{ width: 140 }}
-              options={allBlocks.map(b => ({ value: b.blockId, label: b.label }))}
-            />
-          )}
-          <Text style={{ fontSize: 16, fontWeight: 600 }}>{previewData.label}</Text>
-          <Text style={{ fontSize: 13, color: token.colorTextSecondary }}>
-            {previewData.rawRows.length} rows
-          </Text>
-        </Space>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <style>{`
-            .mode-segmented .ant-segmented-item-selected[class] {
-              color: #fff;
-            }
-            .mode-segmented.mode-raw .ant-segmented-item-selected { background: #8c8c8c; }
-            .mode-segmented.mode-parsed .ant-segmented-item-selected { background: #1677ff; }
-            .mode-segmented.mode-both .ant-segmented-item-selected {
-              background: linear-gradient(90deg, #8c8c8c, #8c8c8c 50%, #1677ff 50%, #1677ff);
-            }
-          `}</style>
+    <Layout className="preview-shell" style={{ height: isModal ? '100%' : '100vh' }}>
+      <Header className="preview-header">
+        <div className="preview-title-group">
+          <span className="preview-title-icon"><DatabaseOutlined /></span>
+          <div className="preview-title-copy">
+            <span className="preview-kicker">PARSE REVIEW</span>
+            {isModal && allBlocks && allBlocks.length > 1 ? (
+              <Select className="preview-block-select" size="small" value={blockId} onChange={v => onBlockChange?.(v)} options={allBlocks.map(b => ({ value: b.blockId, label: b.label }))} />
+            ) : <strong>{previewData.label}</strong>}
+          </div>
+          <div className="preview-metrics" aria-label="Preview summary">
+            <span><b>{matchingRows}</b> rows</span>
+            <span><b>{previewData.columns.length}</b> fields</span>
+          </div>
+        </div>
+        <div className="preview-controls">
           <Segmented
-            className={`mode-segmented mode-${modeValue}`}
+            className={`preview-mode-control preview-mode-${modeValue}`}
             options={[
               { label: 'Raw', value: 'raw' },
               { label: 'Parsed', value: 'parsed' },
@@ -179,28 +160,30 @@ export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId:
             onChange={handleModeChange}
           />
           <Input.Search
-            placeholder="Filter rows..."
+            className="preview-search"
+            placeholder="Filter values"
             allowClear
+            prefix={<SearchOutlined />}
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
             onSearch={value => setSearchText(value)}
-            style={{ width: 250 }}
           />
-          <span style={{ color: token.colorBorderSecondary, fontSize: 14, lineHeight: 1 }}>|</span>
-          <Button
-            size="small"
-            type={showJson ? 'primary' : 'default'}
-            icon={<CodeOutlined />}
-            onClick={() => setShowJson(!showJson)}
-          />
+          <Tooltip title={showJson ? 'Show table' : 'Show JSON'}><Button aria-label={showJson ? 'Show table' : 'Show JSON'} type={showJson ? 'primary' : 'default'} icon={<CodeOutlined />} onClick={() => setShowJson(!showJson)} /></Tooltip>
+          {onClose && <Tooltip title="Close preview"><Button aria-label="Close preview" icon={<CloseOutlined />} onClick={onClose} /></Tooltip>}
         </div>
       </Header>
-      <Content style={{ overflow: 'auto' }}>
+      <div className="preview-context-bar">
+        <span><i className="preview-raw-dot" />Source cells</span>
+        <span><i className="preview-parsed-dot" />Parsed output</span>
+        {searchText && <span className="preview-filter-state">Filtering: {searchText}</span>}
+      </div>
+      <Content className="preview-content">
         {previewData.rawRows.length > 0 && previewData.parsedRows.length === 0 && (
           <Alert type="info" message="Parsed data not available — showing raw content only" banner />
         )}
         {showJson ? (
-          <div style={{ padding: 0, height: '100%', overflow: 'auto', background: '#1e1e1e' }}>
+          <div className="preview-json">
+            <div className="preview-json-heading"><FileTextOutlined /> Parsed output JSON</div>
             <ReactJson
               src={previewData.parsedRows}
               theme="monokai"
@@ -208,12 +191,7 @@ export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId:
               displayObjectSize={true}
               enableClipboard={false}
               collapsed={1}
-              style={{
-                padding: 12,
-                fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-                fontSize: 13,
-                lineHeight: 1.4,
-              }}
+              style={{ padding: 14, fontFamily: 'Menlo, Monaco, "Courier New", monospace', fontSize: 13, lineHeight: 1.45 }}
               name={false}
               quotesOnKeys={false}
             />

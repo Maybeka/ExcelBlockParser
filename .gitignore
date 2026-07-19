@@ -27,6 +27,11 @@ Thumbs.db
 .sisyphus/
 .playwright-mcp/
 
+# Local planning, design exploration, and developer-only notes
+.local/
+.omo/
+REPO_SUMMARY.md
+
 # Playwright
 test-results/
 

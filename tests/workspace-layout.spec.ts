@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 test.describe('M3 workspace layout', () => {
   test('shows durable workspace navigation and diagnostics', async ({ page }) => {
     await page.goto('/')
+    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
 
     const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
     await expect(navigator.getByText('Sheets', { exact: true })).toBeVisible()
@@ -18,6 +19,7 @@ test.describe('M3 workspace layout', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Add' }).click()
     await page.getByRole('button', { name: 'Add' }).click()
+    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
 
     const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
     await navigator.getByText('block_3').hover()
@@ -30,8 +32,21 @@ test.describe('M3 workspace layout', () => {
   test('uses a drawer navigator at compact widths', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 })
     await page.goto('/')
-    await page.getByRole('button', { name: 'Workspace navigation' }).click()
+    await page.getByRole('button', { name: 'Workspace navigation', exact: true }).click()
     await expect(page.getByRole('dialog').getByRole('navigation', { name: 'Workspace navigator' })).toBeVisible()
+  })
+
+  test('allows desktop navigation to be hidden and restored', async ({ page }) => {
+    await page.goto('/')
+
+    const navigation = page.getByRole('navigation', { name: 'Workspace navigator' })
+    await expect(navigation).not.toBeVisible()
+    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+    await expect(navigation).toBeVisible()
+    await page.getByRole('button', { name: 'Hide workspace navigation' }).click()
+    await expect(navigation).not.toBeVisible()
+    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+    await expect(navigation).toBeVisible()
   })
 
   test('exposes keyboard commands for common workspace actions', async ({ page }) => {

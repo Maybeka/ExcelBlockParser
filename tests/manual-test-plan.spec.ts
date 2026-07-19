@@ -27,7 +27,7 @@ test.describe('TC-1: Application Initial State', () => {
     await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
 
     // Placeholder text in spreadsheet area
-    await expect(page.locator('text=Open an XLSX file to get started')).toBeVisible()
+    await expect(page.getByText('Select an Excel file, then choose the ranges you want to turn into structured data.', { exact: true })).toBeVisible()
   })
 })
 

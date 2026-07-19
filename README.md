@@ -1,8 +1,9 @@
 # Excel Block Parser
 
 Excel Block Parser is a desktop application for converting repeatable,
-semi-structured Excel ranges into validated JSON. It is built with Electron,
-React, Univer, and ExcelJS.
+semi-structured Excel ranges into validated JSON. It is built with React,
+Univer, and ExcelJS; Wails is the production desktop target and Electron is a
+development harness.
 
 ## Quick Start
 
@@ -13,7 +14,7 @@ npm ci
 npm run dev
 ```
 
-For a production-style local run:
+For an Electron development build:
 
 ```bash
 npm run build
@@ -37,13 +38,13 @@ testing reconciliation.
 npm run test:main     # main-process file-safety policy
 npm run test:unit     # renderer/unit and real-workbook integration tests
 npm test              # browser-mode UI tests
-npm run test:native   # built Electron end-to-end workflow
-npm run test:packaged # fresh unpacked package plus native smoke test
+npm run test:native   # built Electron end-to-end development workflow
+npm run test:packaged # Electron package smoke test; not release acceptance
 ```
 
 See [Session and JSON Contract](docs/SESSION_SCHEMA.md),
 [Support and Limitations](docs/SUPPORT.md), and
-[Release Process](docs/RELEASE.md). Test packaged artifacts with the
+[Release Acceptance](docs/RELEASE_ACCEPTANCE.md). Test packaged artifacts with the
 [Manual Acceptance Test Plan](docs/MANUAL_ACCEPTANCE_TEST_PLAN.md).
 
 ## Scope

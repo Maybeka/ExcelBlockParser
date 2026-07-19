@@ -1,32 +1,66 @@
-# Stabilization Release Acceptance
+# v1.0 Release Acceptance
 
-## Release Candidate Gates
+Version 1.0 is not released until every gate below passes on the release
+candidate. Wails is the production runtime. Electron checks are retained to
+protect the shared renderer and bridge contract during development; they do not
+produce release artifacts.
 
-The candidate must pass the following on the release commit:
+## Product Gates
 
-1. Every tracked workbook fixture loads through ExcelJS. The extraction
-   fixtures additionally verify merged values, mappings, regions,
-   multi-sheet data, reconciliation, and deterministic diagnostics.
-2. Browser, direct-Electron, and packaged-Electron Playwright suites pass.
-   Browser-only fixture/native cases remain explicitly skipped; their native
-   equivalents are covered by `test:native` and `test:packaged`.
-3. A generated 50,000-cell workbook loads and extracts to JSON in under
-   12 seconds on the release runner. This is the supported interactive
-   performance threshold, not a promise that every workbook below the 100 MB
-   safety limit has identical timing.
-4. A serialized v2 export survives JSON serialization and import without
-   changing its configured output or block-result data.
-5. Native recovery save, load, and clear operations retain valid v2 session
-   data and leave no recovery data after clear.
+1. The documented workbook-to-JSON workflow works without data loss for every
+   supported fixture: open, sheet navigation, range capture, block and region
+   configuration, parse, diagnostics, preview, export, session export/import,
+   reconciliation, and recovery.
+2. All destructive or context-changing actions have clear, correct state
+   handling: switching workbooks, closing workbooks, discard confirmation, and
+   left-navigation synchronization.
+3. The workspace is dense, keyboard-accessible, responsive at supported window
+   sizes, and has no stale sheet, selection, preview, or diagnostic state.
+4. Session schema v2 round-trips through JSON serialization/import without a
+   changed configuration or output. Version 1 imports retain their documented
+   migration behavior.
 
-## Defect Triage
+## Engineering Gates
 
-There are no known release-blocking defects after these gates pass. The
-supported limitations in [SUPPORT.md](SUPPORT.md) are accepted product
-boundaries for this release: `.xlsx` is preferred, unsupported Excel features
-are not preserved/executed, and oversized/slow files are rejected rather than
-partially processed. The legacy Wails path is development-only.
+1. Type checking, linting, unit tests, and fixture-based integration tests pass
+   in continuous integration.
+2. Tests cover extraction semantics, malformed sessions, reconciliation,
+   recovery, bridge errors, workbook lifecycle, and regression cases for every
+   fixed release-blocking defect.
+3. Browser renderer tests, Electron development E2E, and Wails production E2E
+   pass. The Wails suite covers native dialogs/bridge operations through a
+   controlled test seam, not only browser mocks.
+4. The Wails Go layer has unit/integration coverage for path authorization,
+   size and time limits, recovery persistence, import/export, and bridge error
+   translation.
+5. No known critical or high-severity defect remains. A defect that corrupts
+   template/output data, loses recoverable state, bypasses a filesystem policy,
+   blocks the documented workflow, or creates materially inconsistent UI state
+   blocks release.
 
-Any defect that corrupts v2 template/output data, loses recoverable workspace
-state, bypasses the main-process file policy, or blocks the documented example
-workflow is a release blocker.
+## Wails Production Gates
+
+1. The Wails bridge implements every production capability used by the renderer
+   with stable typed behavior: workbook/session open, JSON/session save,
+   recovery save/load/clear, preview events, and error reporting.
+2. Wails uses explicit, tested path and size controls. Arbitrary renderer file
+   access is prohibited.
+3. A packaged Wails build is smoke-tested on each supported release platform.
+   Electron packages are not release candidates.
+4. Install, upgrade, launch, open, export, recovery, and uninstall behavior is
+   documented and manually accepted on the release platforms.
+5. Signing, notarization, installer metadata, and release artifact retention
+   are configured for the platforms declared in `SUPPORT.md`.
+
+## Performance Gate
+
+A generated 50,000-cell workbook loads and extracts to JSON in under 12
+seconds on the designated release runner. Workbooks that exceed documented
+limits are rejected with actionable diagnostics rather than partially
+processed.
+
+## Deferred Work
+
+The extension platform, external plugins, Python code-generation runner, and
+LLM generation-artifact import are post-v1 work. They must not be introduced
+into the v1.0 release branch.

@@ -1,14 +1,13 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Badge, Button, Drawer, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
-import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined, MenuOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
-import type { CellRange, ColumnMapping, ColumnType, BlockConfig, BlockParseResult, ParseResult, ExportedSession, ReconciliationReport, RegionConfig, RegionBlockResult, RegionParseResult } from './types'
+import type { CellRange, ColumnMapping, BlockConfig, ParseResult, ReconciliationReport, RegionConfig, RegionParseResult } from './types'
 import type { FocusMode } from './components/ConfigPanel'
 import { useUniver } from './context/UniverContext'
 import { runReconciliation } from './services/reconciliation'
-import { detectBlocks } from './services/regionDetector'
 import { getBridge } from './services/bridge'
 import { adaptPreviewData } from './services/previewDataAdapter'
 import { serializeSession, loadSession } from './services/serializer'
@@ -30,51 +29,6 @@ function colIndexToLetter(index: number): string {
   return letter
 }
 
-function sanitizeToCamelCase(str: string): string {
-  return str
-    .trim()
-    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
-    .split(/[\s_-]+/)
-    .map((word, i) => {
-      if (!word) return ''
-      const lower = word.toLowerCase()
-      return i === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1)
-    })
-    .join('')
-    .replace(/^(\d)/, '_$1')
-    || 'column'
-}
-
-function inferColumnType(values: unknown[]): ColumnType {
-  const samples = values.filter(v => v !== null && v !== undefined && v !== '').slice(0, 10)
-  if (samples.length === 0) return 'string'
-
-  const allNumbers = samples.every(v =>
-    typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))),
-  )
-  if (allNumbers) {
-    const allIntegers = samples.every(v => Number.isInteger(Number(v)))
-    return allIntegers ? 'integer' : 'float'
-  }
-
-  const allBooleans = samples.every(v => {
-    if (typeof v === 'boolean') return true
-    const s = String(v).trim().toLowerCase()
-    return ['true', 'false', 'yes', 'no', '1', '0'].includes(s)
-  })
-  if (allBooleans) return 'boolean'
-
-  const allDates = samples.every(v => {
-    if (v instanceof Date) return true
-    if (typeof v === 'number' && v > 45000 && v < 200000) return true
-    const d = new Date(v as string | number)
-    return !isNaN(d.getTime()) && d.getFullYear() > 1900
-  })
-  if (allDates) return 'date'
-
-  return 'string'
-}
-
 function generateColumnMappings(range: CellRange): ColumnMapping[] {
   return Array.from({ length: range.endCol - range.startCol + 1 }, (_, i) => {
     const col = range.startCol + i
@@ -89,109 +43,6 @@ function generateColumnMappings(range: CellRange): ColumnMapping[] {
       valueMap: [],
     }
   })
-}
-
-async function suggestColumnMappings(
-  range: CellRange,
-  headerRows: number[],
-  activeSheet: string | null,
-  api: NonNullable<ReturnType<typeof useUniver>['univerAPI']>,
-): Promise<ColumnMapping[]> {
-  try {
-    const workbook = api.getActiveWorkbook()
-    if (!workbook) return generateColumnMappings(range)
-    const sheet = activeSheet
-      ? (workbook.getSheetByName(activeSheet) ?? workbook.getActiveSheet())
-      : workbook.getActiveSheet()
-    if (!sheet) return generateColumnMappings(range)
-
-    const frange = sheet.getRange(range.a1Notation)
-    const rawValues = frange.getValues() as unknown[][]
-
-    const colCount = range.endCol - range.startCol + 1
-    const columns: ColumnMapping[] = []
-
-    const headerSet = new Set(headerRows)
-
-    for (let i = 0; i < colCount; i++) {
-      const col = range.startCol + i
-      const letter = colIndexToLetter(col)
-
-      let suggestedKey: string
-      if (headerRows.length > 0 && rawValues[0]) {
-        const keyParts: string[] = []
-        for (const r of headerRows) {
-          if (r >= rawValues.length) break
-          const val = rawValues[r]?.[i]
-          if (val != null && String(val).trim()) {
-            keyParts.push(String(val).trim())
-          }
-        }
-        suggestedKey = keyParts.length > 0
-          ? sanitizeToCamelCase(keyParts.join(' '))
-          : `column_${letter}`
-      } else {
-        suggestedKey = `column_${letter}`
-      }
-
-      const colValues = rawValues.filter((_, idx) => !headerSet.has(idx)).map(row =>
-        row && i < row.length ? row[i] : null,
-      )
-      const inferredType = inferColumnType(colValues)
-
-      columns.push({
-        colIndex: col,
-        colLetter: letter,
-        suggestedKey,
-        key: suggestedKey,
-        type: inferredType,
-        skip: false,
-        valueMap: [],
-      })
-    }
-
-    return columns
-  } catch {
-    return generateColumnMappings(range)
-  }
-}
-
-function applyValueMap(raw: unknown, valueMap: { from: string; to: unknown }[]): { mapped: boolean; value: unknown } {
-  if (raw === null || raw === undefined) return { mapped: false, value: null }
-  const rawStr = String(raw).trim()
-  const entry = valueMap.find(e => e.from === rawStr)
-  if (entry) return { mapped: true, value: entry.to }
-  return { mapped: false, value: raw }
-}
-
-function convertValue(raw: unknown, type: ColumnType): unknown {
-  if (raw === null || raw === undefined) return null
-  switch (type) {
-    case 'string': return String(raw)
-    case 'integer': {
-      const n = parseInt(String(raw), 10)
-      return isNaN(n) ? null : n
-    }
-    case 'float': {
-      const n = Number(raw)
-      return isNaN(n) ? null : n
-    }
-    case 'boolean': {
-      if (typeof raw === 'boolean') return raw
-      const s = String(raw).trim().toLowerCase()
-      if (s === 'true' || s === '1' || s === 'yes') return true
-      if (s === 'false' || s === '0' || s === 'no' || s === '') return false
-      return null
-    }
-    case 'date': {
-      if (raw instanceof Date) return raw.toISOString().split('T')[0]
-      const d = new Date(raw as string | number)
-      return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0]
-    }
-    case 'valueMapping':
-      return raw
-    default: return raw
-  }
 }
 
 let blockCounter = 1
@@ -246,8 +97,11 @@ function AppContent() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [closeSignal, setCloseSignal] = useState(0)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const [showWorkbookSwitchConfirm, setShowWorkbookSwitchConfirm] = useState(false)
+  const [showWorkbookCloseConfirm, setShowWorkbookCloseConfirm] = useState(false)
   const [activeSheetName, setActiveSheetName] = useState<string | null>(null)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
+  const [sidebarHidden, setSidebarHidden] = useState(true)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
   const historyRef = useRef(new WorkspaceHistory())
@@ -421,50 +275,70 @@ function AppContent() {
     return () => window.clearTimeout(timer)
   }, [activeBlockId, blocks, currentFileName, focusMode, hasUnsavedChanges, parseResult, regions])
 
-  const handleOpenFile = useCallback(() => {
-    if (hasUnsavedChanges) {
-      pendingFileActionRef.current = () => {
-        setLoadSignal(s => s + 1)
-        setParseResult(null)
-      }
-      setShowDiscardConfirm(true)
-      return
-    }
+  const openWorkbookPicker = useCallback(() => {
     setLoadSignal(s => s + 1)
     setParseResult(null)
-  }, [hasUnsavedChanges])
+  }, [])
 
-  const handleCloseFile = useCallback(() => {
+  const handleOpenFile = useCallback(() => {
     if (hasUnsavedChanges) {
-      pendingFileActionRef.current = () => {
-        const freshBlock = createDefaultBlock(0)
-        setBlocks([freshBlock])
-        setActiveBlockId(freshBlock.id)
-        setRegions([])
-        setActiveRegionId(null)
-        setCloseSignal(s => s + 1)
-        setCurrentFileName(null)
-        setParseResult(null)
-        blockCounter = 1
-      }
+      pendingFileActionRef.current = openWorkbookPicker
       setShowDiscardConfirm(true)
       return
     }
+    if (currentFileName) {
+      pendingFileActionRef.current = openWorkbookPicker
+      setShowWorkbookSwitchConfirm(true)
+      return
+    }
+    openWorkbookPicker()
+  }, [currentFileName, hasUnsavedChanges, openWorkbookPicker])
+
+  const closeWorkbook = useCallback(() => {
     const freshBlock = createDefaultBlock(0)
     setBlocks([freshBlock])
     setActiveBlockId(freshBlock.id)
     setRegions([])
     setActiveRegionId(null)
+    setActiveSheetName(null)
     setCloseSignal(s => s + 1)
     setCurrentFileName(null)
     setParseResult(null)
     blockCounter = 1
-  }, [hasUnsavedChanges])
+  }, [])
+
+  const handleCloseFile = useCallback(() => {
+    pendingFileActionRef.current = closeWorkbook
+    if (hasUnsavedChanges) {
+      setShowDiscardConfirm(true)
+      return
+    }
+    setShowWorkbookCloseConfirm(true)
+  }, [closeWorkbook, hasUnsavedChanges])
 
   const handleConfirmDiscard = useCallback(() => {
     pendingFileActionRef.current?.()
     pendingFileActionRef.current = null
     setShowDiscardConfirm(false)
+    setHasUnsavedChanges(false)
+    historyRef.current.clear()
+    setHistoryVersion(version => version + 1)
+    void getBridge().clearRecovery()
+  }, [])
+
+  const handleConfirmWorkbookSwitch = useCallback(() => {
+    pendingFileActionRef.current?.()
+    pendingFileActionRef.current = null
+    setShowWorkbookSwitchConfirm(false)
+    historyRef.current.clear()
+    setHistoryVersion(version => version + 1)
+    void getBridge().clearRecovery()
+  }, [])
+
+  const handleConfirmWorkbookClose = useCallback(() => {
+    pendingFileActionRef.current?.()
+    pendingFileActionRef.current = null
+    setShowWorkbookCloseConfirm(false)
     setHasUnsavedChanges(false)
     historyRef.current.clear()
     setHistoryVersion(version => version + 1)
@@ -698,108 +572,26 @@ function AppContent() {
     setActiveRegionId(regionId)
   }, [])
 
-  /* Superseded by parseWorkbook in services/extraction.ts.
-  function performParse(
-    workbook: any,
-    regions: RegionConfig[],
-    blocks: BlockConfig[],
-  ): ParseResult | null {
-    const regionResults: RegionParseResult[] = []
-
-    for (const region of regions) {
-      if (!region.range) continue
-      const sheet = region.activeSheet
-        ? workbook.getSheetByName(region.activeSheet)
-        : workbook.getActiveSheet()
-      if (!sheet) continue
-
-      const frange = sheet.getRange(region.range.a1Notation)
-      const rawValues = frange.getValues() as unknown[][]
-      const stringRows: string[][] = rawValues.map(row =>
-        row.map(cell => cell === null || cell === undefined ? '' : String(cell))
-      )
-
-      const blockRanges = detectBlocks(region.range, region.splitRules, (r, c) => {
-        const rr = r - region.range!.startRow
-        const cc = c - region.range!.startCol
-        return (stringRows[rr] && stringRows[rr][cc]) || ''
-      })
-
-      const regionBlocks: RegionBlockResult[] = []
-      for (let i = 0; i < blockRanges.length; i++) {
-        const br = blockRanges[i]
-        const blockRows = stringRows.slice(br.startRow - region.range.startRow, br.endRow - region.range.startRow + 1)
-        regionBlocks.push({ blockLabel: `block_${i + 1}`, rows: blockRows })
-      }
-
-      regionResults.push({ regionId: region.id, label: region.label, blocks: regionBlocks })
-    }
-
-    const activeBlocks = blocks.filter(b => b.range)
-    if (!activeBlocks.length) return null
-
-    const blockResults: BlockParseResult[] = []
-    const namedData: Record<string, unknown> = {}
-
-    for (const block of activeBlocks) {
-      const sheet = block.activeSheet
-        ? workbook.getSheetByName(block.activeSheet)
-        : workbook.getActiveSheet()
-      if (!sheet) continue
-
-      const frange = sheet.getRange(block.range!.a1Notation)
-      const rawValues = frange.getValues() as unknown[][]
-
-      const activeColumns = block.columns.filter(c => !c.skip)
-      if (!activeColumns.length) {
-        blockResults.push({ blockId: block.id, label: block.label, data: [], rowCount: 0 })
-        namedData[block.label] = []
-        continue
-      }
-
-      const headers = activeColumns.map(c => c.key || c.suggestedKey)
-      const headerSet = new Set(block.headerRows)
-      const dataRows = rawValues.filter((_, i) => !headerSet.has(i))
-
-      const data = dataRows.map(row => {
-        const entry: Record<string, unknown> = {}
-        activeColumns.forEach((col, mappedIdx) => {
-          const raw = col.colIndex < row.length ? row[col.colIndex] : null
-          const effectiveType = col.type === 'valueMapping'
-            ? (col.valueMapFallbackType ?? 'auto')
-            : col.type
-          if (col.valueMap.length > 0) {
-            const { mapped, value } = applyValueMap(raw, col.valueMap)
-            entry[headers[mappedIdx]] = mapped ? value : convertValue(value, effectiveType)
-          } else {
-            entry[headers[mappedIdx]] = convertValue(raw, effectiveType)
-          }
-        })
-        return entry
-      })
-
-      blockResults.push({ blockId: block.id, label: block.label, data, rowCount: data.length })
-      namedData[block.label] = data
-    }
-
-    return { success: true, data: namedData, blocks: blockResults, regionResults }
-  }
-
-  */
   const handleParse = useCallback(async () => {
     if (!univerAPI) {
-      setParseResult({ success: false, data: {}, blocks: [], error: 'Univer not initialized' })
+      const error = 'Spreadsheet is not initialized'
+      setParseResult({ success: false, data: {}, blocks: [], error })
+      message.error(error)
       return
     }
     const workbook = univerAPI.getActiveWorkbook()
     if (!workbook) {
-      setParseResult({ success: false, data: {}, blocks: [], error: 'No workbook loaded' })
+      const error = 'No workbook loaded'
+      setParseResult({ success: false, data: {}, blocks: [], error })
+      message.error(error)
       return
     }
 
     const activeBlocks = blocks.filter(b => b.range)
     if (!activeBlocks.length) {
-      setParseResult({ success: false, data: {}, blocks: [], error: 'No blocks with a selected range' })
+      const error = 'Select a range for at least one block before parsing'
+      setParseResult({ success: false, data: {}, blocks: [], error })
+      message.warning(error)
       return
     }
 
@@ -807,6 +599,8 @@ function AppContent() {
     const result = execution.result
     if (!result.success) {
       setParseResult(result)
+      setDiagnosticsOpen(true)
+      message.error(result.error || 'Parsing could not complete. Review the diagnostics for details.')
       return
     }
 
@@ -1026,35 +820,39 @@ function AppContent() {
   />
 
   return (
-    <Layout style={{ height: '100vh' }}>
-      <Layout.Header style={{
-        height: 48, lineHeight: '48px', padding: '0 16px',
-        background: token.colorBgContainer,
-        borderBottom: `1px solid ${token.colorBorderSecondary}`,
-        display: 'flex', alignItems: 'center',
-      }}>
-        <span style={{ fontSize: 16, fontWeight: 600, marginRight: 8 }}>
-          Excel Block Parser
-        </span>
+    <Layout className="app-shell">
+      <Layout.Header className="app-header">
+        <div className="app-brand">
+          <Tooltip title={sidebarHidden ? 'Show workspace navigation' : 'Hide workspace navigation'}>
+            <Button
+              className="workspace-sidebar-toggle"
+              aria-label={sidebarHidden ? 'Show workspace navigation' : 'Hide workspace navigation'}
+              size="small"
+              type="text"
+              icon={sidebarHidden ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setSidebarHidden(hidden => !hidden)}
+            />
+          </Tooltip>
+          <span className="app-brand-copy">
+            <strong>Excel Block Parser</strong>
+            <small>Extraction workspace</small>
+          </span>
+        </div>
         <Tooltip title="Workspace navigation">
-          <Button className="workspace-mobile-nav" aria-label="Workspace navigation" size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} style={{ marginRight: 4 }} />
+          <Button className="workspace-mobile-nav" aria-label="Workspace navigation" size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} />
         </Tooltip>
         {currentFileName && (
-          <>
-            <span style={{
-              fontSize: 12, color: token.colorTextSecondary,
-              maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap', marginRight: 4,
-            }} title={currentFileName}>
+          <span className="workbook-chip" title={currentFileName}>
+            <span className="workbook-chip-label">WORKBOOK</span>
+            <span className="workbook-chip-name">
               {currentFileName}
             </span>
             <Tooltip title="Close file">
-              <Button size="small" type="text" icon={<CloseOutlined />}
-                onClick={handleCloseFile} style={{ marginRight: 12 }} />
+              <Button aria-label="Close workbook" size="small" type="text" icon={<CloseOutlined />} onClick={handleCloseFile} />
             </Tooltip>
-          </>
+          </span>
         )}
-        <Space>
+        <Space className="app-actions" size={6}>
           <Tooltip title="Undo">
             <Button aria-keyshortcuts="Control+Z Meta+Z" aria-label="Undo" icon={<UndoOutlined />} onClick={handleUndo} disabled={!historyRef.current.canUndo} />
           </Tooltip>
@@ -1106,32 +904,36 @@ function AppContent() {
           style={{ borderRadius: 0, borderLeft: 'none', borderRight: 'none' }}
         />
       )}
-      <Layout.Content style={{ overflow: 'hidden', display: 'flex' }}>
-        <aside className="workspace-desktop-nav" style={{ width: 224, flex: '0 0 224px', borderRight: `1px solid ${token.colorBorderSecondary}` }}>
-          {navigator}
-        </aside>
-        <div style={{ height: '100%', minWidth: 0, flex: 1 }}>
-          <Splitter style={{ height: '100%' }}>
+      <Layout.Content className="workspace-layout">
+        {!sidebarHidden && (
+          <aside className="workspace-desktop-nav workspace-sidebar">
+            {navigator}
+          </aside>
+        )}
+        <div className="workspace-main">
+          <Splitter className="workspace-splitter">
             <Splitter.Panel defaultSize="70%" min="45%" max="82%">
-              <div style={{ height: '100%', overflow: 'hidden' }}>
+              <section className="workspace-canvas" aria-label="Workbook canvas">
                 <SpreadsheetPanel
                   activeBlockId={activeBlockId}
                   activeRegionId={activeRegionId}
                   activeColIndex={activeColIndex}
                   onSelectionChange={handleSelectionChange}
+                  onActiveSheetChange={setActiveSheetName}
                   loadSignal={loadSignal}
                   onFileLoaded={handleFileLoaded}
                   lockedRanges={lockedRanges}
                   closeSignal={closeSignal}
+                  onOpenWorkbook={handleOpenFile}
                 />
-              </div>
+              </section>
             </Splitter.Panel>
             <Splitter.Panel defaultSize="30%" min="18%">
-              <div style={{
-                height: '100%', overflow: 'auto',
-                borderLeft: `1px solid ${token.colorBorderSecondary}`,
-                background: token.colorBgContainer,
-              }}>
+              <aside className="inspector-panel" aria-label="Extraction inspector">
+                <header className="panel-heading inspector-heading">
+                  <div><span className="panel-kicker">CONFIGURE</span><strong>Extraction setup</strong></div>
+                  <span>{blocks.filter(block => block.range).length} active</span>
+                </header>
                 <ConfigPanel
                   blocks={blocks}
                   activeBlockId={activeBlockId}
@@ -1163,7 +965,7 @@ function AppContent() {
                     onReselectRange={handleReconcilingReselectRange}
                     onPreviewSheet={setReconcilingPreviewSheet}
                 />
-              </div>
+              </aside>
             </Splitter.Panel>
           </Splitter>
         </div>
@@ -1179,6 +981,7 @@ function AppContent() {
         onFocus={handleFocusDiagnostic}
       />
       <Modal
+        className="preview-modal"
         title={null}
         open={previewModalOpen}
         onCancel={() => setPreviewModalOpen(false)}
@@ -1190,20 +993,6 @@ function AppContent() {
         destroyOnClose
         maskClosable={false}
       >
-        <Button
-          type="text"
-          icon={<CloseOutlined style={{ fontSize: 18, color: '#fff' }} />}
-          onClick={() => setPreviewModalOpen(false)}
-          style={{
-            position: 'absolute',
-            top: -18,
-            right: -18,
-            zIndex: 1001,
-            width: 36, height: 36,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.45)', borderRadius: '50%',
-          }}
-        />
         {previewRegionResults.length > 0 ? (
           <Tabs
             defaultActiveKey="blocks"
@@ -1224,6 +1013,7 @@ function AppContent() {
                       }))}
                       activeBlockId={previewActiveBlockId}
                       onBlockChange={setPreviewActiveBlockId}
+                      onClose={() => setPreviewModalOpen(false)}
                     />
                   </div>
                 ),
@@ -1279,6 +1069,7 @@ function AppContent() {
             }))}
             activeBlockId={previewActiveBlockId}
             onBlockChange={setPreviewActiveBlockId}
+            onClose={() => setPreviewModalOpen(false)}
           />
         )}
       </Modal>
@@ -1307,6 +1098,28 @@ function AppContent() {
         cancelText="Cancel"
       >
         <p>You have unsaved changes. Discarding will lose all modifications since your last export.</p>
+      </Modal>
+      <Modal
+        title="Switch workbook?"
+        open={showWorkbookSwitchConfirm}
+        onCancel={() => { setShowWorkbookSwitchConfirm(false); pendingFileActionRef.current = null }}
+        onOk={handleConfirmWorkbookSwitch}
+        okText="Switch workbook"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+      >
+        <p>Opening another workbook will replace the current workbook and its extraction setup.</p>
+      </Modal>
+      <Modal
+        title="Close workbook?"
+        open={showWorkbookCloseConfirm}
+        onCancel={() => { setShowWorkbookCloseConfirm(false); pendingFileActionRef.current = null }}
+        onOk={handleConfirmWorkbookClose}
+        okText="Close workbook"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+      >
+        <p>Closing will remove the current workbook and its extraction setup from this workspace.</p>
       </Modal>
       <Modal
         title="Recover unsaved workspace?"

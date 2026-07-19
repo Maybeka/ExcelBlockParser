@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Use this guide to decide whether a packaged Excel Block Parser release is fit
-for distribution. Run it against an installed macOS DMG, Windows NSIS
-installer, or Ubuntu AppImage, not `npm run dev` or a browser build.
+Use this guide to decide whether a packaged Wails Excel Block Parser release is
+fit for distribution. Run it against the production installer/artifact for the
+target platform, not `npm run dev`, an Electron package, or a browser build.
 
 Each case has a pass/fail result. Stop the release and file a defect for any
 failure that corrupts session/output data, loses a recoverable workspace,
@@ -40,16 +40,13 @@ separate `output/` directory for generated JSON files and screenshots.
 
 ### Install The Artifact
 
-1. **macOS:** Mount the DMG, drag **Excel Block Parser** to Applications, then
-   launch it from Applications. Confirm macOS does not report an unidentified
-   developer or a damaged application.
-2. **Windows:** Run the NSIS installer, choose a test-only install directory,
-   complete the installation, then launch from the Start menu. Confirm Windows
-   SmartScreen does not identify an unsigned publisher.
-3. **Ubuntu:** Mark the AppImage executable, launch it, and confirm the window
-   opens without a missing-library error.
-4. Record the version shown by the artifact filename. It must match the release
-   tag. Do not use the legacy Wails path; it is not a release target.
+1. Install the Wails artifact using the platform-specific installation method
+   documented for the release candidate.
+2. Launch **Excel Block Parser** from the installed location. Confirm the
+   platform does not report an unidentified developer, an unsigned publisher,
+   a damaged application, or a missing GUI/WebView dependency.
+3. Record the version shown by the artifact filename. It must match the release
+   tag.
 
 ## Test Cases
 

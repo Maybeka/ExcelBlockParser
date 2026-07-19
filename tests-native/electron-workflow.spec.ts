@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 
 const root = process.cwd()
 const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
+const multiSheetWorkbookPath = resolve(root, 'examples', 'multi_sheet.xlsx')
 const sessionPath = resolve(root, 'examples', 'session.json')
 
 async function launch(extraEnv: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page }> {
@@ -24,7 +25,89 @@ test.describe('Electron native workflow', () => {
     try {
       await page.getByRole('button', { name: 'Open Excel' }).click()
       await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+      await page.getByRole('button', { name: 'Show workspace navigation' }).click()
       await expect(page.getByRole('navigation', { name: 'Workspace navigator' }).getByText('Sheet1', { exact: true })).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('keeps workspace navigation in sync with Univer sheet activation', async () => {
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: multiSheetWorkbookPath })
+    try {
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      await expect(page.getByRole('banner').getByText('multi_sheet.xlsx')).toBeVisible()
+      await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+      const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
+      const orders = navigator.locator('.workspace-item').filter({ hasText: 'Orders' })
+      await expect(orders).toBeVisible()
+
+      await page.getByRole('tab', { name: 'Orders', exact: true }).click()
+      await expect(orders).toHaveClass(/is-active/)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('parses an imported workbook configuration and opens the preview', async () => {
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: sessionPath })
+    try {
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+      await page.getByRole('button', { name: 'Import' }).click()
+      await expect(page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
+
+      await page.getByRole('button', { name: 'Parse & Preview' }).click()
+      await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
+      await expect(page.getByText('Block 1', { exact: true })).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('confirms before switching an already open workbook', async () => {
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath })
+    try {
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      const dialog = page.getByRole('dialog', { name: 'Switch workbook?' })
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole('button', { name: 'Switch workbook' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('confirms closing and clears the workspace navigator', async () => {
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath })
+    try {
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+
+      await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+      const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
+      await expect(navigator.getByText('Sheet1', { exact: true })).toBeVisible()
+
+      await page.getByLabel('Close workbook', { exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: 'Close workbook?' })
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+
+      await page.getByLabel('Close workbook', { exact: true }).click()
+      await dialog.getByRole('button', { name: 'Close workbook' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).not.toBeVisible()
+      await expect(navigator.getByText('No workbook open', { exact: true })).toBeVisible()
+      await expect(navigator.getByText('Open a workbook to see its sheets.', { exact: true })).toBeVisible()
+      await expect(navigator.getByText('Sheet1', { exact: true })).not.toBeVisible()
     } finally {
       await app.close()
     }
@@ -59,6 +142,10 @@ test.describe('Electron native workflow', () => {
       const previewPromise = app.waitForEvent('window')
       await page.evaluate(async () => (window as any).electronAPI.openPreviewWindow('native-preview'))
       const preview = await previewPromise
+      await expect(preview.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
+      await expect(preview.getByText('Source cells', { exact: true })).toBeVisible()
+      await expect(preview.getByText('Parsed output', { exact: true })).toBeVisible()
+      await expect(preview.getByRole('button', { name: 'Show JSON' })).toBeVisible()
       await expect(preview.getByRole('cell', { name: 'Alice', exact: true })).toBeVisible()
     } finally {
       await app.close()
@@ -69,7 +156,7 @@ test.describe('Electron native workflow', () => {
     const { app, page } = await launch({ ELECTRON_E2E_CANCEL_DIALOGS: '1' })
     try {
       await page.getByRole('button', { name: 'Open Excel' }).click()
-      await expect(page.getByText('Open an XLSX file to get started')).toBeVisible()
+      await expect(page.getByText('Select an Excel file, then choose the ranges you want to turn into structured data.', { exact: true })).toBeVisible()
       await page.getByRole('button', { name: 'Import' }).click()
       await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
     } finally {

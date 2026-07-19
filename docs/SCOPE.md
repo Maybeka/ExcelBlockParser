@@ -1,8 +1,9 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** Stabilization release 1.0.0
-**Primary runtime:** Electron, React, TypeScript
-**Last assessed:** 2026-07-16
+**Status:** v0.1 refinement; v1.0 not yet released
+**Production runtime target:** Wails, React, TypeScript, Go
+**Development runtime:** Electron, React, TypeScript
+**Last assessed:** 2026-07-19
 
 ## 1. Product Intent
 
@@ -42,7 +43,8 @@ The implemented application supports this general workflow:
 
 ### 3.1 Workbook ingestion and rendering
 
-- Native file selection for `.xlsx` and `.xls` file names through Electron.
+- Native file selection for `.xlsx` and `.xls` file names through the desktop
+  bridge.
 - Workbook loading through ExcelJS.
 - Conversion from ExcelJS workbook data to Univer workbook data.
 - Multi-sheet spreadsheet display via Univer.
@@ -96,19 +98,20 @@ The implemented application supports this general workflow:
 - Suggested reconciliation fixes, with support for auto-applicable fixes in the
   data model and UI workflow.
 
-### 3.6 Desktop integration and packaging
+### 3.6 Desktop integration
 
-- Electron main and preload processes with a context-isolated renderer.
+- Electron main and preload processes for fast local development and native
+  workflow diagnostics.
+- Wails bindings and Go application code, intended to become the v1.0
+  production desktop host.
 - Native file open/save dialogs for workbooks, sessions, and JSON export.
-- A separate Electron preview window, as well as a modal preview flow.
-- Electron Builder configuration for macOS (DMG), Windows (NSIS), and Linux
-  (AppImage).
+- Modal preview flow. The Electron-only preview window is not a v1 requirement.
 
 ## 4. Current Technical Architecture
 
 ```text
-Electron main process
-  - native dialogs, filesystem read/write, preview window, IPC data store
+Wails production host / Electron development host
+  - native dialogs, constrained filesystem access, recovery persistence
         |
         | context-isolated preload API
         v
@@ -123,11 +126,10 @@ ExcelJS
   - workbook ingestion and conversion source
 ```
 
-The active application path is Electron with `electron-vite`. The repository
-also contains a Go/Wails module and Wails configuration. It should be treated
-as legacy or an alternative implementation until a product decision formally
-selects one desktop shell. Maintaining both as production targets is out of
-scope for the prototype's next phase.
+Wails is the selected production desktop host for v1.0. Electron remains a
+development-only shell for rapid renderer work and diagnostic E2E coverage.
+The renderer must use the narrow bridge contract so both hosts retain behavioral
+parity during the v0.1 refinement period.
 
 ## 5. Quality and Verification Status
 
@@ -162,10 +164,11 @@ The current repository should not be represented as providing the following:
 - Guaranteed support for all Excel file features, especially macros, external
   links, pivot tables, complex charts, and every formula behavior.
 
-## 7. Proposed Code-Generation Extension
+## 7. Post-v1 Code Generation and Extensions
 
-Generating source files from parsed JSON is a valid product extension. It
-should be a separate, explicit phase after extraction and validation:
+Generating source files from parsed JSON is a valid post-v1 extension. It must
+not delay the v1.0 extraction product. After the extraction contract is stable,
+it should be a separate, explicit phase:
 
 ```text
 Workbook -> extraction template -> validated JSON -> generator recipe -> files
@@ -210,7 +213,7 @@ interpreter/environment, stdin or a temporary JSON input file, timeouts,
 cancellation, output-size limits, and captured diagnostics. Third-party
 generators require an explicit user trust decision.
 
-## 8. Gaps Before a Production Release
+## 8. v1.0 Release Gaps
 
 ### Product and UX
 
@@ -230,11 +233,13 @@ generators require an explicit user trust decision.
   independently testable domain services.
 - Separate `workbook`, `template`, `extraction`, `validation`, `ui`, and
   `platform` ownership boundaries.
-- Decide between Electron and Wails, then remove or isolate the unused path.
-- Harden Electron IPC and filesystem boundaries; use the narrowest practical
-  privileges and validate all input paths/data at the process boundary.
+- Define a single host-neutral desktop bridge and bring Wails behavior to
+  parity with the supported workflow.
+- Harden Wails filesystem and dialog boundaries; use the narrowest practical
+  privileges and validate all input paths/data at the Go boundary.
 - Add fixture-based integration tests from real workbooks to expected JSON.
-- Add Electron E2E tests for open/save/import/export/preview workflows.
+- Add fixture-based bridge integration and Wails production E2E tests for
+  open/save/import/export/preview/recovery workflows.
 - Add CI for linting, unit tests, builds, and packaging smoke tests.
 
 ### Release readiness
@@ -245,15 +250,11 @@ generators require an explicit user trust decision.
 - Define versioning, changelog, migration, crash reporting, and support policy.
 - Establish code signing and notarization for distributed desktop installers.
 
-## 9. Recommended Delivery Sequence
+## 9. Delivery Boundary
 
-1. Review and commit the existing untracked region/filter/session work.
-2. Write and stabilize the extraction-template schema and sample templates.
-3. Consolidate on Electron and separate domain logic from UI orchestration.
-4. Redesign the workspace around the primary extraction workflow.
-5. Add workbook-to-JSON integration and native Electron E2E coverage.
-6. Ship one bundled Python generator using the documented generator contract.
-7. Add release engineering, security hardening, and platform distribution.
+The v1.0 path is limited to refining the existing extraction product and
+making the Wails host production-ready. Extensions and generators begin only
+after the v1.0 acceptance gate is passed.
 
 ## 10. Definition of a Production-Ready First Release
 

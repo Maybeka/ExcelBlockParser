@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { detectColumnChanges } from '../services/reconciliation'
 import { loadExcelJsWorkbook } from '../services/exceljsWorkbook'
-import { parseWorkbook, suggestMappingsForWorkbook } from '../services/extraction'
+import { inferColumnType, parseWorkbook, suggestMappingsForWorkbook } from '../services/extraction'
 import type { BlockConfig, CellRange, RegionConfig } from '../types'
 
 const fixture = (name: string) => resolve(process.cwd(), 'examples', name)
@@ -51,6 +51,19 @@ describe('real Excel workbook extraction', () => {
     const regions: RegionConfig[] = [{ id: 'groups', label: 'groups', activeSheet: 'Regions', range: range('A1:B5', 0, 0, 4, 1), splitRules: [{ type: 'emptyRow' }], blocks: [], collapsed: false, selectionLocked: false }]
     const regionExecution = parseWorkbook(await workbook('m2_integration.xlsx'), [block()], regions)
     expect(regionExecution.result.regionResults?.[0].blocks).toHaveLength(2)
+  })
+
+  it('infers date columns and emits no rows when every column is skipped', async () => {
+    expect(inferColumnType(['2026-07-18', '2026-08-01'])).toBe('date')
+    expect(inferColumnType([new Date('2026-07-18'), new Date('2026-08-01')])).toBe('date')
+    expect(inferColumnType(['ORD-001', 'ORD-002'])).toBe('string')
+
+    const execution = parseWorkbook(await workbook('m2_integration.xlsx'), [block({
+      skipEmptyColumns: false,
+      columns: block().columns.map(column => ({ ...column, skip: true })),
+    })], [])
+    expect(execution.result.data.records).toEqual([])
+    expect(execution.result.blocks[0]).toMatchObject({ rowCount: 0, data: [] })
   })
 
   it('reports invalid templates, missing sheets, and failed conversions deterministically', async () => {

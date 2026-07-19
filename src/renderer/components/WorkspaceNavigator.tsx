@@ -26,10 +26,10 @@ function ListControls({ canUp, canDown, onMoveUp, onMoveDown }: { canUp: boolean
 }
 
 export function WorkspaceNavigator({ fileName, sheetNames, activeSheet, blocks, regions, activeBlockId, activeRegionId, onOpen, onSelectSheet, onSelectBlock, onSelectRegion, onMoveBlock, onMoveRegion }: WorkspaceNavigatorProps) {
-  return <nav aria-label="Workspace navigator" style={{ height: '100%', overflow: 'auto', padding: 12, background: '#fcfcfd' }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+  return <nav aria-label="Workspace navigator" className="workspace-nav">
+    <div className="workspace-file-heading">
       <FileExcelOutlined style={{ color: '#107c41', fontSize: 18 }} />
-      <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={fileName ?? undefined}>{fileName ?? 'No workbook open'}</span>
+      <span className="workspace-file-name" title={fileName ?? undefined}>{fileName ?? 'No workbook open'}</span>
       <Tooltip title="Open workbook"><Button aria-label="Open workbook" size="small" type="text" icon={<FolderOpenOutlined />} onClick={onOpen} /></Tooltip>
     </div>
 

@@ -93,26 +93,16 @@ export function PreviewTable({ previewData, visibleModes, searchText }: PreviewT
       {
         title: '#',
         key: 'rowIndex',
-        width: 45,
-        onCell: (record: FlatRow) => {
-          const isMerged = visibleModes.length === 2 && record.type === 'raw'
-          const style: React.CSSProperties = isMerged
-            ? {
-                background: `linear-gradient(to bottom, #8c8c8c 50%, #1677ff 50%) right / 3px 100% no-repeat, #fafafa`,
-              }
-            : {
-                background: '#fafafa',
-                boxShadow: `inset -3px 0 0 0 ${record.type === 'raw' ? '#8c8c8c' : '#1677ff'}`,
-              }
-          const className = 'idx-cell'
-          if (visibleModes.length === 2) {
-            return { style, className, rowSpan: record.type === 'raw' ? 2 : 0 }
-          }
-          return { style, className }
-        },
+        width: 48,
         render: (_: unknown, record: FlatRow) => (
-          <span>{record.rowIndex + 1}</span>
+          <span className="preview-row-number">{record.rowIndex + 1}</span>
         ),
+      },
+      {
+        title: 'Type',
+        key: 'type',
+        width: 62,
+        render: (_: unknown, record: FlatRow) => <span className={`preview-source-tag preview-source-${record.type}`}>{record.type === 'raw' ? 'RAW' : 'PARSED'}</span>,
       },
       ...dataColumns,
     ]
@@ -123,44 +113,9 @@ export function PreviewTable({ previewData, visibleModes, searchText }: PreviewT
   }
 
   return (
-    <div style={{ fontSize: 12 }}>
-      <style>{`
-        .ant-table.dense-table {
-          border-radius: 0 !important;
-        }
-        .dense-table .ant-table-cell {
-          padding: 2px 6px !important;
-          line-height: 1.3;
-          border-color: #bbb !important;
-        }
-        .dense-table .ant-table-container {
-          border-radius: 0 !important;
-        }
-        .dense-table .ant-table-header {
-          border-radius: 0 !important;
-        }
-        .dense-table .ant-table-thead > tr > th {
-          padding: 3px 6px !important;
-          font-size: 13px;
-          font-weight: 600;
-          text-align: center !important;
-          border-radius: 0 !important;
-        }
-        .dense-table .idx-cell {
-          text-align: center !important;
-          font-size: 13px !important;
-          font-weight: 600 !important;
-          color: rgba(0, 0, 0, 0.88) !important;
-        }
-        .dense-table tr.pair-end > td {
-          border-bottom: 4px solid #d9d9d9 !important;
-        }
-        .dense-table tr.pair-start > td:first-child {
-          border-bottom: 4px solid #d9d9d9 !important;
-        }
-      `}</style>
+    <div className="preview-table-wrap">
       <Table
-        className="dense-table"
+        className="preview-table"
         dataSource={filteredRows}
         columns={tableColumns}
         rowKey="key"
@@ -170,16 +125,10 @@ export function PreviewTable({ previewData, visibleModes, searchText }: PreviewT
         locale={{
           emptyText: <Empty description="No data to preview" />,
         }}
-        onRow={(record: FlatRow) => ({
-          style: {
-            backgroundColor: record.type === 'raw' ? '#fafafa' : '#f5f9ff',
-          },
-        })}
+        onRow={() => ({})}
         rowClassName={(record: FlatRow) => {
-          if (visibleModes.length === 2) {
-            return record.type === 'raw' ? 'pair-start' : 'pair-end'
-          }
-          return ''
+          const pairClass = visibleModes.length === 2 ? (record.type === 'raw' ? 'preview-pair-start' : 'preview-pair-end') : ''
+          return `preview-row-${record.type} ${pairClass}`
         }}
         scroll={{ x: 'max-content' }}
         sticky
