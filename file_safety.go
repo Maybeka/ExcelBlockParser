@@ -192,7 +192,12 @@ func saveRecovery(baseDir, jsonData string) error {
 		return fmt.Errorf("unable to close recovery data: %w", err)
 	}
 	if err := os.Rename(temporaryPath, target); err != nil {
-		return fmt.Errorf("unable to commit recovery data: %w", err)
+		if runtime.GOOS != "windows" || os.Remove(target) != nil {
+			return fmt.Errorf("unable to commit recovery data: %w", err)
+		}
+		if err := os.Rename(temporaryPath, target); err != nil {
+			return fmt.Errorf("unable to commit recovery data: %w", err)
+		}
 	}
 	return nil
 }

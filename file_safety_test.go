@@ -71,7 +71,10 @@ func TestJSONAndRecoveryValidation(t *testing.T) {
 	if err := saveRecovery(directory, `{"blocks":[]}`); err != nil {
 		t.Fatalf("save recovery: %v", err)
 	}
-	if content, err := loadRecovery(directory); err != nil || content != `{"blocks":[]}` {
+	if err := saveRecovery(directory, `{"blocks":["updated"]}`); err != nil {
+		t.Fatalf("replace recovery: %v", err)
+	}
+	if content, err := loadRecovery(directory); err != nil || content != `{"blocks":["updated"]}` {
 		t.Fatalf("load recovery = %q, %v", content, err)
 	}
 	if err := clearRecovery(directory); err != nil {
