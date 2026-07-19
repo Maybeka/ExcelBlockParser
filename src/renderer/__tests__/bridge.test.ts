@@ -28,12 +28,14 @@ describe('Wails bridge contract', () => {
     const app = runtime.main!.App!
     const bridge = createWailsBridge(runtime)
 
-    expect(await bridge.openXlsx()).toBe('/tmp/workbook.xlsx')
-    expect([...new Uint8Array(await bridge.readFile('/tmp/workbook.xlsx'))]).toEqual([1, 2, 3])
-    expect(await bridge.saveJson('session.json', '{"version":2}')).toEqual({ success: true, filePath: '/tmp/session.json', error: '' })
-    expect(await bridge.openJson()).toEqual({ filePath: '/tmp/session.json', content: '{"version":2}' })
+    expect(await bridge.openXlsx()).toEqual({ status: 'ok', value: '/tmp/workbook.xlsx' })
+    const readResult = await bridge.readFile('/tmp/workbook.xlsx')
+    expect(readResult.status).toBe('ok')
+    if (readResult.status === 'ok') expect([...new Uint8Array(readResult.value)]).toEqual([1, 2, 3])
+    expect(await bridge.saveJson('session.json', '{"version":2}')).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json' } })
+    expect(await bridge.openJson()).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json', content: '{"version":2}' } })
     await bridge.saveRecovery('{"version":2}')
-    expect(await bridge.loadRecovery()).toBe('{"version":2}')
+    expect(await bridge.loadRecovery()).toEqual({ status: 'ok', value: '{"version":2}' })
     await bridge.clearRecovery()
     await bridge.openPreviewWindow('block')
     await bridge.setPreviewData('block', { blockId: 'block' })
@@ -47,10 +49,24 @@ describe('Wails bridge contract', () => {
 
   it('preserves cancellation values and rejects an incomplete generated binding', async () => {
     const bridge = createWailsBridge(wailsRuntime({ OpenXlsx: async () => '', OpenJson: async () => null }))
-    await expect(bridge.openXlsx()).resolves.toBeNull()
-    await expect(bridge.openJson()).resolves.toBeNull()
+    await expect(bridge.openXlsx()).resolves.toEqual({ status: 'cancelled' })
+    await expect(bridge.openJson()).resolves.toEqual({ status: 'cancelled' })
 
     const incompleteRuntime = { main: { App: { OpenXlsx: async () => '' } } } as unknown as WailsGoAPI
     expect(() => createWailsBridge(incompleteRuntime)).toThrow('missing a required desktop capability')
+  })
+
+  it('translates Wails host failures into structured bridge errors', async () => {
+    const bridge = createWailsBridge(wailsRuntime({
+      ReadFile: async () => { throw new Error('The workbook must be selected through the Open dialog.') },
+    }))
+
+    await expect(bridge.readFile('/tmp/unapproved.xlsx')).resolves.toEqual({
+      status: 'error',
+      error: {
+        code: 'access',
+        message: 'The workbook must be selected through the Open dialog.',
+      },
+    })
   })
 })

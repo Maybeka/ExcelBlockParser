@@ -8,7 +8,7 @@ const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
 const multiSheetWorkbookPath = resolve(root, 'examples', 'multi_sheet.xlsx')
 const sessionPath = resolve(root, 'examples', 'session.json')
 
-async function launch(extraEnv: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = false): Promise<{ app: ElectronApplication; page: Page }> {
   const executablePath = process.env.ELECTRON_E2E_EXECUTABLE
   const app = await electron.launch({
     ...(executablePath ? { executablePath, args: [] } : { args: [resolve(root, 'out', 'main', 'index.js')] }),
@@ -16,6 +16,13 @@ async function launch(extraEnv: Record<string, string> = {}): Promise<{ app: Ele
   })
   const page = await app.firstWindow()
   await page.getByText('Excel Block Parser').waitFor()
+  if (!preserveRecovery) {
+    const recoveryDialog = page.getByRole('dialog', { name: 'Recover unsaved workspace?' })
+    if (await recoveryDialog.isVisible().catch(() => false)) {
+      await recoveryDialog.getByRole('button', { name: 'Discard' }).click()
+    }
+    await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
+  }
   return { app, page }
 }
 
@@ -268,9 +275,9 @@ test.describe('Electron native workflow', () => {
         await api.clearRecovery()
         await api.saveRecovery(content)
       }, recovery)
-      await expect.poll(() => page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toBe(recovery)
+      await expect.poll(() => page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toEqual({ status: 'ok', value: recovery })
       await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
-      await expect.poll(() => page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toBeNull()
+      await expect.poll(() => page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toEqual({ status: 'ok', value: null })
     } finally {
       await app.close()
     }
@@ -289,7 +296,7 @@ test.describe('Electron native workflow', () => {
       await first.app.close()
     }
 
-    const second = await launch()
+    const second = await launch({}, true)
     try {
       const dialog = second.page.getByRole('dialog', { name: 'Recover unsaved workspace?' })
       await expect(dialog).toBeVisible()
@@ -314,13 +321,13 @@ test.describe('Electron native workflow', () => {
       await first.app.close()
     }
 
-    const second = await launch()
+    const second = await launch({}, true)
     try {
       const dialog = second.page.getByRole('dialog', { name: 'Recover unsaved workspace?' })
       await expect(dialog).toBeVisible()
       await dialog.getByRole('button', { name: 'Discard' }).click()
       await expect(second.page.getByText('Select an Excel file, then choose the ranges you want to turn into structured data.', { exact: true })).toBeVisible()
-      await expect.poll(() => second.page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toBeNull()
+      await expect.poll(() => second.page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toEqual({ status: 'ok', value: null })
     } finally {
       await second.app.close()
     }

@@ -5,15 +5,16 @@
  * Wails:    uses generated Go bindings from wailsjs/go/main/App
  * Browser:  throws descriptive errors (used for dev/testing)
  */
+import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../../shared/bridgeResult'
 
 export interface BridgeAPI {
-  openXlsx: () => Promise<string | null>
-  readFile: (filePath: string) => Promise<ArrayBuffer>
-  saveJson: (defaultName: string, jsonData: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
-  openJson: () => Promise<{ filePath: string; content: string } | null>
-  saveRecovery: (jsonData: string) => Promise<void>
-  loadRecovery: () => Promise<string | null>
-  clearRecovery: () => Promise<void>
+  openXlsx: () => Promise<BridgeResult<string>>
+  readFile: (filePath: string) => Promise<BridgeResult<ArrayBuffer>>
+  saveJson: (defaultName: string, jsonData: string) => Promise<BridgeResult<{ filePath: string }>>
+  openJson: () => Promise<BridgeResult<{ filePath: string; content: string }>>
+  saveRecovery: (jsonData: string) => Promise<BridgeResult<void>>
+  loadRecovery: () => Promise<BridgeResult<string | null>>
+  clearRecovery: () => Promise<BridgeResult<void>>
   log: (level: string, ...args: unknown[]) => void
   openPreviewWindow: (blockId: string) => Promise<void>
   setPreviewData: (blockId: string, data: unknown) => Promise<void>
@@ -63,37 +64,44 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
 
   return {
     openXlsx: async () => {
-      const path = await App.OpenXlsx()
-      return path || null
+      try {
+        const path = await App.OpenXlsx()
+        return path ? bridgeOk(path) : bridgeCancelled()
+      } catch (error) { return bridgeError(error) }
     },
     readFile: async (filePath: string) => {
-      const raw: unknown = await App.ReadFile(filePath)
-      if (!raw) throw new Error(`Failed to read file: ${filePath}`)
-      if (typeof raw === 'string') {
-        const binary = atob(raw)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i)
+      try {
+        const raw: unknown = await App.ReadFile(filePath)
+        if (!raw) return bridgeError(`Failed to read file: ${filePath}`)
+        if (typeof raw === 'string') {
+          const binary = atob(raw)
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i)
+          }
+          return bridgeOk(bytes.buffer as ArrayBuffer)
         }
-        return bytes.buffer as ArrayBuffer
-      }
-      if (raw instanceof Uint8Array) {
-        return raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer
-      }
-      if (Array.isArray(raw)) {
-        return new Uint8Array(raw).buffer as ArrayBuffer
-      }
-      throw new Error(`Unexpected file data type: ${typeof raw}`)
+        if (raw instanceof Uint8Array) return bridgeOk(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer)
+        if (Array.isArray(raw)) return bridgeOk(new Uint8Array(raw).buffer as ArrayBuffer)
+        return bridgeError(`Unexpected file data type: ${typeof raw}`)
+      } catch (error) { return bridgeError(error) }
     },
     saveJson: async (defaultName: string, jsonData: string) => {
-      return App.SaveJson(defaultName, jsonData)
+      try {
+        const result = await App.SaveJson(defaultName, jsonData)
+        if (result.success && result.filePath) return bridgeOk({ filePath: result.filePath })
+        return result.error?.toLowerCase() === 'cancelled' ? bridgeCancelled() : bridgeError(result.error || 'Unable to save JSON.')
+      } catch (error) { return bridgeError(error) }
     },
     openJson: async () => {
-      return App.OpenJson()
+      try {
+        const result = await App.OpenJson()
+        return result ? bridgeOk(result) : bridgeCancelled()
+      } catch (error) { return bridgeError(error) }
     },
-    saveRecovery: async (jsonData) => { await App.SaveRecovery(jsonData) },
-    loadRecovery: async () => App.LoadRecovery(),
-    clearRecovery: async () => { await App.ClearRecovery() },
+    saveRecovery: async (jsonData) => { try { await App.SaveRecovery(jsonData); return bridgeOk(undefined) } catch (error) { return bridgeError(error) } },
+    loadRecovery: async () => { try { return bridgeOk(await App.LoadRecovery()) } catch (error) { return bridgeError(error) } },
+    clearRecovery: async () => { try { await App.ClearRecovery(); return bridgeOk(undefined) } catch (error) { return bridgeError(error) } },
     log: (level: string, ...args: unknown[]) => {
       console.log(`[${level}]`, ...args)
     },
@@ -120,13 +128,13 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
 
 function createBrowserBridge(): BridgeAPI {
   return {
-    openXlsx: async () => { throw new Error('openXlsx requires Electron or Wails') },
-    readFile: async () => { throw new Error('readFile requires Electron or Wails') },
-    saveJson: async () => { throw new Error('saveJson requires Electron or Wails') },
-    openJson: async () => { throw new Error('openJson requires Electron or Wails') },
-    saveRecovery: async (jsonData) => { localStorage.setItem('excel-block-parser.recovery', jsonData) },
-    loadRecovery: async () => localStorage.getItem('excel-block-parser.recovery'),
-    clearRecovery: async () => { localStorage.removeItem('excel-block-parser.recovery') },
+    openXlsx: async () => bridgeError('openXlsx requires Electron or Wails'),
+    readFile: async () => bridgeError('readFile requires Electron or Wails'),
+    saveJson: async () => bridgeError('saveJson requires Electron or Wails'),
+    openJson: async () => bridgeError('openJson requires Electron or Wails'),
+    saveRecovery: async (jsonData) => { localStorage.setItem('excel-block-parser.recovery', jsonData); return bridgeOk(undefined) },
+    loadRecovery: async () => bridgeOk(localStorage.getItem('excel-block-parser.recovery')),
+    clearRecovery: async () => { localStorage.removeItem('excel-block-parser.recovery'); return bridgeOk(undefined) },
     log: (level, ...args) => { console.log(`[${level}]`, ...args) },
     openPreviewWindow: async () => { console.warn('openPreviewWindow requires Electron or Wails') },
     setPreviewData: async () => { console.warn('setPreviewData requires Electron or Wails') },

@@ -223,8 +223,9 @@ function AppContent() {
 
   useEffect(() => {
     let active = true
-    void getBridge().loadRecovery().then((content) => {
-      if (!active || !content) return
+    void getBridge().loadRecovery().then((result) => {
+      if (!active || result.status !== 'ok' || !result.value) return
+      const content = result.value
       try {
         const loaded = loadSession(JSON.parse(content))
         if (loaded.session) setRecoveryContent(content)
@@ -242,8 +243,8 @@ function AppContent() {
     if (!hasUnsavedChanges) return
     const timer = window.setTimeout(() => {
       const session = serializeSession(blocks, regions, activeBlockId, focusMode, parseResult)
-      void getBridge().saveRecovery(JSON.stringify({ ...session, sourceFileName: currentFileName ?? undefined })).catch((error) => {
-        console.warn('Unable to save workspace recovery data:', error)
+      void getBridge().saveRecovery(JSON.stringify({ ...session, sourceFileName: currentFileName ?? undefined })).then((result) => {
+        if (result.status === 'error') console.warn('Unable to save workspace recovery data:', result.error.message)
       })
     }, 1000)
     return () => window.clearTimeout(timer)
@@ -665,12 +666,12 @@ function AppContent() {
 
       const jsonStr = JSON.stringify(session, null, 2)
       const result = await getBridge().saveJson('session.json', jsonStr)
-      if (result.success) {
+      if (result.status === 'ok') {
         setHasUnsavedChanges(false)
         void getBridge().clearRecovery()
-      } else {
-        message.error(result.error || 'Unable to save the JSON file. Your workspace recovery remains available.')
-        console.error('Save failed:', result.error)
+      } else if (result.status === 'error') {
+        message.error(result.error.message || 'Unable to save the JSON file. Your workspace recovery remains available.')
+        console.error('Save failed:', result.error.message)
       }
     } catch (err) {
       message.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -694,15 +695,19 @@ function AppContent() {
     setImportError(null)
     try {
       const result = await getBridge().openJson()
-      if (!result) return // cancelled
-      JSON.parse(result.content)
+      if (result.status === 'cancelled') return
+      if (result.status === 'error') {
+        setImportError(`Unable to import config: ${result.error.message}`)
+        return
+      }
+      JSON.parse(result.value.content)
 
       const activeCount = blocksRef.current.filter(b => b.range).length
       if (activeCount > 0) {
-        setPendingImportContent(result.content)
+        setPendingImportContent(result.value.content)
         setShowImportWarning(true)
       } else {
-        applyImportContent(result.content)
+        applyImportContent(result.value.content)
       }
     } catch (err) {
       const detail = err instanceof SyntaxError ? err.message : String(err)

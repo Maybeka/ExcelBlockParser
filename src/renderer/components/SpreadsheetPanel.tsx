@@ -260,13 +260,18 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
     const doLoad = async () => {
       try {
         const bridge = getBridge()
-        const filePath = await bridge.openXlsx()
-        if (!filePath) return
+        const openResult = await bridge.openXlsx()
+        if (openResult.status === 'cancelled') return
+        if (openResult.status === 'error') throw new Error(openResult.error.message)
+        const filePath = openResult.value
 
         setLoading(true)
         setError(null)
 
-        const arrayBuffer = await withTimeout(bridge.readFile(filePath), 'Reading the workbook timed out after 30 seconds.')
+        const readResult = await withTimeout(bridge.readFile(filePath), 'Reading the workbook timed out after 30 seconds.')
+        if (readResult.status === 'error') throw new Error(readResult.error.message)
+        if (readResult.status === 'cancelled') return
+        const arrayBuffer = readResult.value
         const fileName = filePath.split(/[/\\]/).pop() ?? 'workbook.xlsx'
 
         const api = univerAPIRef.current
