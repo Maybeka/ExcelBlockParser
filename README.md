@@ -39,7 +39,7 @@ npm run test:main     # main-process file-safety policy
 npm run test:unit     # renderer/unit and real-workbook integration tests
 npm test              # browser-mode UI tests
 npm run test:native   # built Electron end-to-end development workflow
-npm run test:packaged # Electron package smoke test; not release acceptance
+npm run test:packaged # optional Electron package smoke test; not a CI/release gate
 npm run test:release  # release-tag/package-version consistency
 ```
 
