@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -110,13 +111,56 @@ func readJSONFile(path string, maxBytes int64, label string) (string, error) {
 }
 
 func writeJSONFile(path string, jsonData string) error {
+	if !strings.EqualFold(filepath.Ext(path), ".json") {
+		return errors.New("export path must use the .json extension")
+	}
 	if int64(len([]byte(jsonData))) > maxSessionBytes {
 		return errors.New("export exceeds the 25 MB limit")
 	}
 	if !json.Valid([]byte(jsonData)) {
 		return errors.New("export data is not valid JSON")
 	}
-	return os.WriteFile(path, []byte(jsonData), 0o644)
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("export path must be a regular file")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("unable to inspect export path: %w", err)
+	}
+
+	directory := filepath.Dir(path)
+	if info, err := os.Stat(directory); err != nil || !info.IsDir() {
+		if err != nil {
+			return fmt.Errorf("export directory is unavailable: %w", err)
+		}
+		return errors.New("export directory is not a directory")
+	}
+	temporary, err := os.CreateTemp(directory, ".export-*.tmp")
+	if err != nil {
+		return fmt.Errorf("unable to create export file: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.WriteString(jsonData); err != nil {
+		temporary.Close()
+		return fmt.Errorf("unable to write export data: %w", err)
+	}
+	if err := temporary.Chmod(0o644); err != nil {
+		temporary.Close()
+		return fmt.Errorf("unable to set export permissions: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("unable to close export data: %w", err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		if runtime.GOOS != "windows" || os.Remove(path) != nil {
+			return fmt.Errorf("unable to commit export data: %w", err)
+		}
+		if err := os.Rename(temporaryPath, path); err != nil {
+			return fmt.Errorf("unable to commit export data: %w", err)
+		}
+	}
+	return nil
 }
 
 func recoveryFilePath(baseDir string) string {

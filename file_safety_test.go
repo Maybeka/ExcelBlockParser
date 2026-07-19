@@ -104,3 +104,34 @@ func TestRecoveryAndExportRejectCorruptOrOversizedData(t *testing.T) {
 		t.Fatal("expected oversized session file to be rejected")
 	}
 }
+
+func TestWriteJSONFileUsesSafeRegularDestination(t *testing.T) {
+	directory := t.TempDir()
+	destination := filepath.Join(directory, "output.json")
+	if err := writeJSONFile(destination, `{"version":2}`); err != nil {
+		t.Fatalf("write JSON file: %v", err)
+	}
+	if err := writeJSONFile(destination, `{"version":3}`); err != nil {
+		t.Fatalf("replace JSON file: %v", err)
+	}
+	content, err := os.ReadFile(destination)
+	if err != nil || string(content) != `{"version":3}` {
+		t.Fatalf("exported content = %q, %v", content, err)
+	}
+	if err := writeJSONFile(filepath.Join(directory, "output.txt"), `{"version":2}`); err == nil {
+		t.Fatal("expected non-JSON destination to be rejected")
+	}
+
+	target := writeTestFile(t, directory, "target.json", `{"safe":true}`)
+	link := filepath.Join(directory, "link.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("create export symlink: %v", err)
+	}
+	if err := writeJSONFile(link, `{"unsafe":true}`); err == nil {
+		t.Fatal("expected export symlink to be rejected")
+	}
+	content, err = os.ReadFile(target)
+	if err != nil || string(content) != `{"safe":true}` {
+		t.Fatalf("symlink target changed = %q, %v", content, err)
+	}
+}
