@@ -1,7 +1,8 @@
 /**
  * Generates test Excel files for manual QA of excel-block-parser.
- * Usage: node examples/generate-test-data.mjs
+ * Usage: node examples/generate-test-data.mjs [--performance]
  * Output: examples/test_data.xlsx, test_data_v2.xlsx, multi_sheet.xlsx, empty.xlsx, m2_integration.xlsx
+ * Optional: examples/performance_50000.xlsx (exactly 50,000 cells)
  */
 import ExcelJS from 'exceljs';
 import { writeFile } from 'node:fs/promises';
@@ -185,6 +186,18 @@ async function generateM2Integration() {
   await writeWorkbook(wb, 'm2_integration.xlsx');
 }
 
+async function generatePerformanceFixture() {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Records');
+  const columnCount = 10;
+  const dataRowCount = 4_999;
+  ws.addRow(Array.from({ length: columnCount }, (_, index) => `column${index + 1}`));
+  for (let row = 1; row <= dataRowCount; row++) {
+    ws.addRow(Array.from({ length: columnCount }, (_, column) => column === 0 ? row : `value-${row}-${column}`));
+  }
+  await writeWorkbook(wb, 'performance_50000.xlsx');
+}
+
 // ──── Main ────────────────────────────────────────────────────────────────────
 async function main() {
   console.log('Generating test Excel files in examples/ ...\n');
@@ -193,7 +206,8 @@ async function main() {
   await generateMultiSheet();
   await generateEmpty();
   await generateM2Integration();
-  console.log('\nDone. All 5 files generated.');
+  if (process.argv.includes('--performance')) await generatePerformanceFixture();
+  console.log(`\nDone. ${process.argv.includes('--performance') ? 'All 6 files' : 'All 5 files'} generated.`);
 }
 
 main().catch(err => {

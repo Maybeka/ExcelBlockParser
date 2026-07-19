@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { loadExcelJsWorkbook } from '../services/exceljsWorkbook'
 import { parseWorkbook } from '../services/extraction'
+import { adaptPreviewData } from '../services/previewDataAdapter'
 import { deserializeSession, serializeSession } from '../services/serializer'
 import type { BlockConfig, CellRange } from '../types'
 
@@ -49,7 +50,7 @@ describe('stabilization release candidate', () => {
   })
 
   it('loads and extracts a 50,000-cell workbook within the release threshold', async () => {
-    const rowCount = 5_000
+    const rowCount = 4_999
     const columnCount = 10
     const source = new ExcelJS.Workbook()
     const sheet = source.addWorksheet('Records')
@@ -61,12 +62,31 @@ describe('stabilization release candidate', () => {
     const input = await source.xlsx.writeBuffer()
     const startedAt = performance.now()
     const workbook = await loadExcelJsWorkbook(input)
+    const loadedAt = performance.now()
     const execution = parseWorkbook(workbook, [recordsBlock(range(`A1:J${rowCount + 1}`, 0, 0, rowCount, columnCount - 1), columnCount)], [])
-    const elapsedMs = performance.now() - startedAt
+    const parsedAt = performance.now()
 
     expect(execution.result.success).toBe(true)
     expect(execution.result.blocks[0].rowCount).toBe(rowCount)
     expect((execution.result.data.records as Record<string, unknown>[])[rowCount - 1]).toMatchObject({ column1: rowCount, column10: `value-${rowCount}-9` })
-    expect(elapsedMs).toBeLessThan(12_000)
+    const preview = adaptPreviewData({ ...recordsBlock(range(`A1:J${rowCount + 1}`, 0, 0, rowCount, columnCount - 1), columnCount), dataSnapshot: null }, execution.result)
+    const previewPreparedAt = performance.now()
+    const exported = JSON.stringify(execution.result.data)
+    const completedAt = performance.now()
+
+    expect(preview.parsedRows).toHaveLength(rowCount)
+    expect(exported.length).toBeGreaterThan(0)
+    expect(completedAt - startedAt).toBeLessThan(12_000)
+
+    if (process.env.BENCHMARK_PERFORMANCE === '1') {
+      console.info(JSON.stringify({
+        fixture: '50,000 cells (10 columns x 5,000 rows including header)',
+        loadAndConvertMs: Math.round(loadedAt - startedAt),
+        parseMs: Math.round(parsedAt - loadedAt),
+        previewDataPreparationMs: Math.round(previewPreparedAt - parsedAt),
+        exportJsonMs: Math.round(completedAt - previewPreparedAt),
+        totalMs: Math.round(completedAt - startedAt),
+      }))
+    }
   }, 30_000)
 })

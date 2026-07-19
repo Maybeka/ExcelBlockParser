@@ -259,18 +259,20 @@ visible after each failed import.
 
 **Steps**
 
-1. On the release test runner or a documented comparable machine, run the
-   automated release-candidate suite from the release commit:
+1. On the release test runner or a documented comparable machine, generate the
+   ignored fixture and run the benchmark harness from the release commit:
 
    ```bash
-   npm run test:unit -- --run src/renderer/__tests__/releaseCandidate.test.ts
+   npm run generate:fixtures -- --performance
+   npm run benchmark:workbook
    ```
 
-2. Record the elapsed time for the generated 50,000-cell workbook case.
+2. Attach the reported phase timings and total for the 50,000-cell workbook
+   case to the release record.
 
 **Expected result**
 
-- The 50,000-cell load-and-extract case completes under 12 seconds.
+- The 50,000-cell load-and-extract-to-JSON case completes under 12 seconds.
 - Do not treat this as a guarantee for every file smaller than 100 MB; files
   over the size limit or read/conversion guard are intentionally rejected.
 
