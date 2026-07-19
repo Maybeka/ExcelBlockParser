@@ -18,6 +18,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: '1.22.x' }
       - run: npm ci
+      - run: npm run test:release
       - run: go test ./...
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
       - run: npm run package:wails:win
@@ -27,6 +28,6 @@ jobs:
           path: release-wails/
           if-no-files-found: error
 
-# This workflow intentionally does not create a GitHub release. Publishing,
-# Authenticode signing, installer validation, and platform acceptance are M6
-# gates and must be recorded before a v1 release is published.
+# This workflow intentionally does not create a GitHub release. Windows 11 ZIP
+# acceptance is a v1 gate; Authenticode signing and installer distribution are
+# post-v1 work.

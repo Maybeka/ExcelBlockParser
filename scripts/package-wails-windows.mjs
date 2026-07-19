@@ -2,13 +2,15 @@ import { createHash } from 'node:crypto'
 import { readFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
+import { releaseVersionForPackage } from './release-version.mjs'
 
 const root = process.cwd()
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+const releaseVersion = releaseVersionForPackage(pkg.version, process.env.GITHUB_REF_TYPE, process.env.GITHUB_REF_NAME)
 const wails = process.env.WAILS_BIN || resolve(spawnSync('go', ['env', 'GOPATH'], { encoding: 'utf8' }).stdout.trim(), 'bin', 'wails.exe')
 const executable = resolve(root, 'build', 'bin', 'excel-block-parser.exe')
 const outputDir = resolve(root, 'release-wails')
-const archiveName = `ExcelBlockParser-v${pkg.version}-windows-x64.zip`
+const archiveName = `ExcelBlockParser-v${releaseVersion}-windows-x64.zip`
 const archive = resolve(outputDir, archiveName)
 
 function run(command, args) {

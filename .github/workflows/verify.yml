@@ -17,6 +17,7 @@ jobs:
       - run: npx tsc --noEmit -p tsconfig.web.json
       - run: npx tsc --noEmit -p tsconfig.node.json
       - run: npm run test:main
+      - run: npm run test:release
       - run: npm run test:unit
       - run: npm test
 

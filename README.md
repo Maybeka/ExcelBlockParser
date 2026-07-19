@@ -40,7 +40,12 @@ npm run test:unit     # renderer/unit and real-workbook integration tests
 npm test              # browser-mode UI tests
 npm run test:native   # built Electron end-to-end development workflow
 npm run test:packaged # Electron package smoke test; not release acceptance
+npm run test:release  # release-tag/package-version consistency
 ```
+
+The v1 production candidate is a Wails Windows 11 x64 ZIP package. Create it
+on Windows with `npm run package:wails:win`; the command rejects a release tag
+that does not exactly match `package.json`.
 
 See [Session and JSON Contract](docs/SESSION_SCHEMA.md),
 [Support and Limitations](docs/SUPPORT.md), and
