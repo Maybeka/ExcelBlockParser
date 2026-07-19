@@ -22,8 +22,9 @@ produce release artifacts.
 
 ## Engineering Gates
 
-1. Type checking, linting, unit tests, and fixture-based integration tests pass
-   in continuous integration.
+1. Type checking, configured quality checks, unit tests, and fixture-based
+   integration tests pass in continuous integration. A linter is required only
+   after it is intentionally configured as a repository check.
 2. Tests cover extraction semantics, malformed sessions, reconciliation,
    recovery, bridge errors, workbook lifecycle, and regression cases for every
    fixed release-blocking defect.
