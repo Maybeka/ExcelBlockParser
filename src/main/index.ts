@@ -48,6 +48,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 600,
     title: 'Excel Block Parser',
+    show: !isElectronE2E,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -174,6 +175,7 @@ ipcMain.handle('preview:open', (_event, blockId: string) => {
     minWidth: 700,
     minHeight: 400,
     title: 'Preview',
+    show: !isElectronE2E,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
