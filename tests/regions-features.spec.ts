@@ -9,6 +9,48 @@
  * Run: npx playwright test tests/regions-features.spec.ts
  */
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+
+const root = process.cwd()
+
+async function loadWorkbookFixture(page: import('@playwright/test').Page): Promise<void> {
+  const [workbook, session] = await Promise.all([
+    readFile(resolve(root, 'examples', 'test_data.xlsx')),
+    readFile(resolve(root, 'examples', 'session.json'), 'utf8'),
+  ])
+  await page.addInitScript(({ workbookBase64, sessionContent }) => {
+    const workbookBytes = () => {
+      const binary = atob(workbookBase64)
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+      return bytes.buffer
+    }
+    ;(window as any).electronAPI = {
+      openXlsx: async () => ({ status: 'ok', value: '/fixtures/test_data.xlsx' }),
+      readFile: async () => ({ status: 'ok', value: workbookBytes() }),
+      saveJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/session.json' } }),
+      openJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/session.json', content: sessionContent } }),
+      saveRecovery: async () => ({ status: 'ok', value: undefined }),
+      loadRecovery: async () => ({ status: 'ok', value: null }),
+      clearRecovery: async () => ({ status: 'ok', value: undefined }),
+      log: () => undefined,
+      openPreviewWindow: async () => undefined,
+      setPreviewData: async () => undefined,
+      getPreviewData: async () => undefined,
+      closePreviewWindow: async () => undefined,
+      onPreviewReload: () => () => undefined,
+    }
+  }, { workbookBase64: workbook.toString('base64'), sessionContent: session })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Open Excel' }).click()
+  await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+  await page.getByRole('button', { name: 'Import' }).click()
+  await expect(page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
+  await page.waitForTimeout(500)
+  const closePreview = page.getByRole('button', { name: 'Close preview' })
+  if (await closePreview.isVisible().catch(() => false)) await closePreview.click()
+}
 
 // ---------------------------------------------------------------------------
 // Region Creation
@@ -111,10 +153,9 @@ test.describe('Tag Management', () => {
 // ---------------------------------------------------------------------------
 // Computed Properties
 // ---------------------------------------------------------------------------
-test.describe.skip('Computed Properties (workbook fixture required)', () => {
+test.describe('Computed Properties', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-    // Computed-property controls appear only after a block has a selected range.
+    await loadWorkbookFixture(page)
   })
 
   test('Expand computed properties section and add a property', async ({ page }) => {
@@ -137,9 +178,7 @@ test.describe.skip('Computed Properties (workbook fixture required)', () => {
     const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
     await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
 
-    // Fill the expression textarea with a valid expression.
-    // The TextArea placeholder is  row['key'] * row['price']
-    const exprInput = page.getByPlaceholder(/row\['key'\]/)
+    const exprInput = page.getByPlaceholder('key1 * key2')
     await exprInput.fill('1 + 1')
 
     // A "✓ Valid" message appears in green (#52c41a).
@@ -155,7 +194,7 @@ test.describe.skip('Computed Properties (workbook fixture required)', () => {
     await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
 
     // Fill with an expression referencing an unknown key.
-    const exprInput = page.getByPlaceholder(/row\['key'\]/)
+    const exprInput = page.getByPlaceholder('key1 * key2')
     await exprInput.fill("row['nonexistent_column']")
 
     // An error message should appear in red (#ff4d4f).
@@ -170,7 +209,7 @@ test.describe.skip('Computed Properties (workbook fixture required)', () => {
     await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
 
     // Syntax error: unbalanced parentheses.
-    const exprInput = page.getByPlaceholder(/row\['key'\]/)
+    const exprInput = page.getByPlaceholder('key1 * key2')
     await exprInput.fill('(1 + 1')
 
     // Should show a syntax error.
@@ -184,24 +223,8 @@ test.describe.skip('Computed Properties (workbook fixture required)', () => {
     const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
     await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
 
-    // The row has a delete button (type="text" danger DeleteOutlined icon).
-    const deleteBtns = page.locator('button').filter({ has: page.locator('.anticon-delete') })
-    const deleteCountBefore = await deleteBtns.count()
-
-    // Click the last visible delete button (the one for the CP, not for the block).
-    // Block delete buttons are also delete icons, but they're a different group.
-    // The CP delete buttons are inside the computed properties section.
-    const cpSection = page.locator('text=Computed Properties').locator('..')
-    // The parent div of the CP toggle has the delete buttons inside.
-    // Instead, just count CP-add buttons (each CP row has a delete).
-
-    // Actually, a simpler approach: delete buttons have aria-label or we look
-    // for the last delete button which corresponds to the newly added CP.
-    const allDeleteBtns = page.locator('[aria-label="delete"]')
-    const lastDelete = allDeleteBtns.last()
-
-    // Click it.
-    await lastDelete.click()
+    const propertyRow = page.getByPlaceholder('key1 * key2').locator('xpath=../..')
+    await propertyRow.getByRole('button').click()
 
     // The CP row should be gone.  Count rows or check no "Add" re-appeared.
     // Because there were no CPs initially, after adding and deleting one we
