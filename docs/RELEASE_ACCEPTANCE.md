@@ -9,7 +9,8 @@ produce release artifacts.
 
 Automated desktop UI coverage currently runs through Electron only. The Wails
 Go layer has tests and build checks, but no Wails desktop/WebView E2E suite
-exists yet; that remains a v1 release gate below.
+exists yet; that coverage is explicitly deferred until after v1. Electron is
+the automated desktop regression path for v1.
 
 ## Product Gates
 
@@ -34,9 +35,9 @@ exists yet; that remains a v1 release gate below.
 2. Tests cover extraction semantics, malformed sessions, reconciliation,
    recovery, bridge errors, workbook lifecycle, and regression cases for every
    fixed release-blocking defect.
-3. Browser renderer tests, Electron development E2E, and Wails production E2E
-   pass. The Wails suite covers native dialogs/bridge operations through a
-   controlled test seam, not only browser mocks.
+3. Browser renderer tests and Electron development E2E pass. Wails
+   desktop/WebView E2E is post-v1 work; native bridge behavior is covered by
+   Go tests and the Windows 11 manual-acceptance gate.
 4. The Wails Go layer has unit/integration coverage for path authorization,
    size and time limits, recovery persistence, import/export, and bridge error
    translation.
@@ -52,12 +53,12 @@ exists yet; that remains a v1 release gate below.
    recovery save/load/clear, preview events, and error reporting.
 2. Wails uses explicit, tested path and size controls. Arbitrary renderer file
    access is prohibited.
-3. A packaged Wails build is smoke-tested on each supported release platform.
-   Electron packages are not release candidates.
-4. Install, upgrade, launch, open, export, recovery, and uninstall behavior is
-   documented and manually accepted on the release platforms.
-5. Windows Authenticode signing, installer metadata, and release artifact
-   retention are configured for the Windows target declared in `SUPPORT.md`.
+3. A packaged Wails build is smoke-tested on Windows 11 x64. Electron packages
+   are not release candidates.
+4. Launch, open, export, recovery, and close behavior is documented and
+   manually accepted from the Wails ZIP candidate on Windows 11 x64.
+5. The candidate ZIP and its SHA-256 sidecar are retained with the release
+   evidence. Authenticode signing and installer metadata are post-v1 work.
 
 ## Performance Gate
 

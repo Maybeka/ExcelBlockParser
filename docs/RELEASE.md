@@ -2,24 +2,16 @@
 
 ## Supported Artifacts
 
-The v1 production artifact is a Wails Windows x64 package. The current tag
-workflow produces an unsigned ZIP candidate with a SHA-256 sidecar; an
-installer is not a release artifact until it has been selected and accepted.
+The v1 production artifact is an unsigned Wails Windows 11 x64 ZIP package
+with a SHA-256 sidecar. An installer is not part of the v1 release scope.
 
 Electron packages are development-only artifacts and are not v1 releases.
 
-## Required Release Secrets
+## Deferred Distribution Hardening
 
-The release workflow reads these GitHub repository secrets only on tag/manual
-release builds:
-
-| Platform | Secrets/environment |
-| --- | --- |
-| Windows signing | Windows certificate reference and password, configured as protected CI secrets |
-
-The Wails Windows release workflow must fail rather than publish an unsigned
-release once Authenticode signing is configured. Candidate ZIP artifacts remain
-unsigned until that protected-release gate is implemented.
+Authenticode signing and installer distribution are explicitly post-v1 work.
+They must be designed as protected release infrastructure before a later signed
+distribution is published. No signing secrets are required for v1.
 
 ## Release Checklist
 
@@ -28,9 +20,9 @@ unsigned until that protected-release gate is implemented.
    workflow.
 3. Install the generated artifact in a clean Windows VM and run the example
    workflow.
-4. Verify Authenticode signing and installer behavior before publishing.
+4. Record manual acceptance from the Windows 11 test machine, including the
+   artifact checksum and any Windows security notice for the unsigned package.
 5. Publish checksums and note supported/unsupported behavior from `docs/SUPPORT.md`.
 
 Electron package smoke tests deliberately disable signing. They validate a
-development package layout; only the protected Wails release workflow may
-receive signing credentials.
+development package layout and are not release artifacts.

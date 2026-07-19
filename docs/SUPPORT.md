@@ -8,14 +8,13 @@
 | Electron | Development-only | Fast renderer development and diagnostic E2E |
 | Browser mode | Development-only | Renderer tests without native bridge behavior |
 
-The v1.0 release platform is Windows x64 through Wails. The minimum supported
-Windows version and installer format remain provisional until Wails packaging
-and acceptance testing are complete.
+The v1.0 release platform is Windows 11 x64 through Wails. The v1 artifact is
+a ZIP package; installer selection is not part of the v1 release scope.
 Electron packaging is not a supported distribution channel.
 
-The tag workflow builds an unsigned Windows x64 Wails ZIP candidate plus a
-SHA-256 sidecar. Publishing waits for Authenticode signing, installer, and
-manual-acceptance gates.
+The tag workflow builds an unsigned Windows 11 x64 Wails ZIP candidate plus a
+SHA-256 sidecar. Manual acceptance on Windows 11 is required before publishing.
+Authenticode signing is post-v1 distribution hardening.
 
 ## Supported Workbook Behavior
 
