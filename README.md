@@ -49,6 +49,8 @@ See [Session and JSON Contract](docs/SESSION_SCHEMA.md),
 
 ## Scope
 
-The product creates reusable extraction templates and JSON output. It does not
-run arbitrary generators, macros, external workbook links, or a full Excel
-formula engine. See [Product Scope](docs/SCOPE.md) for the current boundary.
+The product creates reusable extraction templates and JSON output. Computed
+properties are validated template metadata, not in-app Python execution. It
+does not run arbitrary generators, macros, external workbook links, or a full
+Excel formula engine. See [Product Scope](docs/SCOPE.md) for the current
+boundary.

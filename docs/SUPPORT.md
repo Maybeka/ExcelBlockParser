@@ -35,3 +35,5 @@ notarization, installer, and manual-acceptance gates.
   conversion guard. Larger workbooks are intentionally rejected.
 - Autosave preserves workspace configuration and current parsed state, not an
   external workbook copy.
+- Computed properties are validated template metadata. v1 does not execute
+  Python-like expressions or include their derived values in parsed JSON.

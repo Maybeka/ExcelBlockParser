@@ -34,7 +34,7 @@ The implemented application supports this general workflow:
 5. Optionally configure regions that are split into blocks by keyword or blank
    row boundaries.
 6. Apply row filtering and empty-column removal.
-7. Add tags and computed properties.
+7. Add tags and computed-property metadata.
 8. Validate and preview raw versus parsed data.
 9. Export JSON and import/export a reusable session.
 10. Reconcile existing block definitions after a workbook has changed.
@@ -83,7 +83,9 @@ The implemented application supports this general workflow:
 - Empty-column detection and removal.
 - Label and key/value tags on blocks and regions.
 - Tag utilities for adding, removing, filtering, and enumerating tags.
-- Computed properties with Python-like expression validation.
+- Computed properties with Python-like expression validation. They are stored
+  as template metadata for downstream code-generation workflows; v1 does not
+  execute Python expressions or add computed values to parsed JSON.
 - Parsed JSON output with block and optional region results.
 
 ### 3.5 Session persistence and reconciliation
@@ -133,24 +135,12 @@ parity during the v0.1 refinement period.
 
 ## 5. Quality and Verification Status
 
-The repository contains example workbooks and test coverage for domain logic,
-session serialization, filtering, tags, Python-expression validation, and UI
-behavior.
-
-At the last assessment:
-
-- `npm run test:unit` passed: 8 files and 111 tests.
-- `npm run build` passed for the Electron main, preload, and renderer bundles.
-- Browser-mode Playwright tests are configured. They cover renderer UI flows,
-  not native Electron dialogs or IPC.
-- A sandboxed Playwright run could not bind its local development server. This
-  is an environment limitation, not evidence of an application test failure;
-  it still requires a normal local/CI run for confirmation.
-
-The working tree also contains untracked feature work for regions, filters,
-serialization, tags, validation, tests, and supporting UI components. That
-work must be reviewed and committed before it can be considered part of a
-stable release baseline.
+The repository contains example workbooks plus unit, browser, Electron-native,
+Electron-main, Go safety, and Wails-build checks. Electron remains development
+coverage only; Wails production E2E and installed-artifact acceptance are
+required before v1.0 can be released. See `docs/RELEASE_ACCEPTANCE.md` for the
+authoritative release gates rather than treating a historical test count as a
+release claim.
 
 ## 6. Explicit Non-Goals Today
 
