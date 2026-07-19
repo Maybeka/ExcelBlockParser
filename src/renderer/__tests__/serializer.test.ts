@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { serializeSession, deserializeSession, loadSession } from '../services/serializer'
+import { canonicalSessionJson, serializeSession, deserializeSession, loadSession } from '../services/serializer'
 import type { BlockConfig, RegionConfig, ExportedSession } from '../types'
 
 const mockBlock: BlockConfig = {
@@ -72,6 +72,17 @@ describe('serializeSession', () => {
     expect(result.exportedAt).toBeDefined()
     expect(() => new Date(result.exportedAt)).not.toThrow()
     expect(new Date(result.exportedAt).toISOString()).toBe(result.exportedAt)
+  })
+
+  it('canonicalizes session semantics independently of export timestamps', () => {
+    const first = serializeSession([mockBlock], [], 'block-1', 'always-editable', null)
+    const second = {
+      ...serializeSession([mockBlock], [], 'block-1', 'always-editable', null),
+      exportedAt: '2099-01-01T00:00:00.000Z',
+    }
+
+    expect(canonicalSessionJson(first)).toBe(canonicalSessionJson(second))
+    expect(canonicalSessionJson(first)).not.toContain('exportedAt')
   })
 
   it('includes parseResult data and block results when provided', () => {

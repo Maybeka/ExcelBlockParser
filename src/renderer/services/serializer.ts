@@ -16,6 +16,13 @@ export interface SessionLoadResult {
 
 export const CURRENT_SESSION_VERSION = 2 as const
 
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -118,6 +125,16 @@ export function serializeSession(
   }
 
   return session
+}
+
+/**
+ * Produces a deterministic representation of semantic session content.
+ * `exportedAt` deliberately remains in user-facing exports, but it is metadata
+ * rather than extraction configuration or output and therefore excluded here.
+ */
+export function canonicalSessionJson(session: ExportedSession): string {
+  const { exportedAt: _exportedAt, ...semanticSession } = session
+  return stableStringify(semanticSession)
 }
 
 /**
