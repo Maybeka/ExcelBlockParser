@@ -1,4 +1,4 @@
-import '@univerjs/preset-sheets-core/index.css'
+import '@univerjs/preset-sheets-core/lib/index.css'
 
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets'
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
