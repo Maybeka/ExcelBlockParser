@@ -100,7 +100,7 @@ test.describe('Region Creation', () => {
 test.describe('Tag Management', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'tag', exact: true }).click()
+    await page.getByRole('button', { name: 'Show block tags' }).click()
     await expect(page.locator('button').filter({ hasText: 'Tag' })).toBeVisible()
   })
 
@@ -230,5 +230,17 @@ test.describe('Computed Properties', () => {
     // Because there were no CPs initially, after adding and deleting one we
     // should be back to the "No computed properties" placeholder.
     await expect(page.locator('text=No computed properties')).toBeVisible()
+  })
+})
+
+test.describe('Reconciliation', () => {
+  test('opens the reviewed reconciliation workflow for an imported block', async ({ page }) => {
+    await loadWorkbookFixture(page)
+
+    await page.getByLabel('Edit block').click()
+    await expect(page.getByText('Choose which sheet this block should reference.')).toBeVisible()
+    await expect(page.getByText('① Sheet', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Next: Range' }).click()
+    await expect(page.getByText('Current range:', { exact: false })).toBeVisible()
   })
 })

@@ -993,6 +993,7 @@ export function ConfigPanel({
               {!block.selectionLocked && block.range && !isOtherBlockInReconciling && (
                 <Tooltip title="Confirm block">
                   <Button
+                    aria-label="Confirm block"
                     size="small" type="text"
                     icon={<CheckOutlined style={{ color: '#52c41a' }} />}
                     onClick={() => onBlockChange(block.id, { selectionLocked: true })}
@@ -1003,6 +1004,7 @@ export function ConfigPanel({
               {block.selectionLocked && (
                 <Tooltip title={reconcilingBlockId === block.id ? 'Discard editing' : 'Edit block'}>
                   <Button
+                    aria-label={reconcilingBlockId === block.id ? 'Discard block editing' : 'Edit block'}
                     size="small" type="text"
                     icon={reconcilingBlockId === block.id ? <CloseOutlined /> : <EditOutlined />}
                     onClick={async (e) => {
@@ -1046,6 +1048,7 @@ export function ConfigPanel({
               <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
               <Tooltip title={showTagsBlocks.has(block.id) ? 'Hide tags' : 'Show tags'}>
                 <Button
+                  aria-label={showTagsBlocks.has(block.id) ? 'Hide block tags' : 'Show block tags'}
                   size="small" type="text"
                   icon={<TagOutlined />}
                   onClick={(e) => {
@@ -1062,6 +1065,7 @@ export function ConfigPanel({
               </Tooltip>
               <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
               <Button
+                aria-label="Delete block"
                 size="small" type="text" danger
                 icon={<DeleteOutlined />}
                 onClick={() => setDeleteTarget({ id: block.id, label: headerLabel, type: 'block' })}
