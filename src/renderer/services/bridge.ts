@@ -24,7 +24,7 @@ export interface BridgeAPI {
 
 // ── Wails bridge ────────────────────────────────────────────────────────────
 
-interface WailsGoAPI {
+export interface WailsGoAPI {
   main?: {
     App?: {
       OpenXlsx: () => Promise<string>
@@ -49,8 +49,8 @@ declare global {
   }
 }
 
-function createWailsBridge(): BridgeAPI {
-  const App = window.go?.main?.App
+export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
+  const App = go?.main?.App
   if (!App) throw new Error('Wails runtime not available')
   const requiredMethods = [
     'OpenXlsx', 'ReadFile', 'SaveJson', 'OpenJson',
@@ -146,10 +146,11 @@ let _bridge: BridgeAPI | null = null
 export function getBridge(): BridgeAPI {
   if (_bridge) return _bridge
 
-  if (window.electronAPI) {
-    _bridge = window.electronAPI
-  } else if (window.go?.main?.App) {
-    _bridge = createWailsBridge()
+  const runtimeWindow = typeof window === 'undefined' ? undefined : window
+  if (runtimeWindow?.electronAPI) {
+    _bridge = runtimeWindow.electronAPI
+  } else if (runtimeWindow?.go?.main?.App) {
+    _bridge = createWailsBridge(runtimeWindow.go)
   } else {
     _bridge = createBrowserBridge()
   }
