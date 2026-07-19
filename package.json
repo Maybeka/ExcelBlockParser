@@ -13,6 +13,7 @@
     "test:unit": "vitest run",
     "generate:fixtures": "node examples/generate-test-data.mjs",
     "benchmark:workbook": "node scripts/benchmark-workbook.mjs",
+    "package:wails:mac": "node scripts/package-wails-macos.mjs",
     "test:main": "vitest run --config vitest.main.config.ts",
     "test:native": "npm run build && playwright test --config playwright.electron.config.ts",
     "test:packaged": "npm run pack:dir && node scripts/run-packaged-e2e.mjs",

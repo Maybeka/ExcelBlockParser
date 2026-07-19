@@ -16,6 +16,10 @@ The tag workflow builds a macOS Wails release-candidate artifact for review;
 it does not publish a release. Publishing waits for the v1 signing,
 notarization, installer, and manual-acceptance gates.
 
+The candidate is a versioned arm64 ZIP plus a SHA-256 sidecar, produced by
+`npm run package:wails:mac` on macOS. It is not a signed or notarized release
+artifact.
+
 ## Supported Workbook Behavior
 
 - `.xlsx` and `.xls` selection, up to 100 MB per workbook.
