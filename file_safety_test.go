@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTestFile(t *testing.T, directory, name, content string) string {
@@ -136,5 +138,24 @@ func TestWriteJSONFileUsesSafeRegularDestination(t *testing.T) {
 	content, err = os.ReadFile(target)
 	if err != nil || string(content) != `{"safe":true}` {
 		t.Fatalf("symlink target changed = %q, %v", content, err)
+	}
+}
+
+func TestReadFileWithTimeout(t *testing.T) {
+	data, err := readFileWithTimeout("fast", time.Second, func(path string) ([]byte, error) {
+		if path != "fast" {
+			return nil, errors.New("unexpected path")
+		}
+		return []byte("ok"), nil
+	})
+	if err != nil || string(data) != "ok" {
+		t.Fatalf("fast read = %q, %v", data, err)
+	}
+	_, err = readFileWithTimeout("slow", time.Millisecond, func(string) ([]byte, error) {
+		time.Sleep(10 * time.Millisecond)
+		return nil, errors.New("late read")
+	})
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("timeout error = %v", err)
 	}
 }

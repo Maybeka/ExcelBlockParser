@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
 	maxWorkbookBytes int64 = 100 * 1024 * 1024
 	maxSessionBytes  int64 = 25 * 1024 * 1024
+	fileReadTimeout        = 30 * time.Second
 )
 
 type filePolicy struct {
@@ -88,7 +90,7 @@ func (p *filePolicy) readApprovedWorkbook(path string) ([]byte, error) {
 	if resolved != p.approvedWorkbookPath {
 		return nil, errors.New("the workbook must be selected through the Open dialog")
 	}
-	data, err := os.ReadFile(resolved)
+	data, err := readFileWithTimeout(resolved, fileReadTimeout, os.ReadFile)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read workbook: %w", err)
 	}
@@ -100,7 +102,7 @@ func readJSONFile(path string, maxBytes int64, label string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(resolved)
+	data, err := readFileWithTimeout(resolved, fileReadTimeout, os.ReadFile)
 	if err != nil {
 		return "", fmt.Errorf("unable to read %s: %w", strings.ToLower(label), err)
 	}
@@ -204,7 +206,7 @@ func saveRecovery(baseDir, jsonData string) error {
 
 func loadRecovery(baseDir string) (string, error) {
 	target := recoveryFilePath(baseDir)
-	data, err := os.ReadFile(target)
+	data, err := readFileWithTimeout(target, fileReadTimeout, os.ReadFile)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
@@ -218,6 +220,24 @@ func loadRecovery(baseDir string) (string, error) {
 		return "", errors.New("recovery data is not valid JSON")
 	}
 	return string(data), nil
+}
+
+func readFileWithTimeout(path string, timeout time.Duration, read func(string) ([]byte, error)) ([]byte, error) {
+	type readResult struct {
+		data []byte
+		err  error
+	}
+	result := make(chan readResult, 1)
+	go func() {
+		data, err := read(path)
+		result <- readResult{data: data, err: err}
+	}()
+	select {
+	case value := <-result:
+		return value.data, value.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("reading file timed out after %s", timeout)
+	}
 }
 
 func clearRecovery(baseDir string) error {
