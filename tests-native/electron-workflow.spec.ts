@@ -180,6 +180,24 @@ test.describe('Electron native workflow', () => {
     }
   })
 
+  test('retains an open workbook when native config import fails', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-e2e-'))
+    const missingSession = resolve(directory, 'missing-session.json')
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: missingSession })
+    try {
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+
+      await page.getByRole('button', { name: 'Import' }).click()
+      await expect(page.getByRole('alert')).toContainText('Unable to import config')
+      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
+      await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
+    } finally {
+      await app.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   test('opens the native preview window through its IPC contract', async () => {
     const { app, page } = await launch()
     try {

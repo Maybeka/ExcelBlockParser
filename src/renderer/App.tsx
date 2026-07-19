@@ -682,9 +682,9 @@ function AppContent() {
 
   const handleImportConfig = useCallback(async () => {
     setImportError(null)
-    const result = await getBridge().openJson()
-    if (!result) return // cancelled
     try {
+      const result = await getBridge().openJson()
+      if (!result) return // cancelled
       JSON.parse(result.content)
 
       const activeCount = blocksRef.current.filter(b => b.range).length
@@ -696,10 +696,11 @@ function AppContent() {
       }
     } catch (err) {
       const detail = err instanceof SyntaxError ? err.message : String(err)
-      setImportError(`Invalid config file: ${detail}`)
-      console.error('Import parse error:', err)
+      const prefix = err instanceof SyntaxError ? 'Invalid config file' : 'Unable to import config'
+      setImportError(`${prefix}: ${detail}`)
+      console.error('Import failed:', err)
     }
-  }, [])
+  }, [applyImportContent])
 
   const handleConfirmImport = useCallback(() => {
     if (pendingImportContent) {
