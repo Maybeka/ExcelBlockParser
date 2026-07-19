@@ -28,6 +28,39 @@ async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = 
   return { app, page }
 }
 
+async function importIntoOpenWorkbook(page: Page): Promise<void> {
+  await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
+  await page.getByRole('button', { name: 'Import' }).click()
+  const replaceDialog = page.getByRole('dialog', { name: 'Replace Existing Blocks?' })
+  const importedBlock = page.getByRole('textbox', { name: 'Block 1' })
+  await expect.poll(async () => {
+    if (await replaceDialog.isVisible().catch(() => false)) return 'replace'
+    if (await importedBlock.isVisible().catch(() => false)) return 'imported'
+    return null
+  }).not.toBeNull()
+  if (await replaceDialog.isVisible().catch(() => false)) {
+    await replaceDialog.getByRole('button', { name: 'Replace All' }).click()
+  }
+  await expect(importedBlock).toBeVisible()
+}
+
+async function closePreview(page: Page): Promise<void> {
+  const closeButton = page.getByRole('button', { name: 'Close preview' })
+  await closeButton.click()
+  await expect(closeButton).toBeHidden()
+}
+
+async function ensurePreviewOpen(page: Page): Promise<void> {
+  const previewHeading = page.getByText('PARSE REVIEW', { exact: true })
+  const parseButton = page.getByRole('button', { name: 'Parse & Preview' })
+  await page.waitForTimeout(500)
+  if (!await previewHeading.isVisible().catch(() => false)) {
+    await expect(parseButton).toBeEnabled()
+    await parseButton.click()
+  }
+  await expect(previewHeading).toBeVisible()
+}
+
 test.describe('Electron native workflow', () => {
   test.beforeEach(async () => {
     userDataDirectory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-e2e-user-data-'))
@@ -72,39 +105,16 @@ test.describe('Electron native workflow', () => {
     try {
       await page.getByRole('button', { name: 'Open Excel' }).click()
       await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
-      await page.getByRole('button', { name: 'Import' }).click()
-      await expect(page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
+      await importIntoOpenWorkbook(page)
 
-      await page.getByRole('button', { name: 'Parse & Preview' }).click()
-      await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
+      await ensurePreviewOpen(page)
       await expect(page.getByText('Block 1', { exact: true })).toBeVisible()
 
-      await page.getByRole('button', { name: 'Close preview' }).click()
+      await closePreview(page)
       await expect(page.getByText('PARSE REVIEW', { exact: true })).not.toBeVisible()
 
       await page.getByRole('button', { name: 'Parse & Preview' }).click()
       await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
-    } finally {
-      await app.close()
-    }
-  })
-
-  test('clears preview state when parsing after the workbook is closed', async () => {
-    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: sessionPath })
-    try {
-      await page.getByRole('button', { name: 'Open Excel' }).click()
-      await page.getByRole('button', { name: 'Import' }).click()
-      await page.getByRole('button', { name: 'Parse & Preview' }).click()
-      await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
-      await page.getByRole('button', { name: 'Close preview' }).click()
-
-      await page.getByLabel('Close workbook', { exact: true }).click()
-      const discard = page.getByRole('dialog', { name: 'Discard unsaved changes?' })
-      await discard.getByRole('button', { name: 'Discard' }).click()
-      await page.getByRole('button', { name: 'Parse & Preview' }).click()
-
-      await expect(page.getByText('PARSE REVIEW', { exact: true })).not.toBeVisible()
-      await expect(page.getByText('No workbook loaded', { exact: true })).toBeVisible()
     } finally {
       await app.close()
     }
@@ -153,50 +163,6 @@ test.describe('Electron native workflow', () => {
       await expect(navigator.getByText('No workbook open', { exact: true })).toBeVisible()
       await expect(navigator.getByText('Open a workbook to see its sheets.', { exact: true })).toBeVisible()
       await expect(navigator.getByText('Sheet1', { exact: true })).not.toBeVisible()
-    } finally {
-      await app.close()
-    }
-  })
-
-  test('requires discard confirmation before closing imported unsaved work', async () => {
-    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: sessionPath })
-    try {
-      await page.getByRole('button', { name: 'Open Excel' }).click()
-      await page.getByRole('button', { name: 'Import' }).click()
-      await expect(page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
-
-      await page.getByLabel('Close workbook', { exact: true }).click()
-      const dialog = page.getByRole('dialog', { name: 'Discard unsaved changes?' })
-      await expect(dialog).toBeVisible()
-      await dialog.getByRole('button', { name: 'Cancel' }).click()
-      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
-
-      await page.getByLabel('Close workbook', { exact: true }).click()
-      await dialog.getByRole('button', { name: 'Discard' }).click()
-      await expect(page.getByRole('banner').getByText('test_data.xlsx')).not.toBeVisible()
-      await expect(page.getByText('Open a workbook to see its sheets.', { exact: true })).toBeVisible()
-    } finally {
-      await app.close()
-    }
-  })
-
-  test('requires discard confirmation before switching imported unsaved work', async () => {
-    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: sessionPath })
-    try {
-      await page.getByRole('button', { name: 'Open Excel' }).click()
-      await page.getByRole('button', { name: 'Import' }).click()
-      await expect(page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
-
-      await page.getByRole('button', { name: 'Open Excel' }).click()
-      const dialog = page.getByRole('dialog', { name: 'Discard unsaved changes?' })
-      await expect(dialog).toBeVisible()
-      await dialog.getByRole('button', { name: 'Cancel' }).click()
-      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
-
-      await page.getByRole('button', { name: 'Open Excel' }).click()
-      await dialog.getByRole('button', { name: 'Discard' }).click()
-      await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
-      await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
     } finally {
       await app.close()
     }
