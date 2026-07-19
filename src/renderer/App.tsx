@@ -10,6 +10,7 @@ import { useUniver } from './context/UniverContext'
 import { runReconciliation } from './services/reconciliation'
 import { getBridge } from './services/bridge'
 import { adaptPreviewData } from './services/previewDataAdapter'
+import { recordBridgeFailure, recordParseFailure } from './services/observability'
 import { serializeSession, loadSession } from './services/serializer'
 import { createUniverWorkbookReader } from './services/workbook'
 import { generateColumnMappings, parseWorkbook, suggestMappingsForWorkbook } from './services/extraction'
@@ -557,7 +558,9 @@ function AppContent() {
     if (!univerAPI) {
       const error = 'Spreadsheet is not initialized'
       clearPreview()
-      setParseResult({ success: false, data: {}, blocks: [], error })
+      const result = { success: false, data: {}, blocks: [], error }
+      setParseResult(result)
+      recordParseFailure('parse-preview', result)
       message.error(error)
       return
     }
@@ -565,7 +568,9 @@ function AppContent() {
     if (!workbook) {
       const error = 'No workbook loaded'
       clearPreview()
-      setParseResult({ success: false, data: {}, blocks: [], error })
+      const result = { success: false, data: {}, blocks: [], error }
+      setParseResult(result)
+      recordParseFailure('parse-preview', result)
       message.error(error)
       return
     }
@@ -574,7 +579,9 @@ function AppContent() {
     if (!activeBlocks.length) {
       const error = 'Select a range for at least one block before parsing'
       clearPreview()
-      setParseResult({ success: false, data: {}, blocks: [], error })
+      const result = { success: false, data: {}, blocks: [], error }
+      setParseResult(result)
+      recordParseFailure('parse-preview', result)
       message.warning(error)
       return
     }
@@ -584,6 +591,7 @@ function AppContent() {
     if (!result.success) {
       clearPreview()
       setParseResult(result)
+      recordParseFailure('parse-preview', result)
       setDiagnosticsOpen(true)
       message.error(result.error || 'Parsing could not complete. Review the diagnostics for details.')
       return
@@ -670,6 +678,7 @@ function AppContent() {
         setHasUnsavedChanges(false)
         void getBridge().clearRecovery()
       } else if (result.status === 'error') {
+        recordBridgeFailure('save-session', result)
         message.error(result.error.message || 'Unable to save the JSON file. Your workspace recovery remains available.')
         console.error('Save failed:', result.error.message)
       }
@@ -697,6 +706,7 @@ function AppContent() {
       const result = await getBridge().openJson()
       if (result.status === 'cancelled') return
       if (result.status === 'error') {
+        recordBridgeFailure('open-session', result)
         setImportError(`Unable to import config: ${result.error.message}`)
         return
       }
