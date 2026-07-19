@@ -5,6 +5,12 @@ candidate. Wails is the production runtime. Electron checks are retained to
 protect the shared renderer and bridge contract during development; they do not
 produce release artifacts.
 
+## Current Verification Status
+
+Automated desktop UI coverage currently runs through Electron only. The Wails
+Go layer has tests and build checks, but no Wails desktop/WebView E2E suite
+exists yet; that remains a v1 release gate below.
+
 ## Product Gates
 
 1. The documented workbook-to-JSON workflow works without data loss for every
