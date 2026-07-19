@@ -8,6 +8,9 @@ let previewWindow: BrowserWindow | null = null
 const previewDataStore = new Map<string, unknown>()
 const approvedWorkbookPaths = new Set<string>()
 const isElectronE2E = process.env.ELECTRON_E2E === '1'
+const e2eUserDataDirectory = isElectronE2E ? process.env.ELECTRON_E2E_USER_DATA_DIR : undefined
+
+if (e2eUserDataDirectory) app.setPath('userData', e2eUserDataDirectory)
 
 function assertMainWindowSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender.id !== mainWindow.webContents.id) {

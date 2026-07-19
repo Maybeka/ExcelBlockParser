@@ -7,17 +7,19 @@ const root = process.cwd()
 const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
 const multiSheetWorkbookPath = resolve(root, 'examples', 'multi_sheet.xlsx')
 const sessionPath = resolve(root, 'examples', 'session.json')
+let userDataDirectory = ''
 
 async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = false): Promise<{ app: ElectronApplication; page: Page }> {
   const executablePath = process.env.ELECTRON_E2E_EXECUTABLE
   const app = await electron.launch({
     ...(executablePath ? { executablePath, args: [] } : { args: [resolve(root, 'out', 'main', 'index.js')] }),
-    env: { ...process.env, ELECTRON_E2E: '1', ...extraEnv },
+    env: { ...process.env, ELECTRON_E2E: '1', ELECTRON_E2E_USER_DATA_DIR: userDataDirectory, ...extraEnv },
   })
   const page = await app.firstWindow()
   await page.getByText('Excel Block Parser').waitFor()
   if (!preserveRecovery) {
     const recoveryDialog = page.getByRole('dialog', { name: 'Recover unsaved workspace?' })
+    await page.waitForTimeout(150)
     if (await recoveryDialog.isVisible().catch(() => false)) {
       await recoveryDialog.getByRole('button', { name: 'Discard' }).click()
     }
@@ -27,6 +29,15 @@ async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = 
 }
 
 test.describe('Electron native workflow', () => {
+  test.beforeEach(async () => {
+    userDataDirectory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-e2e-user-data-'))
+  })
+
+  test.afterEach(async () => {
+    if (userDataDirectory) await rm(userDataDirectory, { recursive: true, force: true })
+    userDataDirectory = ''
+  })
+
   test('opens and reads a real workbook through native IPC', async () => {
     const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath })
     try {
