@@ -71,6 +71,27 @@ test.describe('Electron native workflow', () => {
     }
   })
 
+  test('clears preview state when parsing after the workbook is closed', async () => {
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: sessionPath })
+    try {
+      await page.getByRole('button', { name: 'Open Excel' }).click()
+      await page.getByRole('button', { name: 'Import' }).click()
+      await page.getByRole('button', { name: 'Parse & Preview' }).click()
+      await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
+      await page.getByRole('button', { name: 'Close preview' }).click()
+
+      await page.getByLabel('Close workbook', { exact: true }).click()
+      const discard = page.getByRole('dialog', { name: 'Discard unsaved changes?' })
+      await discard.getByRole('button', { name: 'Discard' }).click()
+      await page.getByRole('button', { name: 'Parse & Preview' }).click()
+
+      await expect(page.getByText('PARSE REVIEW', { exact: true })).not.toBeVisible()
+      await expect(page.getByText('No workbook loaded', { exact: true })).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
   test('confirms before switching an already open workbook', async () => {
     const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath })
     try {

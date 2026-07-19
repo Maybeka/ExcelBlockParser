@@ -547,8 +547,15 @@ function AppContent() {
   }, [])
 
   const handleParse = useCallback(async () => {
+    const clearPreview = () => {
+      setPreviewModalOpen(false)
+      setPreviewModalData(new Map())
+      setPreviewRegionResults([])
+      setPreviewActiveBlockId('')
+    }
     if (!univerAPI) {
       const error = 'Spreadsheet is not initialized'
+      clearPreview()
       setParseResult({ success: false, data: {}, blocks: [], error })
       message.error(error)
       return
@@ -556,6 +563,7 @@ function AppContent() {
     const workbook = univerAPI.getActiveWorkbook()
     if (!workbook) {
       const error = 'No workbook loaded'
+      clearPreview()
       setParseResult({ success: false, data: {}, blocks: [], error })
       message.error(error)
       return
@@ -564,6 +572,7 @@ function AppContent() {
     const activeBlocks = blocks.filter(b => b.range)
     if (!activeBlocks.length) {
       const error = 'Select a range for at least one block before parsing'
+      clearPreview()
       setParseResult({ success: false, data: {}, blocks: [], error })
       message.warning(error)
       return
@@ -572,6 +581,7 @@ function AppContent() {
     const execution = parseWorkbook(createUniverWorkbookReader(workbook), blocks, regions)
     const result = execution.result
     if (!result.success) {
+      clearPreview()
       setParseResult(result)
       setDiagnosticsOpen(true)
       message.error(result.error || 'Parsing could not complete. Review the diagnostics for details.')
