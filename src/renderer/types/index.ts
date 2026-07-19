@@ -36,6 +36,7 @@ export interface BlockConfig {
   selectionLocked: boolean
   columns: ColumnMapping[]
   dataSnapshot: unknown[][] | null
+  headerSnapshot?: string[][] | string[]
   ignoreRules?: RowIgnoreRule[]
   skipEmptyColumns?: boolean
   tags?: Tag[]

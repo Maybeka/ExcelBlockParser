@@ -31,9 +31,9 @@ interface WailsGoAPI {
       ReadFile: (path: string) => Promise<number[]>
       SaveJson: (name: string, data: string) => Promise<{ success: boolean; filePath: string; error: string }>
       OpenJson: () => Promise<{ filePath: string; content: string } | null>
-      SaveRecovery?: (data: string) => Promise<void>
-      LoadRecovery?: () => Promise<string | null>
-      ClearRecovery?: () => Promise<void>
+      SaveRecovery: (data: string) => Promise<void>
+      LoadRecovery: () => Promise<string | null>
+      ClearRecovery: () => Promise<void>
       OpenPreviewWindow: (blockId: string) => Promise<void>
       SetPreviewData: (blockId: string, data: unknown) => Promise<void>
       GetPreviewData: (blockId: string) => Promise<unknown>
@@ -52,6 +52,14 @@ declare global {
 function createWailsBridge(): BridgeAPI {
   const App = window.go?.main?.App
   if (!App) throw new Error('Wails runtime not available')
+  const requiredMethods = [
+    'OpenXlsx', 'ReadFile', 'SaveJson', 'OpenJson',
+    'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
+    'OpenPreviewWindow', 'SetPreviewData', 'GetPreviewData', 'ClosePreviewWindow',
+  ] as const
+  if (requiredMethods.some(method => typeof App[method] !== 'function')) {
+    throw new Error('Wails runtime is missing a required desktop capability')
+  }
 
   return {
     openXlsx: async () => {
@@ -83,9 +91,9 @@ function createWailsBridge(): BridgeAPI {
     openJson: async () => {
       return App.OpenJson()
     },
-    saveRecovery: async (jsonData) => { if (App.SaveRecovery) await App.SaveRecovery(jsonData); else localStorage.setItem('excel-block-parser.recovery', jsonData) },
-    loadRecovery: async () => App.LoadRecovery ? App.LoadRecovery() : localStorage.getItem('excel-block-parser.recovery'),
-    clearRecovery: async () => { if (App.ClearRecovery) await App.ClearRecovery(); else localStorage.removeItem('excel-block-parser.recovery') },
+    saveRecovery: async (jsonData) => { await App.SaveRecovery(jsonData) },
+    loadRecovery: async () => App.LoadRecovery(),
+    clearRecovery: async () => { await App.ClearRecovery() },
     log: (level: string, ...args: unknown[]) => {
       console.log(`[${level}]`, ...args)
     },

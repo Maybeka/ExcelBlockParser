@@ -60,6 +60,12 @@ test.describe('Electron native workflow', () => {
       await page.getByRole('button', { name: 'Parse & Preview' }).click()
       await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
       await expect(page.getByText('Block 1', { exact: true })).toBeVisible()
+
+      await page.getByRole('button', { name: 'Close preview' }).click()
+      await expect(page.getByText('PARSE REVIEW', { exact: true })).not.toBeVisible()
+
+      await page.getByRole('button', { name: 'Parse & Preview' }).click()
+      await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
     } finally {
       await app.close()
     }

@@ -1,0 +1,183 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	maxWorkbookBytes int64 = 100 * 1024 * 1024
+	maxSessionBytes  int64 = 25 * 1024 * 1024
+)
+
+type filePolicy struct {
+	approvedWorkbookPath string
+}
+
+func isSupportedWorkbookPath(path string) bool {
+	extension := strings.ToLower(filepath.Ext(path))
+	return extension == ".xlsx" || extension == ".xls"
+}
+
+func sanitizeJSONFileName(value, fallback string) string {
+	name := filepath.Base(value)
+	if name == "." || name == string(filepath.Separator) || name == "" {
+		return fallback
+	}
+	var sanitized strings.Builder
+	for _, character := range name {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == '.' || character == '_' || character == '-' {
+			sanitized.WriteRune(character)
+		} else {
+			sanitized.WriteByte('_')
+		}
+	}
+	result := sanitized.String()
+	if result == "" || result == "." || result == ".." {
+		return fallback
+	}
+	if !strings.HasSuffix(strings.ToLower(result), ".json") {
+		return result + ".json"
+	}
+	return result
+}
+
+func resolveRegularFile(path string, maxBytes int64, label string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("%s is unavailable: %w", label, err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("%s is unavailable: %w", label, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s is not a regular file", label)
+	}
+	if info.Size() > maxBytes {
+		return "", fmt.Errorf("%s exceeds the %d MB limit", label, maxBytes/(1024*1024))
+	}
+	return resolved, nil
+}
+
+func (p *filePolicy) approveWorkbook(path string) (string, error) {
+	resolved, err := resolveRegularFile(path, maxWorkbookBytes, "Workbook")
+	if err != nil {
+		return "", err
+	}
+	if !isSupportedWorkbookPath(resolved) {
+		return "", errors.New("select an .xlsx or .xls workbook")
+	}
+	p.approvedWorkbookPath = resolved
+	return resolved, nil
+}
+
+func (p *filePolicy) readApprovedWorkbook(path string) ([]byte, error) {
+	if p.approvedWorkbookPath == "" {
+		return nil, errors.New("select a workbook before reading it")
+	}
+	resolved, err := resolveRegularFile(path, maxWorkbookBytes, "Workbook")
+	if err != nil {
+		return nil, err
+	}
+	if resolved != p.approvedWorkbookPath {
+		return nil, errors.New("the workbook must be selected through the Open dialog")
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read workbook: %w", err)
+	}
+	return data, nil
+}
+
+func readJSONFile(path string, maxBytes int64, label string) (string, error) {
+	resolved, err := resolveRegularFile(path, maxBytes, label)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return "", fmt.Errorf("unable to read %s: %w", strings.ToLower(label), err)
+	}
+	if !json.Valid(data) {
+		return "", fmt.Errorf("%s is not valid JSON", label)
+	}
+	return string(data), nil
+}
+
+func writeJSONFile(path string, jsonData string) error {
+	if int64(len([]byte(jsonData))) > maxSessionBytes {
+		return errors.New("export exceeds the 25 MB limit")
+	}
+	if !json.Valid([]byte(jsonData)) {
+		return errors.New("export data is not valid JSON")
+	}
+	return os.WriteFile(path, []byte(jsonData), 0o644)
+}
+
+func recoveryFilePath(baseDir string) string {
+	return filepath.Join(baseDir, "recovery", "workspace-session.json")
+}
+
+func saveRecovery(baseDir, jsonData string) error {
+	if int64(len([]byte(jsonData))) > maxSessionBytes {
+		return errors.New("recovery data exceeds the 25 MB limit")
+	}
+	if !json.Valid([]byte(jsonData)) {
+		return errors.New("recovery data is not valid JSON")
+	}
+	target := recoveryFilePath(baseDir)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("unable to create recovery directory: %w", err)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(target), ".workspace-session-*.tmp")
+	if err != nil {
+		return fmt.Errorf("unable to create recovery file: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.WriteString(jsonData); err != nil {
+		temporary.Close()
+		return fmt.Errorf("unable to write recovery data: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("unable to close recovery data: %w", err)
+	}
+	if err := os.Rename(temporaryPath, target); err != nil {
+		return fmt.Errorf("unable to commit recovery data: %w", err)
+	}
+	return nil
+}
+
+func loadRecovery(baseDir string) (string, error) {
+	target := recoveryFilePath(baseDir)
+	data, err := os.ReadFile(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("unable to read recovery data: %w", err)
+	}
+	if int64(len(data)) > maxSessionBytes {
+		return "", errors.New("recovery data exceeds the 25 MB limit")
+	}
+	if !json.Valid(data) {
+		return "", errors.New("recovery data is not valid JSON")
+	}
+	return string(data), nil
+}
+
+func clearRecovery(baseDir string) error {
+	err := os.Remove(recoveryFilePath(baseDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("unable to clear recovery data: %w", err)
+	}
+	return nil
+}

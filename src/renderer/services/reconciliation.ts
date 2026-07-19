@@ -809,6 +809,27 @@ export async function runReconciliation(
     }
 
     if (block.range) {
+      if (block.headerRows.length > 0 && block.headerSnapshot) {
+        const normalizedSnapshot: string[][] = Array.isArray(block.headerSnapshot[0])
+          ? block.headerSnapshot as string[][]
+          : [block.headerSnapshot as string[]]
+        const rowResult = detectRowShift(block.range, normalizedSnapshot, sheet, block.headerRows.length)
+        issues.push(...generateRowShiftIssues(rowResult, block.label))
+
+        if (rowResult.found && rowResult.shift && rowResult.newStartRow !== undefined && rowResult.newEndRow !== undefined) {
+          fixes.push({
+            type: 'row-adjust' as const,
+            description: `Adjust range by ${rowResult.shift} rows`,
+            autoApply: false,
+            data: {
+              newStartRow: rowResult.newStartRow,
+              newEndRow: rowResult.newEndRow,
+              shift: rowResult.shift,
+            },
+          })
+        }
+      }
+
       // Range dimension check
       const rangeResult = detectRangeChange(
         { range: block.range, columns: block.columns },
@@ -866,6 +887,19 @@ export async function runReconciliation(
             })
           }
         } catch (_e) { /* skip content diff on error */ }
+      }
+
+      for (const col of block.columns) {
+        if (col.type !== 'valueMapping' || col.valueMap.length === 0 || col.valueMap.length > 200) continue
+        try {
+          const colA1 = `${colToA1(col.colIndex)}${block.range.startRow + 1}:${colToA1(col.colIndex)}${block.range.endRow + 1}`
+          const values = sheet.getRange(colA1).getValues() as unknown[][]
+          const currentValues = values
+            .map(row => String(row[0]))
+            .filter(value => value !== 'undefined' && value !== 'null')
+          const conflicts = detectValueMapConflicts({ type: col.type, valueMap: col.valueMap }, currentValues)
+          issues.push(...generateValueMapIssues(conflicts, col.suggestedKey || col.colLetter))
+        } catch (_e) { /* skip unreadable columns */ }
       }
     }
 

@@ -4,7 +4,7 @@ import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined,
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
-import type { CellRange, ColumnMapping, BlockConfig, ParseResult, ReconciliationReport, RegionConfig, RegionParseResult } from './types'
+import type { CellRange, BlockConfig, ParseResult, ReconciliationReport, RegionConfig, RegionParseResult } from './types'
 import type { FocusMode } from './components/ConfigPanel'
 import { useUniver } from './context/UniverContext'
 import { runReconciliation } from './services/reconciliation'
@@ -12,38 +12,12 @@ import { getBridge } from './services/bridge'
 import { adaptPreviewData } from './services/previewDataAdapter'
 import { serializeSession, loadSession } from './services/serializer'
 import { createUniverWorkbookReader } from './services/workbook'
-import { parseWorkbook, suggestMappingsForWorkbook } from './services/extraction'
+import { generateColumnMappings, parseWorkbook, suggestMappingsForWorkbook } from './services/extraction'
 import { PreviewWindow } from './components/PreviewWindow'
 import type { PreviewData } from './types'
 import { WorkspaceNavigator } from './components/WorkspaceNavigator'
 import { DiagnosticsDrawer } from './components/DiagnosticsDrawer'
 import { WorkspaceHistory, type WorkspaceSnapshot } from './services/workspaceHistory'
-
-function colIndexToLetter(index: number): string {
-  let letter = ''
-  let n = index
-  while (n >= 0) {
-    letter = String.fromCharCode((n % 26) + 65) + letter
-    n = Math.floor(n / 26) - 1
-  }
-  return letter
-}
-
-function generateColumnMappings(range: CellRange): ColumnMapping[] {
-  return Array.from({ length: range.endCol - range.startCol + 1 }, (_, i) => {
-    const col = range.startCol + i
-    const letter = colIndexToLetter(col)
-    return {
-      colIndex: col,
-      colLetter: letter,
-      suggestedKey: `column_${letter}`,
-      key: `column_${letter}`,
-      type: 'auto' as const,
-      skip: false,
-      valueMap: [],
-    }
-  })
-}
 
 let blockCounter = 1
 function nextBlockId(): string {

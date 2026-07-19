@@ -73,6 +73,30 @@ describe('real Excel workbook extraction', () => {
     expect(missing.result).toMatchObject({ success: false, diagnostics: [{ code: 'sheet-missing', severity: 'error' }] })
   })
 
+  it('keeps multi-error diagnostic codes and block ordering stable', async () => {
+    const input = await workbook('m2_integration.xlsx')
+    const invalidRange = block({
+      id: 'invalid-range',
+      label: 'invalidRange',
+      range: range('B2:A1', 1, 1, 0, 0),
+    })
+    const duplicateKeys = block({
+      id: 'duplicate-keys',
+      label: 'duplicateKeys',
+      columns: [block().columns[0], { ...block().columns[0] }],
+    })
+
+    const first = parseWorkbook(input, [invalidRange, duplicateKeys], []).result
+    const second = parseWorkbook(input, [invalidRange, duplicateKeys], []).result
+
+    expect(first.success).toBe(false)
+    expect(first.diagnostics).toEqual([
+      expect.objectContaining({ code: 'invalid-range', severity: 'error', blockId: 'invalid-range' }),
+      expect.objectContaining({ code: 'duplicate-key', severity: 'error', blockId: 'duplicate-keys' }),
+    ])
+    expect(second.diagnostics).toEqual(first.diagnostics)
+  })
+
   it('detects changed-source headers using real v1 and v2 workbooks', async () => {
     const original = await workbook('test_data.xlsx')
     const changed = await workbook('test_data_v2.xlsx')

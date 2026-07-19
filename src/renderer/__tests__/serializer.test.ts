@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { serializeSession, deserializeSession, loadSession } from '../services/serializer'
 import type { BlockConfig, RegionConfig, ExportedSession } from '../types'
@@ -329,6 +331,48 @@ describe('loadSession', () => {
   it('marks v1 sessions as migrated', () => {
     const result = loadSession({ version: 1, config: { blocks: [mockBlock], activeBlockId: 'block-1', focusMode: 'always-editable' }, data: {}, blockResults: [] })
     expect(result.migratedFrom).toBe(1)
+    expect(result.session?.regions).toEqual([])
+  })
+
+  it('rejects malformed block ranges and column mappings before UI state is created', () => {
+    const malformedRange = loadSession({
+      version: 2,
+      config: { blocks: [{ ...mockBlock, range: { startRow: -1 } }], activeBlockId: 'block-1', focusMode: 'always-editable', regions: [] },
+    })
+    const malformedColumn = loadSession({
+      version: 2,
+      config: { blocks: [{ ...mockBlock, columns: [{ ...mockBlock.columns[0], colIndex: 'A' }] }], activeBlockId: 'block-1', focusMode: 'always-editable', regions: [] },
+    })
+
+    expect(malformedRange.errors).toEqual(['Invalid block "block_1": range must be null or a valid cell range.'])
+    expect(malformedColumn.errors).toEqual(['Invalid block "block_1": column 0 has an invalid position.'])
+  })
+
+  it('rejects malformed v2 regions before they reach the workspace', () => {
+    const result = loadSession({
+      version: 2,
+      config: {
+        blocks: [mockBlock],
+        activeBlockId: 'block-1',
+        focusMode: 'always-editable',
+        regions: [{ id: 'region-1', label: 'Region 1', range: null, splitRules: [{ type: 'unknown' }], blocks: [] }],
+      },
+    })
+
+    expect(result.errors).toEqual(['Invalid region "Region 1": splitRules contain an unsupported rule.'])
+  })
+
+  it('imports the tracked legacy session fixture and normalizes it safely', async () => {
+    const content = await readFile(resolve(process.cwd(), 'examples', 'session 2.json'), 'utf8')
+    const result = loadSession(JSON.parse(content))
+
+    expect(result.errors).toEqual([])
+    expect(result.migratedFrom).toBe(1)
+    expect(result.session).toMatchObject({
+      activeBlockId: 'block-465-1779981809582',
+      focusMode: 'always-editable',
+    })
+    expect(result.session?.blocks).toHaveLength(1)
     expect(result.session?.regions).toEqual([])
   })
 })

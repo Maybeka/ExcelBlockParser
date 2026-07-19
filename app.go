@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -12,11 +12,18 @@ type App struct {
 	ctx         context.Context
 	previewData map[string]interface{}
 	previewOpen bool
+	filePolicy  filePolicy
+	recoveryDir string
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.previewData = make(map[string]interface{})
+	baseDir, err := os.UserConfigDir()
+	if err != nil {
+		baseDir = os.TempDir()
+	}
+	a.recoveryDir = filepath.Join(baseDir, "Excel Block Parser")
 }
 
 // OpenPreviewWindow emits an event for the frontend to navigate to the preview route.
@@ -28,14 +35,9 @@ func (a *App) OpenPreviewWindow(blockId string) error {
 	return nil
 }
 
-// SetPreviewData stores parsed block data for the preview window.
-// rawData contains the original [][]interface{} rows;
-// parsedData contains the column-mapped []map[string]interface{} rows.
-func (a *App) SetPreviewData(blockId string, rawData [][]interface{}, parsedData []map[string]interface{}) {
-	a.previewData[blockId] = map[string]interface{}{
-		"rawRows":    rawData,
-		"parsedRows": parsedData,
-	}
+// SetPreviewData stores the renderer's complete, typed preview payload.
+func (a *App) SetPreviewData(blockId string, data interface{}) {
+	a.previewData[blockId] = data
 }
 
 // GetPreviewData returns the stored preview data for the given blockId,
@@ -44,28 +46,27 @@ func (a *App) GetPreviewData(blockId string) interface{} {
 	return a.previewData[blockId]
 }
 
-// OpenXlsx opens a native file dialog filtered to .xlsx/.xls files.
-// Returns the absolute file path, or empty string if cancelled.
-func (a *App) OpenXlsx() string {
+// OpenXlsx opens a native file dialog filtered to .xlsx/.xls files and
+// authorizes the selected workbook for a later bounded read.
+func (a *App) OpenXlsx() (string, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Open Excel File",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "Excel Files (*.xlsx, *.xls)", Pattern: "*.xlsx;*.xls"},
 		},
 	})
-	if err != nil || path == "" {
-		return ""
+	if err != nil {
+		return "", err
 	}
-	return path
+	if path == "" {
+		return "", nil
+	}
+	return a.filePolicy.approveWorkbook(path)
 }
 
-// ReadFile reads a file and returns its bytes as a []byte.
-func (a *App) ReadFile(path string) []byte {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	return data
+// ReadFile reads only the workbook selected by OpenXlsx.
+func (a *App) ReadFile(path string) ([]byte, error) {
+	return a.filePolicy.readApprovedWorkbook(path)
 }
 
 // JsonSaveResult mirrors the Electron IPC return type.
@@ -79,17 +80,19 @@ type JsonSaveResult struct {
 func (a *App) SaveJson(defaultName string, jsonData string) JsonSaveResult {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save JSON",
-		DefaultFilename: defaultName,
+		DefaultFilename: sanitizeJSONFileName(defaultName, "session.json"),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},
 	})
-	if err != nil || path == "" {
+	if err != nil {
+		return JsonSaveResult{Success: false, Error: err.Error()}
+	}
+	if path == "" {
 		return JsonSaveResult{Success: false, Error: "cancelled"}
 	}
 
-	err = os.WriteFile(path, []byte(jsonData), 0644)
-	if err != nil {
+	if err := writeJSONFile(path, jsonData); err != nil {
 		return JsonSaveResult{Success: false, Error: err.Error()}
 	}
 
@@ -102,32 +105,47 @@ type JsonOpenResult struct {
 	Content  string `json:"content"`
 }
 
-// OpenJson opens a JSON file dialog and reads the file content.
-// Returns nil if cancelled or on error.
-func (a *App) OpenJson() *JsonOpenResult {
+// OpenJson opens a JSON file dialog. Cancellation returns nil; read and JSON
+// validation failures are returned as errors so the renderer can report them.
+func (a *App) OpenJson() (*JsonOpenResult, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Import Config",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},
 	})
-	if err != nil || path == "" {
-		return nil
-	}
-
-	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		return nil, err
+	}
+	if path == "" {
+		return nil, nil
 	}
 
-	// Validate it's parseable JSON
-	var js json.RawMessage
-	if err := json.Unmarshal(data, &js); err != nil {
-		return nil
+	content, err := readJSONFile(path, maxSessionBytes, "Session file")
+	if err != nil {
+		return nil, err
 	}
 
 	return &JsonOpenResult{
 		FilePath: path,
-		Content:  string(data),
-	}
+		Content:  content,
+	}, nil
+}
+
+func (a *App) SaveRecovery(jsonData string) error {
+	return saveRecovery(a.recoveryDir, jsonData)
+}
+
+func (a *App) LoadRecovery() (string, error) {
+	return loadRecovery(a.recoveryDir)
+}
+
+func (a *App) ClearRecovery() error {
+	return clearRecovery(a.recoveryDir)
+}
+
+func (a *App) ClosePreviewWindow() {
+	a.previewOpen = false
+	a.previewData = make(map[string]interface{})
+	runtime.EventsEmit(a.ctx, "close-preview")
 }
