@@ -12,6 +12,10 @@ Release platforms, installers, signing, and minimum operating-system versions
 remain provisional until Wails packaging and acceptance testing are complete.
 Electron packaging is not a supported distribution channel.
 
+The tag workflow builds a macOS Wails release-candidate artifact for review;
+it does not publish a release. Publishing waits for the v1 signing,
+notarization, installer, and manual-acceptance gates.
+
 ## Supported Workbook Behavior
 
 - `.xlsx` and `.xls` selection, up to 100 MB per workbook.
