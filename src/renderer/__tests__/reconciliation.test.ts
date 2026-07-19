@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BlockConfig, CellRange, ColumnMapping } from '../types'
 import {
+  applyRowAdjustFix,
   compareContentSnapshot,
   detectColumnChanges,
   detectColumnRearrangement,
@@ -114,6 +115,21 @@ describe('reconciliation primitives', () => {
     })
     expect((fix?.data as { remappedColumns: ColumnMapping[] }).remappedColumns.map(column => column.key)).toEqual(['status', 'name', 'column_C'])
     expect(columns).toEqual(currentColumns)
+  })
+
+  it('applies a validated row-adjust suggestion without mutating the saved range', () => {
+    const original = structuredClone(range)
+    const adjusted = applyRowAdjustFix(range, {
+      type: 'row-adjust',
+      description: 'Adjust range by 2 rows',
+      autoApply: false,
+      data: { newStartRow: 2, newEndRow: 3, shift: 2 },
+    })
+
+    expect(adjusted).toEqual({ ...range, startRow: 2, endRow: 3, a1Notation: 'A3:B4' })
+    expect(range).toEqual(original)
+    expect(applyRowAdjustFix(range, { type: 'row-adjust', description: '', autoApply: false, data: { newStartRow: -1, newEndRow: 2 } })).toBeNull()
+    expect(applyRowAdjustFix(range, { type: 'range-reselect', description: '', autoApply: false, data: {} })).toBeNull()
   })
 
   it('detects column reordering separately from insertion and deletion', () => {

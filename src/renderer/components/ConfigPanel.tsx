@@ -4,7 +4,7 @@ import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, Se
 import type { CellRange, ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, RegionConfig, Tag as TagType } from '../types'
 import { useUniver } from '../context/UniverContext'
 import { remapColumns } from '../services/columnMapper'
-import { runReconciliation } from '../services/reconciliation'
+import { applyRowAdjustFix, runReconciliation } from '../services/reconciliation'
 import { addTag, removeTag, filterBlocksByTag, getAllTags } from '../services/tagUtils'
 import { validateExpression } from '../services/pythonValidator'
 import { RegionPanel } from './RegionPanel'
@@ -299,7 +299,26 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
       <Typography.Text style={{ fontSize: 12, color: '#999', display: 'block', marginBottom: 8 }}>
         {report.issues.filter(i => ['row-shifted', 'content-changed'].includes(i.type)).map(i => i.message).join('; ') || 'No range issues detected.'}
       </Typography.Text>
-      <Button size="small" onClick={handleReselectRange}>Reselect Range</Button>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {(() => {
+          const fix = report.suggestedFixes.find(candidate => candidate.type === 'row-adjust')
+          const currentRange = selectedRange || block.range
+          if (!fix || !currentRange) return null
+          return (
+            <Button
+              size="small"
+              icon={<CheckOutlined />}
+              onClick={() => {
+                const adjusted = applyRowAdjustFix(currentRange, fix)
+                if (adjusted) setSelectedRange(adjusted)
+              }}
+            >
+              Apply suggested row shift
+            </Button>
+          )
+        })()}
+        <Button size="small" onClick={handleReselectRange}>Reselect Range</Button>
+      </div>
     </div>
   )
 

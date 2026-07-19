@@ -59,6 +59,23 @@ function colToA1(index: number): string {
   return letter
 }
 
+export function applyRowAdjustFix(range: CellRange, fix: SuggestedFix): CellRange | null {
+  if (fix.type !== 'row-adjust' || !fix.data || typeof fix.data !== 'object') return null
+  const { newStartRow, newEndRow } = fix.data as Partial<{ newStartRow: unknown; newEndRow: unknown }>
+  if (typeof newStartRow !== 'number' || typeof newEndRow !== 'number'
+    || !Number.isInteger(newStartRow) || !Number.isInteger(newEndRow)
+    || newStartRow < 0 || newEndRow < newStartRow) {
+    return null
+  }
+
+  return {
+    ...range,
+    startRow: newStartRow,
+    endRow: newEndRow,
+    a1Notation: `${colToA1(range.startCol)}${newStartRow + 1}:${colToA1(range.endCol)}${newEndRow + 1}`,
+  }
+}
+
 // ── Column Detection ───────────────────────────────────────────────────────
 
 export function detectColumnChanges(
