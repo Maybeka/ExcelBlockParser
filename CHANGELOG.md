@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased: v0.1 refinement toward v1.0
+## 1.0.0 - 2026-08-09
 
-This repository remains at `0.1.0`. The prior `1.0.0` entry was planning
-material, not a shipped release.
+The prior `v1.0.0` tag was planning material and is superseded by this Wails
+Windows 11 x64 release.
 
 - Stable session and JSON output contract at schema version 2, including v1
   import migration.
@@ -11,8 +11,8 @@ material, not a shipped release.
   autosave/recovery, and undo/redo.
 - Electron-native verification for workbook open, session import/export,
   preview, cancellation, and recovery persistence.
-- Wails is the intended production runtime; Electron is retained as a
-  development and diagnostic harness while Wails parity is completed.
+- Wails is the Windows 11 x64 production runtime. Electron is retained as a
+  development and diagnostic harness.
 
 ## Compatibility
 
