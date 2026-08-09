@@ -6,27 +6,25 @@ Wails is the only production packaging path for v1.0. Electron remains useful
 for rapid renderer development, debugging, and its existing native test suite,
 but Electron packages must not be published as product releases.
 
-The current repository is `0.1.0`; package names and release artifacts must use
-the actual pre-release version until the v1.0 acceptance gates pass.
+The v1 production target is Windows 11 x64. The distributed artifact is an
+unsigned ZIP plus a SHA-256 sidecar. Installers and Authenticode signing are
+post-v1 work.
 
 ## Wails Production Build
 
-```bash
-# Prerequisites: Go, the Wails CLI, and platform GUI/WebView dependencies.
-wails build
+On a Windows runner with the Wails CLI installed:
+
+```powershell
+npm ci
+npm run test:release
+go test ./...
+npm run build:vite
+npm run package:wails:win
 ```
 
-Expected output:
-
-```text
-build/bin/excel-block-parser.app  # macOS
-build/bin/excel-block-parser      # Linux
-build/bin/excel-block-parser.exe  # Windows
-```
-
-Before a production release, the Wails build process must add platform-specific
-installer creation, signing/notarization, reproducible artifact naming, and a
-packaged-app smoke suite. See [docs/RELEASE_ACCEPTANCE.md](docs/RELEASE_ACCEPTANCE.md).
+The final command writes `release-wails/` containing a Windows x64 ZIP and its
+SHA-256 sidecar. It rejects a Git tag whose name does not exactly match the
+version in `package.json`.
 
 ## Electron Development Build
 
@@ -48,9 +46,12 @@ artifact.
 
 ## Release Checklist
 
-1. Pass [docs/RELEASE_ACCEPTANCE.md](docs/RELEASE_ACCEPTANCE.md) on the release
-   candidate.
-2. Update the version to `1.0.0`, changelog, support matrix, and release notes
-   only after acceptance is recorded.
-3. Build, sign, and manually smoke-test Wails artifacts for the declared
-   platforms.
+1. Prepare a clean release-candidate commit with its actual prerelease version
+   (for example, `1.0.0-rc.1`), then tag it `v1.0.0-rc.1`.
+2. Run the tag workflow and retain the generated ZIP and SHA-256 sidecar.
+3. Pass [docs/RELEASE_ACCEPTANCE.md](docs/RELEASE_ACCEPTANCE.md) and the
+   Windows 11 x64 manual test plan against that candidate.
+4. After acceptance, update the version and changelog for `1.0.0`, rebuild the
+   final ZIP, and tag its commit `v1.0.0`.
+5. Publish the final ZIP, SHA-256, support notes, and acceptance evidence. Do
+   not publish Electron packages as product releases.
