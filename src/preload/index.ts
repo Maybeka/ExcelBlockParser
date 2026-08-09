@@ -5,6 +5,7 @@ export interface ElectronAPI {
   openXlsx: () => Promise<BridgeResult<string>>
   readFile: (filePath: string) => Promise<BridgeResult<ArrayBuffer>>
   saveJson: (defaultName: string, jsonData: string) => Promise<BridgeResult<{ filePath: string }>>
+  saveJsonToPath: (filePath: string, jsonData: string) => Promise<BridgeResult<{ filePath: string }>>
   openJson: () => Promise<BridgeResult<{ filePath: string; content: string }>>
   saveRecovery: (jsonData: string) => Promise<BridgeResult<void>>
   loadRecovery: () => Promise<BridgeResult<string | null>>
@@ -32,6 +33,13 @@ const api: ElectronAPI = {
       const result = await ipcRenderer.invoke('file:save', defaultName, jsonData) as { success: boolean; filePath?: string; error?: string }
       if (result.success && result.filePath) return bridgeOk({ filePath: result.filePath })
       return result.error?.toLowerCase() === 'cancelled' ? bridgeCancelled() : bridgeError(result.error || 'Unable to save JSON.')
+    } catch (error) { return bridgeError(error) }
+  },
+  saveJsonToPath: async (filePath, jsonData) => {
+    try {
+      const result = await ipcRenderer.invoke('file:writeJson', filePath, jsonData) as { success: boolean; filePath?: string; error?: string }
+      if (result.success && result.filePath) return bridgeOk({ filePath: result.filePath })
+      return bridgeError(result.error || 'Unable to save project.')
     } catch (error) { return bridgeError(error) }
   },
   openJson: async () => {

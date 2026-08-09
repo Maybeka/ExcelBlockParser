@@ -17,16 +17,18 @@ interface SpreadsheetPanelProps {
   activeBlockId: string
   activeRegionId: string | null
   activeColIndex: number | null
-  onSelectionChange: (range: CellRange | null, activeSheet: string | null) => void
-  onActiveSheetChange: (sheetName: string | null) => void
+  onSelectionChange: (workbookId: string, range: CellRange | null, activeSheet: string | null) => void
+  onActiveSheetChange: (workbookId: string, sheetName: string | null) => void
   loadSignal: number
-  onFileLoaded: (fileName: string) => void
+  requestedWorkbook?: { workbookId: string; path: string; requestId: number; sheetName?: string | null } | null
+  onFileLoaded: (workbookId: string, fileName: string, filePath: string, sheetNames: string[], activeSheetName: string | null) => void
+  onLoadedWorkbookChange: (workbookId: string | null) => void
   closeSignal: number
   lockedRanges: LockedRangeInfo[]
   onOpenWorkbook: () => void
 }
 
-export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, onFileLoaded, lockedRanges, closeSignal, onOpenWorkbook }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook }: SpreadsheetPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { univerAPI, setUniverAPI, setSheetNames } = useUniver()
   const univerAPIRef = useRef(univerAPI)
@@ -37,10 +39,10 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
   const onActiveSheetChangeRef = useRef(onActiveSheetChange)
   onActiveSheetChangeRef.current = onActiveSheetChange
 
-  const refreshSheetNames = () => {
+  const refreshSheetNames = (targetWorkbook?: any) => {
     const api = univerAPIRef.current
     if (!api) return
-    const wb = api.getActiveWorkbook()
+    const wb = targetWorkbook ?? api.getActiveWorkbook()
     if (!wb) return
     const sheets: string[] = []
     const facadeSheets = wb.getSheets()
@@ -57,6 +59,10 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
   const [hasFile, setHasFile] = useState(false)
   const [retrySignal, setRetrySignal] = useState(0)
   const initializedRef = useRef(false)
+  const requestedWorkbookRef = useRef<number | null>(null)
+  const handledLoadSignalRef = useRef(0)
+  const handledRetrySignalRef = useRef(0)
+  const loadVersionRef = useRef(0)
   const selectionDisposableRef = useRef<{ dispose: () => void } | null>(null)
   const commandDisposableRef = useRef<{ dispose: () => void } | null>(null)
   const renameObserverRef = useRef<MutationObserver | null>(null)
@@ -133,22 +139,22 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
     }
   }, [activeColIndex, activeBlockId, hasFile, lockedRanges])
 
-  const tryAttachListener = () => {
+  const tryAttachListener = (targetWorkbook: any, sourceWorkbookId: string) => {
     try {
       selectionDisposableRef.current?.dispose()
       commandDisposableRef.current?.dispose()
       const api = univerAPIRef.current
       if (!api) return
 
-      const workbook = api.getActiveWorkbook()
+      const workbook = targetWorkbook ?? api.getActiveWorkbook()
       if (!workbook) return
 
-      const disposable = workbook.onSelectionChange((selections) => {
+      const disposable = workbook.onSelectionChange((selections: any[]) => {
         const currentSheet = workbook.getActiveSheet()
         const sheetName = currentSheet?.getSheetName() ?? null
 
         if (!selections.length || !currentSheet) {
-          onSelectionChangeRef.current(null, sheetName)
+          onSelectionChangeRef.current(sourceWorkbookId, null, sheetName)
           return
         }
         const sel = selections[0]
@@ -159,23 +165,23 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
           endCol: sel.endColumn,
           a1Notation: `${colToA1(sel.startColumn)}${sel.startRow + 1}:${colToA1(sel.endColumn)}${sel.endRow + 1}`,
         }
-        onSelectionChangeRef.current(range, sheetName)
+        onSelectionChangeRef.current(sourceWorkbookId, range, sheetName)
       })
 
       selectionDisposableRef.current = disposable
 
-      commandDisposableRef.current = workbook.onCommandExecuted((command) => {
+      commandDisposableRef.current = workbook.onCommandExecuted((command: any) => {
         const commandId = (command as any)?.id?.toLowerCase() || ''
         if (commandId.includes('set-worksheet-active') || commandId.includes('set-worksheet-activate')) {
           const sheetName = workbook.getActiveSheet()?.getSheetName() ?? null
-          onActiveSheetChangeRef.current(sheetName)
+          onActiveSheetChangeRef.current(sourceWorkbookId, sheetName)
         }
         if (commandId.includes('sheet') || commandId.includes('worksheet')) {
-          setTimeout(() => refreshSheetNames(), 50)
+          setTimeout(() => refreshSheetNames(workbook), 50)
         }
       })
 
-      setTimeout(() => refreshSheetNames(), 50)
+      setTimeout(() => refreshSheetNames(workbook), 50)
     } catch { /* selection listener setup failed, non-fatal */ }
   }
 
@@ -255,18 +261,27 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
   }, [])
 
   useEffect(() => {
-    if (loadSignal === 0 && retrySignal === 0) return
+    const externalRequest = requestedWorkbook && requestedWorkbook.requestId !== requestedWorkbookRef.current
+    const pickerRequest = loadSignal !== 0 && loadSignal !== handledLoadSignalRef.current
+    const retryRequest = retrySignal !== 0 && retrySignal !== handledRetrySignalRef.current
+    if (!externalRequest && !pickerRequest && !retryRequest) return
 
-    const doLoad = async () => {
+    const doLoad = async (sourceWorkbookId?: string, requestedPath?: string, requestedSheetName?: string | null) => {
+      const loadVersion = ++loadVersionRef.current
       try {
         const bridge = getBridge()
-        const openResult = await bridge.openXlsx()
-        if (openResult.status === 'cancelled') return
-        if (openResult.status === 'error') throw new Error(openResult.error.message)
-        const filePath = openResult.value
+        let filePath = requestedPath
+        if (!filePath) {
+          const openResult = await bridge.openXlsx()
+          if (openResult.status === 'cancelled') return
+          if (openResult.status === 'error') throw new Error(openResult.error.message)
+          filePath = openResult.value
+        }
+        if (!filePath || !sourceWorkbookId) return
 
         setLoading(true)
         setError(null)
+        onLoadedWorkbookChange(null)
 
         const readResult = await withTimeout(bridge.readFile(filePath), 'Reading the workbook timed out after 30 seconds.')
         if (readResult.status === 'error') throw new Error(readResult.error.message)
@@ -274,24 +289,28 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
         const arrayBuffer = readResult.value
         const fileName = filePath.split(/[/\\]/).pop() ?? 'workbook.xlsx'
 
+        if (loadVersion !== loadVersionRef.current) return
+
         const api = univerAPIRef.current
         if (!api) throw new Error('Univer API not initialized')
 
+        selectionDisposableRef.current?.dispose()
+        commandDisposableRef.current?.dispose()
         const activeWorkbook = api.getActiveWorkbook()
         if (activeWorkbook) api.disposeUnit(activeWorkbook.getId())
 
         const { workbookData, fonts } = await withTimeout(convertXlsxToWorkbookData(arrayBuffer, fileName), 'Converting the workbook timed out after 30 seconds.')
 
-        const newWorkbook = api.createWorkbook(workbookData)
+        if (loadVersion !== loadVersionRef.current) return
+
+        const newWorkbook = api.createWorkbook(workbookData, { makeCurrent: true })
         if (!newWorkbook) throw new Error('createWorkbook failed')
+        if (requestedSheetName) newWorkbook.getSheetByName(requestedSheetName)?.activate()
 
         setTimeout(() => {
           try {
-            const activeWb = univerAPIRef.current?.getActiveWorkbook()
-            if (activeWb) {
-              activeWb.getWorkbookPermission().setReadOnly().catch(() => {})
-              activeWb.getWorkbookPermission().setPermissionDialogVisible(false)
-            }
+            newWorkbook.getWorkbookPermission().setReadOnly().catch(() => {})
+            newWorkbook.getWorkbookPermission().setPermissionDialogVisible(false)
           } catch { /* permission set may fail during init */ }
         }, 0)
 
@@ -299,13 +318,14 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
           try { api.addFonts(fonts.map(f => ({ value: f, label: f }))) } catch { /* font may already exist */ }
         }
 
+        const loadedSheetNames = newWorkbook.getSheets().map(sheet => sheet.getSheetName())
+        const loadedActiveSheetName = newWorkbook.getActiveSheet()?.getSheetName() ?? null
         setHasFile(true)
-        onActiveSheetChangeRef.current(newWorkbook.getActiveSheet()?.getSheetName() ?? null)
-        onSelectionChangeRef.current(null, null)
-        onFileLoaded(fileName)
+        onFileLoaded(sourceWorkbookId, fileName, filePath, loadedSheetNames, loadedActiveSheetName)
+        onLoadedWorkbookChange(sourceWorkbookId)
 
-        setTimeout(() => refreshSheetNames(), 200)
-        setTimeout(() => tryAttachListener(), 300)
+        setSheetNames(loadedSheetNames)
+        tryAttachListener(newWorkbook, sourceWorkbookId)
       } catch (err) {
         const msg = String(err)
         console.error('[SpreadsheetPanel] Load error:', msg)
@@ -316,8 +336,15 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
       }
     }
 
-    doLoad()
-  }, [loadSignal, retrySignal])
+    if (externalRequest && requestedWorkbook) {
+      requestedWorkbookRef.current = requestedWorkbook.requestId
+      void doLoad(requestedWorkbook.workbookId, requestedWorkbook.path, requestedWorkbook.sheetName)
+    } else {
+      if (pickerRequest) handledLoadSignalRef.current = loadSignal
+      if (retryRequest) handledRetrySignalRef.current = retrySignal
+      void doLoad()
+    }
+  }, [loadSignal, retrySignal, requestedWorkbook, onFileLoaded])
 
   useEffect(() => {
     if (closeSignal === 0) return
@@ -327,7 +354,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
     if (wb) api.disposeUnit(wb.getId())
     setHasFile(false)
     setSheetNames([])
-    onSelectionChangeRef.current(null, null)
+    onLoadedWorkbookChange(null)
     setError(null)
   }, [closeSignal, setSheetNames])
 
@@ -350,7 +377,7 @@ export function SpreadsheetPanel({ activeBlockId, activeRegionId, activeColIndex
       {error && (
         <div role="alert" style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', color: '#cf1322', fontSize: 14, padding: 24, textAlign: 'center' }}>
           <span>{error}</span>
-          <Button onClick={() => setRetrySignal(value => value + 1)}>Choose another workbook</Button>
+          <Button onClick={onOpenWorkbook}>Choose another workbook</Button>
         </div>
       )}
     </div>

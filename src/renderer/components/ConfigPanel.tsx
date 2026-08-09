@@ -1,6 +1,6 @@
 import { useCallback, useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider, Tag, Dropdown } from 'antd'
-import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined, TagOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined, PlayCircleOutlined, TagOutlined } from '@ant-design/icons'
 import type { CellRange, ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, RegionConfig, Tag as TagType } from '../types'
 import { useUniver } from '../context/UniverContext'
 import { remapColumns } from '../services/columnMapper'
@@ -81,9 +81,15 @@ export function isValidVariableName(name: string): boolean {
 export function validateBlocks(blocks: BlockConfig[]): string[] {
   const errors: string[] = []
 
-  const labelCounts = new Map<string, number>()
-  blocks.forEach(b => { const l = (b.label || '').trim(); if (l) labelCounts.set(l, (labelCounts.get(l) || 0) + 1) })
-  labelCounts.forEach((count, l) => { if (count > 1) errors.push(`Duplicate block name: "${l}"`) })
+  const labelCounts = new Map<string, { count: number; label: string }>()
+  blocks.forEach(block => {
+    const label = (block.label || '').trim()
+    if (!label) return
+    const key = `${block.workbookId ?? 'unassigned'}\u0000${label}`
+    const current = labelCounts.get(key)
+    labelCounts.set(key, { count: (current?.count ?? 0) + 1, label })
+  })
+  labelCounts.forEach(({ count, label }) => { if (count > 1) errors.push(`Duplicate block name: "${label}"`) })
 
   blocks.forEach(b => {
     if (b.label && !isValidVariableName(b.label)) {
@@ -776,8 +782,8 @@ export function ConfigPanel({
   labelCounts.forEach((count, l) => { if (count > 1) dupLabels.add(l) })
 
   return (
-    <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div>
+    <div className="config-panel" style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div className="config-panel-toolbar">
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
           <h3 style={{ margin: 0, fontSize: 16, flex: 1 }}>
             Blocks
@@ -824,6 +830,17 @@ export function ConfigPanel({
               icon={<SettingOutlined />}
               onClick={() => setShowSettings(s => !s)}
               style={{ color: showSettings ? '#1677ff' : undefined }}
+            />
+          </Tooltip>
+          <Tooltip title="Run configured extractors and review the result">
+            <Button
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+              aria-label="Run & Preview"
+              size="small"
+              type="text"
+              icon={<PlayCircleOutlined />}
+              disabled={!blocks.some(block => block.range)}
+              onClick={onParse}
             />
           </Tooltip>
           <span style={{ marginLeft: 12, flexShrink: 0 }}>
@@ -924,6 +941,7 @@ export function ConfigPanel({
 
         return (
           <div
+            className={`extractor-card ${isActive ? 'is-active' : ''}`}
             key={block.id}
             ref={(el) => { blockContainerRefs.current[block.id] = el }}
             onMouseDown={() => { if (!isOtherBlockInReconciling) onActivateBlock(block.id) }}
@@ -937,6 +955,7 @@ export function ConfigPanel({
             }}
           >
             <div
+              className="extractor-card-header"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '6px 10px',
@@ -1157,7 +1176,7 @@ export function ConfigPanel({
               </div>
             ) : (
               !effectivelyCollapsed && (
-              <div ref={(el) => { normalContentRef.current[block.id] = el }} style={{ padding: '8px 12px', opacity: controlsLocked ? 0.5 : 1 }}>
+              <div className="extractor-card-body" ref={(el) => { normalContentRef.current[block.id] = el }} style={{ padding: '8px 12px', opacity: controlsLocked ? 0.5 : 1 }}>
                 {!block.range ? (
                   <div style={{ color: '#999', fontSize: 13, padding: '8px 0' }}>
                     Click and drag in the spreadsheet to select a data range.

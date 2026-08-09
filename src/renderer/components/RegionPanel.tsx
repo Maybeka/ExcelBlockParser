@@ -19,7 +19,7 @@ export function RegionPanel({ regions, activeRegionId, onActivateRegion, onRegio
   if (!regions.length) return null
 
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div className="region-panel" style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
         <h3 style={{ margin: 0, fontSize: 16, flex: 1 }}>Regions</h3>
       </div>

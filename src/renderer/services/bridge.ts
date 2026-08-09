@@ -11,6 +11,7 @@ export interface BridgeAPI {
   openXlsx: () => Promise<BridgeResult<string>>
   readFile: (filePath: string) => Promise<BridgeResult<ArrayBuffer>>
   saveJson: (defaultName: string, jsonData: string) => Promise<BridgeResult<{ filePath: string }>>
+  saveJsonToPath: (filePath: string, jsonData: string) => Promise<BridgeResult<{ filePath: string }>>
   openJson: () => Promise<BridgeResult<{ filePath: string; content: string }>>
   saveRecovery: (jsonData: string) => Promise<BridgeResult<void>>
   loadRecovery: () => Promise<BridgeResult<string | null>>
@@ -31,6 +32,7 @@ export interface WailsGoAPI {
       OpenXlsx: () => Promise<string>
       ReadFile: (path: string) => Promise<number[]>
       SaveJson: (name: string, data: string) => Promise<{ success: boolean; filePath: string; error: string }>
+      SaveJsonToPath: (path: string, data: string) => Promise<{ success: boolean; filePath: string; error: string }>
       OpenJson: () => Promise<{ filePath: string; content: string } | null>
       SaveRecovery: (data: string) => Promise<void>
       LoadRecovery: () => Promise<string | null>
@@ -54,7 +56,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
   const App = go?.main?.App
   if (!App) throw new Error('Wails runtime not available')
   const requiredMethods = [
-    'OpenXlsx', 'ReadFile', 'SaveJson', 'OpenJson',
+    'OpenXlsx', 'ReadFile', 'SaveJson', 'SaveJsonToPath', 'OpenJson',
     'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
     'OpenPreviewWindow', 'SetPreviewData', 'GetPreviewData', 'ClosePreviewWindow',
   ] as const
@@ -91,6 +93,13 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
         const result = await App.SaveJson(defaultName, jsonData)
         if (result.success && result.filePath) return bridgeOk({ filePath: result.filePath })
         return result.error?.toLowerCase() === 'cancelled' ? bridgeCancelled() : bridgeError(result.error || 'Unable to save JSON.')
+      } catch (error) { return bridgeError(error) }
+    },
+    saveJsonToPath: async (filePath: string, jsonData: string) => {
+      try {
+        const result = await App.SaveJsonToPath(filePath, jsonData)
+        if (result.success && result.filePath) return bridgeOk({ filePath: result.filePath })
+        return bridgeError(result.error || 'Unable to save project.')
       } catch (error) { return bridgeError(error) }
     },
     openJson: async () => {
@@ -131,6 +140,7 @@ function createBrowserBridge(): BridgeAPI {
     openXlsx: async () => bridgeError('openXlsx requires Electron or Wails'),
     readFile: async () => bridgeError('readFile requires Electron or Wails'),
     saveJson: async () => bridgeError('saveJson requires Electron or Wails'),
+    saveJsonToPath: async () => bridgeError('saveJsonToPath requires Electron or Wails'),
     openJson: async () => bridgeError('openJson requires Electron or Wails'),
     saveRecovery: async (jsonData) => { localStorage.setItem('excel-block-parser.recovery', jsonData); return bridgeOk(undefined) },
     loadRecovery: async () => bridgeOk(localStorage.getItem('excel-block-parser.recovery')),

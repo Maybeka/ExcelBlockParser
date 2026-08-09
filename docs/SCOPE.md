@@ -26,8 +26,8 @@ The durable output of the product is therefore two related artifacts:
 
 The implemented application supports this general workflow:
 
-1. Open an Excel workbook in the desktop application.
-2. View worksheets in an embedded spreadsheet editor/viewer.
+1. Create or open a project JSON file.
+2. Load every workbook source configured by that project.
 3. Select one or more ranges as extraction blocks.
 4. Configure headers, output fields, types, value mappings, and skipped
    columns for each block.
@@ -35,8 +35,8 @@ The implemented application supports this general workflow:
    row boundaries.
 6. Apply row filtering and empty-column removal.
 7. Add tags and computed-property metadata.
-8. Validate and preview raw versus parsed data.
-9. Export JSON and import/export a reusable session.
+8. Run extractors and preview raw versus parsed data from the extraction panel.
+9. Save or save-as the complete project JSON through the desktop lifecycle.
 10. Reconcile existing block definitions after a workbook has changed.
 
 ## 3. Implemented Scope
@@ -88,11 +88,13 @@ The implemented application supports this general workflow:
   execute Python expressions or add computed values to parsed JSON.
 - Parsed JSON output with block and optional region results.
 
-### 3.5 Session persistence and reconciliation
+### 3.5 Project persistence and reconciliation
 
-- Versioned session serialization and deserialization.
-- Backward compatibility for session version 1 and current version 2 data.
-- Import/export of configuration plus parsed output.
+- Versioned v3 project serialization and deserialization.
+- Import compatibility for legacy session versions 1 and 2.
+- New, Open, Save, Save As, Settings, and Close project lifecycle controls.
+- Complete project persistence including workbook sources, configuration, and
+  the most recent run output.
 - Unsaved-change tracking and discard confirmation in the UI.
 - Reconciliation reports when source workbooks change, including missing
   sheets, changed/shifted columns, shifted rows, unused/new value mappings,

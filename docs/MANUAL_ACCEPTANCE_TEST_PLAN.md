@@ -59,10 +59,10 @@ separate `output/` directory for generated JSON files and screenshots.
 
 **Expected result**
 
-- The header shows **Excel Block Parser** with Open Excel, Export, Import,
-  Undo, Redo, Diagnostics, and Parse & Preview controls.
+- The header shows **Excel Block Parser**, Undo, Redo, Diagnostics, and a
+  project control whose menu contains New, Save, Save As, Settings, and Close.
 - A default `block_1` is visible and the canvas says to open an XLSX file.
-- Parse & Preview is disabled until a range is selected.
+- Run & Preview in the extraction panel is disabled until a range is selected.
 - Workspace navigation remains reachable at narrow widths.
 
 **Evidence:** screenshot of the clean launch and any layout defect.
@@ -71,9 +71,10 @@ separate `output/` directory for generated JSON files and screenshots.
 
 **Steps**
 
-1. Select **Open Excel**, then cancel the native dialog.
+1. Create a project, open **Project settings**, select **Add workbook source**,
+   then cancel the native dialog.
 2. Confirm the default workspace is unchanged.
-3. Select **Open Excel** again and choose `test_data.xlsx`.
+3. Select **Add workbook source** again and choose `test_data.xlsx`.
 4. Verify the filename appears in the header and `Sheet1` appears in the
    workspace navigator.
 5. Try selecting a non-workbook file in the native dialog, if the dialog
@@ -87,50 +88,49 @@ separate `output/` directory for generated JSON files and screenshots.
 
 **Evidence:** screenshot of the loaded workbook and filename.
 
-### TC-03: Core Template, Parse, Preview, And Export Workflow
+### TC-03: Core Project, Preview, And Save Workflow
 
 This is the required end-to-end acceptance case.
 
 **Steps**
 
-1. With `test_data.xlsx` open, select **Import** and choose the untouched
-   `session.json` fixture.
+1. Select **Open Project** and choose the untouched `session.json` fixture.
 2. If warned that blocks will be replaced, select **Replace All**.
 3. Confirm the migration notice appears and the configured block is named
    **Block 1** with range `Sheet1!A1:D9`.
-4. Select **Parse & Preview**.
+4. Select **Run & Preview** in the extraction panel.
 5. In the preview, inspect the parsed view and verify there are eight rows.
    The first row must contain `Alice`, `25`, `88.5`, and `New York`; the last
    row must contain `Hank`, `29`, `60`, and `Dubai`.
-6. Close the preview, select **Export**, and choose
+6. Close the preview, select **Save Project As**, and choose
    `output/core-workflow.json`.
 7. If validation displays a confirmation, inspect the listed issues and select
-   **Export anyway** only when they are expected for the fixture.
-8. Open the exported JSON in a text editor.
+   **Save anyway** only when they are expected for the fixture.
+8. Open the saved project JSON in a text editor.
 
 **Expected result**
 
 - Import succeeds and reports the v1 migration; it does not silently discard
   the configuration.
 - Preview shows the expected parsed records with numeric age/score values.
-- The export is valid JSON with `"version": 2`, `config`, `data`, and
+- The project is valid JSON with `"version": 3`, `project`, `data`, and
   `blockResults`.
-- `data["Block 1"]` and the corresponding block result both contain eight
+- The saved data and corresponding block result both contain eight
   records with the expected first and last values.
 
 **Evidence:** save `core-workflow.json` and a preview screenshot. This file is
 the primary evidence for the stable contract described in
 [SESSION_SCHEMA.md](SESSION_SCHEMA.md).
 
-### TC-04: Export Re-Import Stability
+### TC-04: Save And Reopen Stability
 
 **Steps**
 
-1. Close the current workbook using the header close control, accepting the
-   discard prompt only after `core-workflow.json` exists.
-2. Open `test_data.xlsx` again.
-3. Import `output/core-workflow.json` and choose **Replace All** when asked.
-4. Select **Parse & Preview** and export a second file,
+1. Close the current project from the project menu after
+   `core-workflow.json` exists.
+2. Select **Open Project**.
+3. Open `output/core-workflow.json` and confirm replacement when asked.
+4. Select **Run & Preview** and save a second file with **Save Project As**,
    `output/core-workflow-roundtrip.json`.
 5. Compare the two files' `version`, block label, configured range, data row
    count, and the first/last output records.
@@ -138,7 +138,7 @@ the primary evidence for the stable contract described in
 **Expected result**
 
 - Re-import restores the configured block without an error.
-- Both exports are version 2 and have equivalent configured output and parsed
+- Both projects are version 3 and have equivalent configured output and parsed
   records. `exportedAt` may differ.
 
 **Evidence:** retain both JSON files and note any unexpected structural diff.
@@ -153,7 +153,7 @@ the primary evidence for the stable contract described in
 3. In the Blocks panel, use the Add menu and select **Add Region**.
 4. Activate the new region, drag a multi-cell range in the spreadsheet, and
    confirm the region shows the selected sheet and A1 range.
-5. Add an `emptyRow` split rule, then select **Parse & Preview**.
+5. Add an `emptyRow` split rule, then select **Run & Preview**.
 6. Repeat with `m2_integration.xlsx` if more than one split result is not
    evident in the first workbook.
 
@@ -195,8 +195,8 @@ the primary evidence for the stable contract described in
    focus is outside a text field.
 3. Verify `block_2` disappears, then select Redo or use Command+Shift+Z /
    Control+Shift+Z (Control+Y is also supported on Windows/Linux).
-4. Make another configuration change and select **Open Excel** or close the
-   file.
+4. Make another configuration change and select **Open Project**, **New
+   Project**, or **Close Project** from the project control.
 5. In the discard prompt, select Cancel; then repeat and select Discard.
 
 **Expected result**

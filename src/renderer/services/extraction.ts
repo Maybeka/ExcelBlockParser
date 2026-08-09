@@ -47,3 +47,55 @@ export function parseWorkbook(workbook: WorkbookReader, blocks: BlockConfig[], r
   for (const region of regions.filter(item => item.range)) { const sheet = region.activeSheet ? workbook.getSheet(region.activeSheet) : workbook.getActiveSheet(); if (!sheet) { diagnostics.push({ code: 'sheet-missing', severity: 'error', regionId: region.id, message: `Region "${region.label}" references an unavailable sheet.` }); continue }; const values = sheet.getValues(region.range!); const strings = values.map(row => row.map(value => value == null ? '' : String(value))); const ranges = detectBlocks(region.range!, region.splitRules, (row, col) => strings[row - region.range!.startRow]?.[col - region.range!.startCol] ?? ''); const resultBlocks: RegionBlockResult[] = ranges.map((range, index) => ({ blockLabel: `block_${index + 1}`, rows: strings.slice(range.startRow - region.range!.startRow, range.endRow - region.range!.startRow + 1) })); regionResults.push({ regionId: region.id, label: region.label, blocks: resultBlocks }) }
   const errors = diagnostics.filter(diagnostic => diagnostic.severity === 'error'); return { result: { success: errors.length === 0, data, blocks: blockResults, regionResults, diagnostics, error: errors[0]?.message }, snapshots }
 }
+
+/** Parses every workbook referenced by a project without allowing a block to
+ * read another workbook's sheets. Project output is grouped by workbook ID to
+ * keep duplicate block labels from overwriting each other. */
+export function parseProjectWorkbooks(
+  workbooks: Map<string, WorkbookReader>,
+  blocks: BlockConfig[],
+  regions: RegionConfig[],
+): ExtractionExecution {
+  const snapshots = new Map<string, unknown[][]>()
+  const diagnostics: ParseDiagnostic[] = []
+  const blockResults: BlockParseResult[] = []
+  const regionResults: RegionParseResult[] = []
+  const data: Record<string, unknown> = {}
+  const referencedWorkbookIds = new Set([
+    ...blocks.filter(block => block.range).map(block => block.workbookId ?? ''),
+    ...regions.filter(region => region.range).map(region => region.workbookId ?? ''),
+  ])
+
+  for (const workbookId of referencedWorkbookIds) {
+    if (!workbookId) {
+      diagnostics.push({ code: 'invalid-range', severity: 'error', workbookId: null, message: 'A project item has no workbook mapping.' })
+      continue
+    }
+    const workbook = workbooks.get(workbookId)
+    if (!workbook) {
+      diagnostics.push({ code: 'sheet-missing', severity: 'error', workbookId, message: `Workbook "${workbookId}" is not attached to this project.` })
+      continue
+    }
+    const scopedBlocks = blocks.filter(block => block.workbookId === workbookId)
+    const scopedRegions = regions.filter(region => region.workbookId === workbookId)
+    const execution = parseWorkbook(workbook, scopedBlocks, scopedRegions)
+    execution.snapshots.forEach((value, key) => snapshots.set(key, value))
+    execution.result.blocks.forEach(result => blockResults.push({ ...result, workbookId }))
+    execution.result.regionResults?.forEach(result => regionResults.push({ ...result, workbookId }))
+    execution.result.diagnostics?.forEach(diagnostic => diagnostics.push({ ...diagnostic, workbookId }))
+    data[workbookId] = execution.result.data
+  }
+
+  const errors = diagnostics.filter(diagnostic => diagnostic.severity === 'error')
+  return {
+    snapshots,
+    result: {
+      success: errors.length === 0,
+      data,
+      blocks: blockResults,
+      regionResults,
+      diagnostics,
+      error: errors[0]?.message,
+    },
+  }
+}

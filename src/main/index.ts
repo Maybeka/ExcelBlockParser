@@ -1,15 +1,25 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { isSupportedWorkbookPath, MAX_SESSION_BYTES, MAX_WORKBOOK_BYTES, sanitizeJsonFileName, withTimeout } from './fileSafety'
 
 let mainWindow: BrowserWindow | null = null
 let previewWindow: BrowserWindow | null = null
 const previewDataStore = new Map<string, unknown>()
 const approvedWorkbookPaths = new Set<string>()
+const approvedProjectPaths = new Set<string>()
 const isElectronE2E = process.env.ELECTRON_E2E === '1'
 const showElectronE2EWindows = process.env.ELECTRON_E2E_SHOW_WINDOWS === '1'
 const e2eUserDataDirectory = isElectronE2E ? process.env.ELECTRON_E2E_USER_DATA_DIR : undefined
+const e2eOpenPaths = (() => {
+  if (!isElectronE2E || !process.env.ELECTRON_E2E_OPEN_PATHS) return [] as string[]
+  try {
+    const value = JSON.parse(process.env.ELECTRON_E2E_OPEN_PATHS)
+    return Array.isArray(value) && value.every(path => typeof path === 'string') ? value : []
+  } catch {
+    return [] as string[]
+  }
+})()
 
 if (e2eUserDataDirectory) app.setPath('userData', e2eUserDataDirectory)
 
@@ -37,9 +47,22 @@ async function approveWorkbook(selectedPath: string): Promise<string> {
   if (!isSupportedWorkbookPath(selected)) throw new Error('Select an .xlsx or .xls workbook.')
   const info = await stat(selected)
   if (!info.isFile() || info.size > MAX_WORKBOOK_BYTES) throw new Error('The workbook is unavailable or exceeds the 100 MB limit.')
-  approvedWorkbookPaths.clear()
   approvedWorkbookPaths.add(selected)
   return selected
+}
+
+async function authorizeProjectSources(content: string, projectPath?: string): Promise<string> {
+  const value = JSON.parse(content)
+  const workbooks = value?.version === 3 && Array.isArray(value?.project?.workbooks) ? value.project.workbooks : []
+  for (const workbook of workbooks) {
+    if (!workbook || typeof workbook.sourcePath !== 'string' || !workbook.sourcePath) continue
+    const sourcePath = isAbsolute(workbook.sourcePath) || !projectPath
+      ? workbook.sourcePath
+      : resolve(dirname(projectPath), workbook.sourcePath)
+    workbook.sourcePath = sourcePath
+    try { await approveWorkbook(sourcePath) } catch { /* renderer presents reassign/remove actions */ }
+  }
+  return JSON.stringify(value)
 }
 
 function createWindow(): void {
@@ -78,6 +101,7 @@ ipcMain.handle('file:open', async (event) => {
   assertMainWindowSender(event)
   if (!mainWindow) return null
   if (isElectronE2E && process.env.ELECTRON_E2E_CANCEL_DIALOGS === '1') return null
+  if (isElectronE2E && e2eOpenPaths.length) return approveWorkbook(e2eOpenPaths.shift()!)
   if (isElectronE2E && process.env.ELECTRON_E2E_OPEN_PATH) return approveWorkbook(process.env.ELECTRON_E2E_OPEN_PATH)
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Open Excel File',
@@ -100,22 +124,39 @@ ipcMain.handle('file:read', async (event, requestedPath: unknown) => {
 ipcMain.handle('file:save', async (event, defaultName: unknown, jsonData: unknown) => {
   assertMainWindowSender(event)
   if (!mainWindow) return { success: false, error: 'No window' }
-  if (typeof jsonData !== 'string') return { success: false, error: 'Export data must be JSON text.' }
-  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) return { success: false, error: 'Export exceeds the 25 MB limit.' }
-  try { JSON.parse(jsonData) } catch { return { success: false, error: 'Export data is not valid JSON.' } }
+  if (typeof jsonData !== 'string') return { success: false, error: 'Project data must be JSON text.' }
+  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) return { success: false, error: 'Project exceeds the 25 MB limit.' }
+  try { JSON.parse(jsonData) } catch { return { success: false, error: 'Project data is not valid JSON.' } }
   if (isElectronE2E && process.env.ELECTRON_E2E_CANCEL_DIALOGS === '1') return { success: false, error: 'Cancelled' }
   const testSavePath = isElectronE2E ? process.env.ELECTRON_E2E_SAVE_PATH : undefined
   const result = testSavePath ? { canceled: false, filePath: testSavePath } : await dialog.showSaveDialog(mainWindow, {
-    title: 'Save JSON',
-    defaultPath: sanitizeJsonFileName(defaultName, 'session.json'),
+    title: 'Save Project As',
+    defaultPath: sanitizeJsonFileName(defaultName, 'project.json'),
     filters: [{ name: 'JSON Files', extensions: ['json'] }],
   })
   if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' }
   try {
-    await withTimeout(writeFile(result.filePath, jsonData, 'utf-8'), 'Writing the JSON file timed out after 30 seconds.')
-    return { success: true, filePath: result.filePath }
+    const filePath = resolve(result.filePath)
+    await withTimeout(writeFile(filePath, jsonData, 'utf-8'), 'Writing the JSON file timed out after 30 seconds.')
+    approvedProjectPaths.add(filePath)
+    return { success: true, filePath }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Unable to write the JSON file.' }
+  }
+})
+
+ipcMain.handle('file:writeJson', async (event, requestedPath: unknown, jsonData: unknown) => {
+  assertMainWindowSender(event)
+  if (typeof requestedPath !== 'string' || typeof jsonData !== 'string') return { success: false, error: 'Invalid project save request.' }
+  const filePath = resolve(requestedPath)
+  if (!approvedProjectPaths.has(filePath)) return { success: false, error: 'The project must be opened or saved through the application first.' }
+  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) return { success: false, error: 'Project exceeds the 25 MB limit.' }
+  try { JSON.parse(jsonData) } catch { return { success: false, error: 'Project data is not valid JSON.' } }
+  try {
+    await withTimeout(writeFile(filePath, jsonData, 'utf-8'), 'Writing the project file timed out after 30 seconds.')
+    return { success: true, filePath }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Unable to save the project file.' }
   }
 })
 
@@ -125,16 +166,19 @@ ipcMain.handle('file:openJson', async (event) => {
   if (isElectronE2E && process.env.ELECTRON_E2E_CANCEL_DIALOGS === '1') return null
   const testImportPath = isElectronE2E ? process.env.ELECTRON_E2E_IMPORT_PATH : undefined
   const result = testImportPath ? { canceled: false, filePaths: [testImportPath] } : await dialog.showOpenDialog(mainWindow, {
-    title: 'Import Config',
+    title: 'Open Project',
     filters: [{ name: 'JSON Files', extensions: ['json'] }],
     properties: ['openFile'],
   })
   if (result.canceled || !result.filePaths.length) return null
   try {
-    const content = (await readLimitedFile(result.filePaths[0], MAX_SESSION_BYTES, 'Session file')).toString('utf-8')
-    return { filePath: result.filePaths[0], content }
+    const filePath = resolve(result.filePaths[0])
+    const raw = (await readLimitedFile(filePath, MAX_SESSION_BYTES, 'Session file')).toString('utf-8')
+    const content = await authorizeProjectSources(raw, filePath)
+    approvedProjectPaths.add(filePath)
+    return { filePath, content }
   } catch (error) {
-    throw new Error(error instanceof Error ? error.message : 'Unable to read the session file.')
+    throw new Error(error instanceof Error ? error.message : 'Unable to read the project file.')
   }
 })
 
@@ -152,7 +196,10 @@ ipcMain.handle('recovery:save', async (event, jsonData: unknown) => {
 ipcMain.handle('recovery:load', async (event) => {
   assertMainWindowSender(event)
   const target = await recoveryPath()
-  try { return (await readLimitedFile(target, MAX_SESSION_BYTES, 'Recovery data')).toString('utf-8') } catch (error: any) {
+  try {
+    const content = (await readLimitedFile(target, MAX_SESSION_BYTES, 'Recovery data')).toString('utf-8')
+    return await authorizeProjectSources(content)
+  } catch (error: any) {
     if (error?.code === 'ENOENT') return null
     throw new Error(error instanceof Error ? error.message : 'Unable to read recovery data.')
   }

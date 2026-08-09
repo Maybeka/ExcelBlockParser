@@ -1,13 +1,7 @@
-import type { BlockConfig, RegionConfig } from '../types'
-import type { FocusMode } from '../components/ConfigPanel'
+import type { ProjectConfig } from '../types'
 
-export interface WorkspaceSnapshot {
-  blocks: BlockConfig[]
-  regions: RegionConfig[]
-  activeBlockId: string
-  activeRegionId: string | null
-  focusMode: FocusMode
-}
+/** A complete persistent project state, excluding only runtime file handles. */
+export type WorkspaceSnapshot = ProjectConfig
 
 function cloneSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {
   return structuredClone(snapshot)

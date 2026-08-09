@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { detectColumnChanges } from '../services/reconciliation'
 import { loadExcelJsWorkbook } from '../services/exceljsWorkbook'
 import { inferColumnType, parseWorkbook, suggestMappingsForWorkbook } from '../services/extraction'
+import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
 import type { BlockConfig, CellRange, RegionConfig } from '../types'
 
 const fixture = (name: string) => resolve(process.cwd(), 'examples', name)
@@ -28,6 +29,15 @@ function block(overrides: Partial<BlockConfig> = {}): BlockConfig {
 }
 
 describe('real Excel workbook extraction', () => {
+  it('assigns distinct Univer unit IDs to separate workbook conversions', async () => {
+    const [first, second] = await Promise.all([
+      readFile(fixture('m2_integration.xlsx')).then(buffer => convertXlsxToWorkbookData(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength), 'first.xlsx')),
+      readFile(fixture('multi_sheet.xlsx')).then(buffer => convertXlsxToWorkbookData(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength), 'second.xlsx')),
+    ])
+    expect(first.workbookData.id).not.toBe(second.workbookData.id)
+    expect(first.workbookData.sheetOrder).not.toEqual(second.workbookData.sheetOrder)
+  })
+
   it('extracts mapped values, ignores empty columns, and preserves merged snapshots', async () => {
     const execution = parseWorkbook(await workbook('m2_integration.xlsx'), [block()], [])
     expect(execution.result.success).toBe(true)

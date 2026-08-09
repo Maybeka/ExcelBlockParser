@@ -9,17 +9,19 @@ import (
 )
 
 type App struct {
-	ctx         context.Context
-	previewData map[string]interface{}
-	previewOpen bool
-	filePolicy  filePolicy
-	recoveryDir string
-	emitEvent   func(context.Context, string, ...interface{})
+	ctx          context.Context
+	previewData  map[string]interface{}
+	previewOpen  bool
+	filePolicy   filePolicy
+	projectPaths map[string]bool
+	recoveryDir  string
+	emitEvent    func(context.Context, string, ...interface{})
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.previewData = make(map[string]interface{})
+	a.projectPaths = make(map[string]bool)
 	a.emitEvent = runtime.EventsEmit
 	baseDir, err := os.UserConfigDir()
 	if err != nil {
@@ -81,8 +83,8 @@ type JsonSaveResult struct {
 // SaveJson opens a save dialog and writes JSON data to the chosen path.
 func (a *App) SaveJson(defaultName string, jsonData string) JsonSaveResult {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save JSON",
-		DefaultFilename: sanitizeJSONFileName(defaultName, "session.json"),
+		Title:           "Save Project As",
+		DefaultFilename: sanitizeJSONFileName(defaultName, "project.json"),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},
@@ -97,8 +99,21 @@ func (a *App) SaveJson(defaultName string, jsonData string) JsonSaveResult {
 	if err := writeJSONFile(path, jsonData); err != nil {
 		return JsonSaveResult{Success: false, Error: err.Error()}
 	}
+	a.projectPaths[filepath.Clean(path)] = true
 
 	return JsonSaveResult{Success: true, FilePath: path}
+}
+
+// SaveJsonToPath overwrites a project that was opened or saved by this app.
+func (a *App) SaveJsonToPath(path string, jsonData string) JsonSaveResult {
+	cleanPath := filepath.Clean(path)
+	if !a.projectPaths[cleanPath] {
+		return JsonSaveResult{Success: false, Error: "the project must be opened or saved through the application first"}
+	}
+	if err := writeJSONFile(cleanPath, jsonData); err != nil {
+		return JsonSaveResult{Success: false, Error: err.Error()}
+	}
+	return JsonSaveResult{Success: true, FilePath: cleanPath}
 }
 
 // JsonOpenResult mirrors the Electron IPC return type.
@@ -111,7 +126,7 @@ type JsonOpenResult struct {
 // validation failures are returned as errors so the renderer can report them.
 func (a *App) OpenJson() (*JsonOpenResult, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Import Config",
+		Title: "Open Project",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},
@@ -127,6 +142,7 @@ func (a *App) OpenJson() (*JsonOpenResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.projectPaths[filepath.Clean(path)] = true
 
 	return &JsonOpenResult{
 		FilePath: path,

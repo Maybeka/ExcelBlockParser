@@ -29,6 +29,8 @@ export interface ColumnMapping {
 export interface BlockConfig {
   id: string
   label: string
+  /** Project-local workbook that owns the selected range. */
+  workbookId?: string | null
   range: CellRange | null
   activeSheet: string | null
   headerRows: number[]
@@ -46,6 +48,7 @@ export interface BlockConfig {
 export interface BlockParseResult {
   blockId: string
   label: string
+  workbookId?: string | null
   data: Record<string, unknown>[]
   rowCount: number
 }
@@ -65,12 +68,13 @@ export interface ParseDiagnostic {
   message: string
   blockId?: string
   regionId?: string
+  workbookId?: string | null
   row?: number
   column?: string
 }
 
 export interface ExportedSession {
-  version: 2 | 1
+  version: 3 | 2 | 1
   exportedAt: string
   sourceFileName?: string
   config: SessionConfig
@@ -85,6 +89,38 @@ export interface SessionConfig {
   activeBlockId: string
   focusMode: 'always-editable' | 'activate-first'
   regions?: RegionConfig[]
+}
+
+export interface ProjectWorkbook {
+  id: string
+  name: string
+  /** Persisted source path. Relative paths are resolved from the project JSON. */
+  sourcePath?: string
+  /** Sheet names last read from this workbook. They are refreshed when opened. */
+  sheetNames?: string[]
+  /** The last selected sheet for this workbook. */
+  activeSheetName?: string | null
+}
+
+export interface ProjectConfig {
+  id: string
+  name: string
+  workbooks: ProjectWorkbook[]
+  activeWorkbookId: string | null
+  blocks: BlockConfig[]
+  regions: RegionConfig[]
+  activeBlockId: string
+  activeRegionId: string | null
+  focusMode: 'always-editable' | 'activate-first'
+}
+
+export interface ExportedProject {
+  version: 3
+  exportedAt: string
+  project: ProjectConfig
+  data: Record<string, unknown>
+  blockResults: BlockParseResult[]
+  regionResults?: RegionParseResult[]
 }
 
 export interface ReconciliationReport {
@@ -170,6 +206,8 @@ export interface ComputedProperty {
 export interface RegionConfig {
   id: string
   label: string
+  /** Project-local workbook that owns the selected range. */
+  workbookId?: string | null
   range: CellRange | null
   activeSheet: string | null
   splitRules: SplitRule[]
@@ -187,5 +225,6 @@ export interface RegionBlockResult {
 export interface RegionParseResult {
   regionId: string
   label: string
+  workbookId?: string | null
   blocks: RegionBlockResult[]
 }

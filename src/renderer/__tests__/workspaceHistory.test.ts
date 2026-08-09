@@ -3,6 +3,7 @@ import { WorkspaceHistory, type WorkspaceSnapshot } from '../services/workspaceH
 
 function snapshot(label: string): WorkspaceSnapshot {
   return {
+    id: 'project-test', name: 'Test project', workbooks: [], activeWorkbookId: null,
     blocks: [{ id: label, label, range: null, activeSheet: null, headerRows: [0], collapsed: false, selectionLocked: false, columns: [], dataSnapshot: null }],
     regions: [], activeBlockId: label, activeRegionId: null, focusMode: 'always-editable',
   }

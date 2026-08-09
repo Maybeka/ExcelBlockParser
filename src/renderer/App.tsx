@@ -1,19 +1,21 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { Badge, Button, Drawer, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
-import { FolderOpenOutlined, ExportOutlined, PlayCircleOutlined, ImportOutlined, CloseOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import type { SetStateAction } from 'react'
+import { Badge, Button, Drawer, Dropdown, Layout, Modal, Splitter, Space, theme, ConfigProvider, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
+import { FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { UniverProvider } from './context/UniverContext'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
-import type { CellRange, BlockConfig, ParseResult, ReconciliationReport, RegionConfig, RegionParseResult } from './types'
+import type { CellRange, BlockConfig, ParseResult, ProjectConfig, ProjectWorkbook, RegionConfig, RegionParseResult } from './types'
 import type { FocusMode } from './components/ConfigPanel'
 import { useUniver } from './context/UniverContext'
-import { runReconciliation } from './services/reconciliation'
 import { getBridge } from './services/bridge'
 import { adaptPreviewData } from './services/previewDataAdapter'
 import { recordBridgeFailure, recordParseFailure } from './services/observability'
-import { serializeSession, loadSession } from './services/serializer'
+import { serializeProject, loadProject } from './services/serializer'
 import { createUniverWorkbookReader } from './services/workbook'
-import { generateColumnMappings, parseWorkbook, suggestMappingsForWorkbook } from './services/extraction'
+import { generateColumnMappings, parseProjectWorkbooks, suggestMappingsForWorkbook } from './services/extraction'
+import { loadExcelJsWorkbook } from './services/exceljsWorkbook'
+import { blocksForWorkbook, createProject, createProjectWorkbook, LEGACY_WORKBOOK_ID, moveItemWithinWorkbook, projectJsonFileName, projectNameFromJsonPath, regionsForWorkbook, removeBlockForWorkbook } from './services/project'
 import { PreviewWindow } from './components/PreviewWindow'
 import type { PreviewData } from './types'
 import { WorkspaceNavigator } from './components/WorkspaceNavigator'
@@ -25,11 +27,12 @@ function nextBlockId(): string {
   return `block-${blockCounter++}-${Date.now()}`
 }
 
-function createDefaultBlock(lastNum: number): BlockConfig {
+function createDefaultBlock(lastNum: number, workbookId: string | null = null): BlockConfig {
   const num = lastNum + 1
   return {
     id: nextBlockId(),
     label: `block_${num}`,
+    workbookId,
     range: null,
     activeSheet: null,
     headerRows: [0],
@@ -40,48 +43,61 @@ function createDefaultBlock(lastNum: number): BlockConfig {
   }
 }
 
+function resolveState<T>(current: T, next: SetStateAction<T>): T {
+  return typeof next === 'function' ? (next as (value: T) => T)(current) : next
+}
+
 function AppContent() {
   const { univerAPI, sheetNames } = useUniver()
   const univerAPIRef = useRef(univerAPI)
   univerAPIRef.current = univerAPI
 
-  const defaultBlock = createDefaultBlock(0)
-  const [blocks, setBlocks] = useState<BlockConfig[]>([defaultBlock])
-  const [activeBlockId, setActiveBlockId] = useState<string>(defaultBlock.id)
+  const [project, setProject] = useState<ProjectConfig>(() => {
+    const initialBlock = createDefaultBlock(0)
+    return { ...createProject(), blocks: [initialBlock], activeBlockId: initialBlock.id }
+  })
+  const { blocks, regions, workbooks: projectWorkbooks, activeWorkbookId, activeBlockId, activeRegionId, focusMode } = project
+  const setBlocks = useCallback((next: SetStateAction<BlockConfig[]>) => setProject(current => ({ ...current, blocks: resolveState(current.blocks, next) })), [])
+  const setRegions = useCallback((next: SetStateAction<RegionConfig[]>) => setProject(current => ({ ...current, regions: resolveState(current.regions, next) })), [])
+  const setActiveBlockId = useCallback((next: SetStateAction<string>) => setProject(current => ({ ...current, activeBlockId: resolveState(current.activeBlockId, next) })), [])
+  const setActiveRegionId = useCallback((next: SetStateAction<string | null>) => setProject(current => ({ ...current, activeRegionId: resolveState(current.activeRegionId, next) })), [])
+  const setFocusMode = useCallback((next: SetStateAction<FocusMode>) => setProject(current => ({ ...current, focusMode: resolveState(current.focusMode, next) })), [])
   const [parseResult, setParseResult] = useState<ParseResult | null>(null)
   const [loadSignal, setLoadSignal] = useState(0)
-  const [focusMode, setFocusMode] = useState<FocusMode>('always-editable')
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null)
-  const [regions, setRegions] = useState<RegionConfig[]>([])
-  const [activeRegionId, setActiveRegionId] = useState<string | null>(null)
+  const [pendingSaveAs, setPendingSaveAs] = useState(false)
   const [activeColIndex, setActiveColIndex] = useState<number | null>(null)
   const [showImportWarning, setShowImportWarning] = useState(false)
+  const [pendingProjectReset, setPendingProjectReset] = useState<'new' | 'close' | null>(null)
   const [pendingImportContent, setPendingImportContent] = useState<string | null>(null)
+  const [pendingImportProjectName, setPendingImportProjectName] = useState<string | null>(null)
+  const [pendingImportProjectPath, setPendingImportProjectPath] = useState<string | null>(null)
   const [reconcilingBlockId, setReconcilingBlockId] = useState<string | null>(null)
   const reconcilingBlockIdRef = useRef(reconcilingBlockId)
   reconcilingBlockIdRef.current = reconcilingBlockId
   const [reconcilingPreviewSheet, setReconcilingPreviewSheet] = useState<string | null>(null)
   const [reconcilingPreviewRange, setReconcilingPreviewRange] = useState<CellRange | null>(null)
-  const [shouldReParse, setShouldReParse] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [previewModalData, setPreviewModalData] = useState<Map<string, PreviewData>>(new Map())
   const [previewActiveBlockId, setPreviewActiveBlockId] = useState<string>('')
   const [previewRegionResults, setPreviewRegionResults] = useState<RegionParseResult[]>([])
-  const [currentFileName, setCurrentFileName] = useState<string | null>(null)
+  const workbookPathsRef = useRef(new Map<string, string>())
+  const projectLoadVersionRef = useRef(0)
+  const [requestedWorkbook, setRequestedWorkbook] = useState<{ workbookId: string; path: string; requestId: number; sheetName?: string | null } | null>(null)
+  const [loadedWorkbookId, setLoadedWorkbookId] = useState<string | null>(null)
+  const [openWorkbookIds, setOpenWorkbookIds] = useState<string[]>([])
+  const [projectFilePath, setProjectFilePath] = useState<string | null>(null)
+  const [projectSettingsOpen, setProjectSettingsOpen] = useState(false)
+  const [pendingProjectRemoval, setPendingProjectRemoval] = useState<string | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [closeSignal, setCloseSignal] = useState(0)
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
-  const [showWorkbookSwitchConfirm, setShowWorkbookSwitchConfirm] = useState(false)
-  const [showWorkbookCloseConfirm, setShowWorkbookCloseConfirm] = useState(false)
-  const [activeSheetName, setActiveSheetName] = useState<string | null>(null)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
   const [sidebarHidden, setSidebarHidden] = useState(true)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
   const historyRef = useRef(new WorkspaceHistory())
   const [historyVersion, setHistoryVersion] = useState(0)
-  const pendingFileActionRef = useRef<(() => void) | null>(null)
   const pendingReconcilingRangeRef = useRef<{ range: CellRange; activeSheet: string | null } | null>(null)
 
   const activeBlockIdRef = useRef(activeBlockId)
@@ -95,14 +111,26 @@ function AppContent() {
   activeRegionIdRef.current = activeRegionId
   const focusModeRef = useRef(focusMode)
   focusModeRef.current = focusMode
+  const projectRef = useRef(project)
+  projectRef.current = project
 
-  const workspaceSnapshot = useCallback((): WorkspaceSnapshot => ({
-    blocks: blocksRef.current,
-    regions: regionsRef.current,
-    activeBlockId: activeBlockIdRef.current,
-    activeRegionId: activeRegionIdRef.current,
-    focusMode: focusModeRef.current,
-  }), [])
+  const activeBlocks = useMemo(() => blocksForWorkbook(blocks, activeWorkbookId), [activeWorkbookId, blocks])
+  const activeRegions = useMemo(() => regionsForWorkbook(regions, activeWorkbookId), [activeWorkbookId, regions])
+  const currentFileName = useMemo(
+    () => projectWorkbooks.find(workbook => workbook.id === activeWorkbookId)?.name ?? null,
+    [activeWorkbookId, projectWorkbooks],
+  )
+  const activeSheetName = useMemo(
+    () => projectWorkbooks.find(workbook => workbook.id === activeWorkbookId)?.activeSheetName ?? null,
+    [activeWorkbookId, projectWorkbooks],
+  )
+  const setProjectActiveSheet = useCallback((sheetName: string | null) => {
+    setProject(current => current.activeWorkbookId
+      ? { ...current, workbooks: current.workbooks.map(workbook => workbook.id === current.activeWorkbookId ? { ...workbook, activeSheetName: sheetName } : workbook) }
+      : current)
+  }, [])
+
+  const workspaceSnapshot = useCallback((): WorkspaceSnapshot => projectRef.current, [])
 
   const rememberWorkspace = useCallback(() => {
     historyRef.current.push(workspaceSnapshot())
@@ -110,11 +138,7 @@ function AppContent() {
   }, [workspaceSnapshot])
 
   const restoreWorkspace = useCallback((snapshot: WorkspaceSnapshot) => {
-    setBlocks(snapshot.blocks)
-    setRegions(snapshot.regions)
-    setActiveBlockId(snapshot.activeBlockId)
-    setActiveRegionId(snapshot.activeRegionId)
-    setFocusMode(snapshot.focusMode)
+    setProject(snapshot)
     setParseResult(null)
     setHasUnsavedChanges(true)
   }, [])
@@ -131,59 +155,7 @@ function AppContent() {
     setHistoryVersion(version => version + 1)
   }, [restoreWorkspace, workspaceSnapshot])
 
-  const runReconciliationIfNeeded = useCallback(async (importedBlocks: BlockConfig[]) => {
-    const hasHeaders = importedBlocks.some(b => b.headerRows.length > 0 && b.range)
-    if (!hasHeaders) return
-
-    const api = univerAPIRef.current
-    if (!api) {
-      setImportError('Open an Excel file to validate imported config')
-      return
-    }
-
-    try {
-      const sheets: string[] = []
-      const wb = api.getActiveWorkbook?.()
-      if (wb) {
-        const facadeSheets = wb.getSheets()
-        if (facadeSheets) {
-          for (const s of facadeSheets) {
-            sheets.push(s.getSheetName())
-          }
-        }
-      }
-
-      const reports: ReconciliationReport[] = []
-      for (const block of importedBlocks) {
-        if (!block?.range) continue
-        const report = await runReconciliation(block, api, sheets)
-        reports.push(report)
-      }
-
-      if (reports.length === 0) {
-        setImportError('No blocks with valid ranges to reconcile.')
-        return
-      }
-
-      const hasIssues = reports.some(r => r.status !== 'ok')
-
-      if (hasIssues) {
-        setImportError('Some blocks have issues with the current spreadsheet. Click the sync button on each block to review and fix them.')
-      } else {
-        setImportError(null)
-        message.success('Config imported successfully. All blocks match the current spreadsheet.')
-      }
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err)
-      setImportError(`Reconciliation failed: ${detail}`)
-      console.error('Reconciliation failed:', err)
-    }
-  }, [])
-
-  const runReconciliationIfNeededRef = useRef(runReconciliationIfNeeded)
-  runReconciliationIfNeededRef.current = runReconciliationIfNeeded
-
-  const applyImportContent = useCallback((content: string) => {
+  const applyImportContent = useCallback((content: string, projectName?: string | null, projectPath?: string | null) => {
     let imported: any
     try {
       imported = JSON.parse(content)
@@ -192,34 +164,84 @@ function AppContent() {
       return
     }
 
-    const loaded = loadSession(imported)
-    if (!loaded.session) {
+    const loaded = loadProject(imported)
+    if (!loaded.project) {
       setImportError(loaded.errors.join(' '))
       return
     }
-    if (loaded.migratedFrom) message.info(`Migrated session v${loaded.migratedFrom} to v2.`)
-    const deserialized = loaded.session
-    const cleanBlocks = deserialized.blocks
-    const cleanRegions = deserialized.regions
-
-    setBlocks(cleanBlocks)
-    setRegions(cleanRegions)
-    if (cleanRegions.length > 0) {
-      setActiveRegionId(cleanRegions[0].id)
-    }
-    setActiveBlockId(deserialized.activeBlockId || cleanBlocks[0]?.id || '')
-    setFocusMode(deserialized.focusMode)
+    if (loaded.migratedFrom) message.info(`Migrated legacy project file v${loaded.migratedFrom} to project v3.`)
+    const deserialized = loaded.project
+    const importedProject = projectName ? { ...deserialized.project, name: projectName } : deserialized.project
+    const loadVersion = ++projectLoadVersionRef.current
+    setProject(importedProject)
+    setProjectFilePath(projectPath ?? null)
+    workbookPathsRef.current.clear()
+    setOpenWorkbookIds([])
+    setRequestedWorkbook(null)
+    setLoadedWorkbookId(null)
+    setCloseSignal(signal => signal + 1)
     if (deserialized.parseResult) {
       setParseResult(deserialized.parseResult)
     }
 
-    setShouldReParse(true)
     historyRef.current.clear()
     setHistoryVersion(version => version + 1)
-    setHasUnsavedChanges(true)
-    setTimeout(() => {
-      runReconciliationIfNeededRef.current(cleanBlocks)
-    }, 300)
+    setHasUnsavedChanges(false)
+
+    void (async () => {
+      const attachedIds: string[] = []
+      const metadata = new Map<string, { sheetNames: string[]; activeSheetName: string | null }>()
+      const unavailableIds: string[] = []
+      for (const workbook of importedProject.workbooks) {
+        if (projectLoadVersionRef.current !== loadVersion) return
+        if (!workbook.sourcePath) {
+          unavailableIds.push(workbook.id)
+          continue
+        }
+        try {
+          const readResult = await getBridge().readFile(workbook.sourcePath)
+          if (projectLoadVersionRef.current !== loadVersion) return
+          if (readResult.status !== 'ok') {
+            unavailableIds.push(workbook.id)
+            continue
+          }
+          const reader = await loadExcelJsWorkbook(readResult.value)
+          if (projectLoadVersionRef.current !== loadVersion) return
+          const sheetNames = reader.sheetNames()
+          workbookPathsRef.current.set(workbook.id, workbook.sourcePath)
+          attachedIds.push(workbook.id)
+          metadata.set(workbook.id, {
+            sheetNames,
+            activeSheetName: workbook.activeSheetName && sheetNames.includes(workbook.activeSheetName)
+              ? workbook.activeSheetName
+              : sheetNames[0] ?? null,
+          })
+        } catch {
+          unavailableIds.push(workbook.id)
+        }
+      }
+
+      if (projectLoadVersionRef.current !== loadVersion) return
+
+      const preferredId = importedProject.activeWorkbookId
+      const nextActiveId = preferredId && attachedIds.includes(preferredId) ? preferredId : attachedIds[0] ?? null
+      setProject(current => ({
+        ...current,
+        workbooks: current.workbooks.map(workbook => metadata.has(workbook.id) ? { ...workbook, ...metadata.get(workbook.id)! } : workbook),
+        activeWorkbookId: nextActiveId,
+        activeBlockId: blocksForWorkbook(current.blocks, nextActiveId)[0]?.id ?? '',
+        activeRegionId: null,
+      }))
+      setOpenWorkbookIds(attachedIds)
+      if (nextActiveId) {
+        const workbook = importedProject.workbooks.find(item => item.id === nextActiveId)!
+        setRequestedWorkbook({ workbookId: nextActiveId, path: workbook.sourcePath!, requestId: Date.now(), sheetName: metadata.get(nextActiveId)?.activeSheetName })
+      }
+      if (unavailableIds.length) {
+        setProjectSettingsOpen(true)
+        message.warning(`${unavailableIds.length} workbook source${unavailableIds.length === 1 ? '' : 's'} could not be opened. Reassign or remove them.`)
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -228,8 +250,8 @@ function AppContent() {
       if (!active || result.status !== 'ok' || !result.value) return
       const content = result.value
       try {
-        const loaded = loadSession(JSON.parse(content))
-        if (loaded.session) setRecoveryContent(content)
+        const loaded = loadProject(JSON.parse(content))
+        if (loaded.project) setRecoveryContent(content)
         else void getBridge().clearRecovery()
       } catch {
         void getBridge().clearRecovery()
@@ -243,97 +265,159 @@ function AppContent() {
   useEffect(() => {
     if (!hasUnsavedChanges) return
     const timer = window.setTimeout(() => {
-      const session = serializeSession(blocks, regions, activeBlockId, focusMode, parseResult)
-      void getBridge().saveRecovery(JSON.stringify({ ...session, sourceFileName: currentFileName ?? undefined })).then((result) => {
+      void getBridge().saveRecovery(JSON.stringify(serializeProject(project, parseResult))).then((result) => {
         if (result.status === 'error') console.warn('Unable to save workspace recovery data:', result.error.message)
       })
     }, 1000)
     return () => window.clearTimeout(timer)
-  }, [activeBlockId, blocks, currentFileName, focusMode, hasUnsavedChanges, parseResult, regions])
+  }, [hasUnsavedChanges, parseResult, project])
 
-  const openWorkbookPicker = useCallback(() => {
-    setLoadSignal(s => s + 1)
+  const attachWorkbook = useCallback(async () => {
+    if (projectRef.current.workbooks.length === 0) {
+      message.info('Add workbook sources in Project settings before opening them.')
+      setProjectSettingsOpen(true)
+      return
+    }
+    const result = await getBridge().openXlsx()
+    if (result.status !== 'ok') return
+    const path = result.value
+    const name = path.split(/[/\\]/).pop() ?? ''
+    const source = projectRef.current.workbooks.find(workbook => workbook.name === name && !workbookPathsRef.current.has(workbook.id))
+      ?? projectRef.current.workbooks.find(workbook => workbook.name === name)
+      ?? projectRef.current.workbooks.find(workbook => workbook.id === LEGACY_WORKBOOK_ID && !workbookPathsRef.current.has(workbook.id))
+    if (!source) {
+      message.error(`"${name}" is not a workbook source in this project. Add it in Project settings.`)
+      return
+    }
+    workbookPathsRef.current.set(source.id, path)
+    setRequestedWorkbook({ workbookId: source.id, path, requestId: Date.now(), sheetName: source.activeSheetName })
+  }, [])
+
+  const handleOpenFile = useCallback(() => { void attachWorkbook() }, [attachWorkbook])
+
+  const handleAddProjectWorkbook = useCallback(async () => {
+    const result = await getBridge().openXlsx()
+    if (result.status !== 'ok') return
+    const path = result.value
+    const name = path.split(/[/\\]/).pop() ?? 'workbook.xlsx'
+    if (projectRef.current.workbooks.some(workbook => workbook.name === name)) {
+      message.warning(`"${name}" is already configured in this project.`)
+      return
+    }
+    const workbook = createProjectWorkbook(name, undefined, path)
+    workbookPathsRef.current.set(workbook.id, path)
+    setProject(current => ({ ...current, workbooks: [...current.workbooks, workbook] }))
+    setRequestedWorkbook({ workbookId: workbook.id, path, requestId: Date.now() })
+    setHasUnsavedChanges(true)
+  }, [])
+
+  const handleReassignProjectWorkbook = useCallback(async (workbookId: string) => {
+    const result = await getBridge().openXlsx()
+    if (result.status !== 'ok') return
+    const path = result.value
+    const name = path.split(/[/\\]/).pop() ?? 'workbook.xlsx'
+    workbookPathsRef.current.set(workbookId, path)
+    setProject(current => ({
+      ...current,
+      workbooks: current.workbooks.map(workbook => workbook.id === workbookId ? { ...workbook, name, sourcePath: path } : workbook),
+    }))
+    setRequestedWorkbook({ workbookId, path, requestId: Date.now() })
+    setHasUnsavedChanges(true)
+  }, [])
+
+  const detachWorkbook = useCallback((workbookId: string | null = activeWorkbookId) => {
+    if (!workbookId) return
+    const wasActive = workbookId === activeWorkbookId
+    const nextId = openWorkbookIds.find(id => id !== workbookId) ?? null
+    const nextWorkbook = nextId ? projectRef.current.workbooks.find(workbook => workbook.id === nextId) : null
+    setProject(current => wasActive ? { ...current, activeWorkbookId: nextId, activeBlockId: blocksForWorkbook(current.blocks, nextId)[0]?.id ?? '', activeRegionId: null } : current)
+    workbookPathsRef.current.delete(workbookId)
+    setOpenWorkbookIds(current => current.filter(id => id !== workbookId))
+    if (wasActive && nextWorkbook) {
+      setRequestedWorkbook({ workbookId: nextWorkbook.id, path: workbookPathsRef.current.get(nextWorkbook.id)!, requestId: Date.now(), sheetName: nextWorkbook.activeSheetName })
+    } else if (wasActive) {
+      setCloseSignal(s => s + 1)
+    }
+    setParseResult(null)
+  }, [activeWorkbookId, openWorkbookIds])
+
+  const handleRemoveProjectWorkbook = useCallback((workbookId: string) => {
+    detachWorkbook(workbookId)
+    setProject(current => ({
+      ...current,
+      workbooks: current.workbooks.filter(workbook => workbook.id !== workbookId),
+      blocks: current.blocks.filter(block => block.workbookId !== workbookId),
+      regions: current.regions.filter(region => region.workbookId !== workbookId),
+    }))
+    setPendingProjectRemoval(null)
+    setPendingImportContent(null)
+    setPendingImportProjectName(null)
+    setShowImportWarning(false)
+    setHasUnsavedChanges(true)
+  }, [detachWorkbook])
+
+  const handleFileLoaded = useCallback((workbookId: string, fileName: string, filePath: string, loadedSheetNames: string[], loadedActiveSheetName: string | null) => {
+    const currentProject = projectRef.current
+    const workbook = currentProject.workbooks.find(item => item.id === workbookId)
+    if (!workbook) {
+      message.error(`"${fileName}" is not configured as a project workbook.`)
+      return
+    }
+    workbookPathsRef.current.set(workbook.id, filePath)
+    setProject(previous => {
+      const nextWorkbook = {
+        ...workbook,
+        name: workbook.id === LEGACY_WORKBOOK_ID ? fileName : workbook.name,
+        sourcePath: filePath,
+        sheetNames: loadedSheetNames,
+        activeSheetName: loadedActiveSheetName,
+      }
+      const workbooks = previous.workbooks.map(item => item.id === workbook.id ? nextWorkbook : item)
+      const scoped = blocksForWorkbook(previous.blocks, workbook.id)
+      if (scoped.length) {
+        return { ...previous, workbooks, activeWorkbookId: workbook.id, activeBlockId: scoped[0].id, activeRegionId: null }
+      }
+      const draftBlocks = previous.blocks.filter(block => block.workbookId === null)
+      if (draftBlocks.length) {
+        return {
+          ...previous,
+          workbooks,
+          blocks: previous.blocks.map(block => block.workbookId === null ? { ...block, workbookId: workbook.id } : block),
+          activeWorkbookId: workbook.id,
+          activeBlockId: draftBlocks[0].id,
+          activeRegionId: null,
+        }
+      }
+      const freshBlock = createDefaultBlock(0, workbook.id)
+      return { ...previous, workbooks, blocks: [...previous.blocks, freshBlock], activeWorkbookId: workbook.id, activeBlockId: freshBlock.id, activeRegionId: null }
+    })
+    setOpenWorkbookIds(current => current.includes(workbook.id) ? current : [...current, workbook.id])
     setParseResult(null)
   }, [])
 
-  const handleOpenFile = useCallback(() => {
-    if (hasUnsavedChanges) {
-      pendingFileActionRef.current = openWorkbookPicker
-      setShowDiscardConfirm(true)
+  const handleSelectWorkbook = useCallback((workbookId: string, sheetName?: string) => {
+    const path = workbookPathsRef.current.get(workbookId)
+    const workbook = projectRef.current.workbooks.find(item => item.id === workbookId)
+    if (!path || !workbook) {
+      message.warning(`Open ${workbook?.name ?? 'this workbook'} to attach it to the project.`)
       return
     }
-    if (currentFileName) {
-      pendingFileActionRef.current = openWorkbookPicker
-      setShowWorkbookSwitchConfirm(true)
-      return
-    }
-    openWorkbookPicker()
-  }, [currentFileName, hasUnsavedChanges, openWorkbookPicker])
-
-  const closeWorkbook = useCallback(() => {
-    const freshBlock = createDefaultBlock(0)
-    setBlocks([freshBlock])
-    setActiveBlockId(freshBlock.id)
-    setRegions([])
-    setActiveRegionId(null)
-    setActiveSheetName(null)
-    setCloseSignal(s => s + 1)
-    setCurrentFileName(null)
-    setParseResult(null)
-    blockCounter = 1
+    setProject(current => {
+      const scopedBlocks = blocksForWorkbook(current.blocks, workbookId)
+      return {
+        ...current,
+        workbooks: sheetName ? current.workbooks.map(item => item.id === workbookId ? { ...item, activeSheetName: sheetName } : item) : current.workbooks,
+        activeWorkbookId: workbookId,
+        activeBlockId: scopedBlocks[0]?.id ?? '',
+        activeRegionId: null,
+      }
+    })
+    setRequestedWorkbook({ workbookId, path, requestId: Date.now(), sheetName: sheetName ?? workbook.activeSheetName })
   }, [])
 
-  const handleCloseFile = useCallback(() => {
-    pendingFileActionRef.current = closeWorkbook
-    if (hasUnsavedChanges) {
-      setShowDiscardConfirm(true)
-      return
-    }
-    setShowWorkbookCloseConfirm(true)
-  }, [closeWorkbook, hasUnsavedChanges])
-
-  const handleConfirmDiscard = useCallback(() => {
-    pendingFileActionRef.current?.()
-    pendingFileActionRef.current = null
-    setShowDiscardConfirm(false)
-    setHasUnsavedChanges(false)
-    historyRef.current.clear()
-    setHistoryVersion(version => version + 1)
-    void getBridge().clearRecovery()
-  }, [])
-
-  const handleConfirmWorkbookSwitch = useCallback(() => {
-    pendingFileActionRef.current?.()
-    pendingFileActionRef.current = null
-    setShowWorkbookSwitchConfirm(false)
-    historyRef.current.clear()
-    setHistoryVersion(version => version + 1)
-    void getBridge().clearRecovery()
-  }, [])
-
-  const handleConfirmWorkbookClose = useCallback(() => {
-    pendingFileActionRef.current?.()
-    pendingFileActionRef.current = null
-    setShowWorkbookCloseConfirm(false)
-    setHasUnsavedChanges(false)
-    historyRef.current.clear()
-    setHistoryVersion(version => version + 1)
-    void getBridge().clearRecovery()
-  }, [])
-
-  const handleFileLoaded = useCallback((fileName: string) => {
-    const freshBlock = createDefaultBlock(0)
-    setBlocks([freshBlock])
-    setActiveBlockId(freshBlock.id)
-    setRegions([])
-    setActiveRegionId(null)
-    setCurrentFileName(fileName)
-    setHasUnsavedChanges(false)
-    blockCounter = 1
-  }, [])
-
-  const handleSelectionChange = useCallback(async (range: CellRange | null, activeSheet: string | null) => {
-    setActiveSheetName(activeSheet)
+  const handleSelectionChange = useCallback(async (sourceWorkbookId: string, range: CellRange | null, activeSheet: string | null) => {
+    if (sourceWorkbookId !== projectRef.current.activeWorkbookId || sourceWorkbookId !== loadedWorkbookId) return
+    setProjectActiveSheet(activeSheet)
     const blockId = activeBlockIdRef.current
     const currentBlock = blocksRef.current.find(b => b.id === blockId)
     const regionId = activeRegionIdRef.current
@@ -390,11 +474,11 @@ function AppContent() {
       b.id === blockId ? { ...b, range, activeSheet, columns: mappings } : b,
     ))
     setParseResult(null)
-  }, [])
+  }, [loadedWorkbookId])
 
   const handleActivateBlock = useCallback((blockId: string) => {
     const block = blocksRef.current.find(b => b.id === blockId)
-    if (block?.activeSheet && !reconcilingBlockIdRef.current) {
+    if (block?.workbookId === loadedWorkbookId && block?.activeSheet && !reconcilingBlockIdRef.current) {
       const wb = univerAPIRef.current?.getActiveWorkbook()
       if (wb) {
         const currentSheet = wb.getActiveSheet()
@@ -403,10 +487,10 @@ function AppContent() {
         }
       }
     }
-    setActiveSheetName(block?.activeSheet ?? null)
+    setProjectActiveSheet(block?.activeSheet ?? null)
     setActiveBlockId(blockId)
     setActiveRegionId(null)
-  }, [])
+  }, [loadedWorkbookId])
 
   const handleReconcilingReselectRange = useCallback((onRange: (range: CellRange) => void) => {
     const pending = pendingReconcilingRangeRef.current
@@ -420,6 +504,7 @@ function AppContent() {
   const handleBlockChange = useCallback((blockId: string, partial: Partial<BlockConfig>) => {
     rememberWorkspace()
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, ...partial } : b))
+    setParseResult(null)
     setHasUnsavedChanges(true)
   }, [rememberWorkspace])
 
@@ -429,7 +514,7 @@ function AppContent() {
       const m = (b.label || '').match(/^block_(\d+)$/)
       return m ? Math.max(max, parseInt(m[1], 10)) : max
     }, 0)
-    const block = createDefaultBlock(maxNum)
+    const block = createDefaultBlock(maxNum, activeWorkbookId)
     setBlocks(prev => [...prev, block])
     setActiveBlockId(block.id)
     setActiveRegionId(null)
@@ -440,17 +525,10 @@ function AppContent() {
   const handleDeleteBlock = useCallback((blockId: string) => {
     rememberWorkspace()
     setBlocks(prev => {
-      const next = prev.filter(b => b.id !== blockId)
-      if (next.length === 0) {
-        const fallback = createDefaultBlock(0)
-        setActiveBlockId(fallback.id)
-        return [fallback]
-      }
-      if (blockId === activeBlockIdRef.current) {
-        const idx = prev.findIndex(b => b.id === blockId)
-        setActiveBlockId(next[Math.min(idx, next.length - 1)].id)
-      }
-      return next
+      if (!activeWorkbookId) return prev
+      const next = removeBlockForWorkbook(prev, blockId, activeWorkbookId, () => createDefaultBlock(0, activeWorkbookId))
+      if (!next.blocks.some(block => block.id === activeBlockIdRef.current)) setActiveBlockId(next.activeBlockId)
+      return next.blocks
     })
     setParseResult(null)
     setHasUnsavedChanges(true)
@@ -461,6 +539,7 @@ function AppContent() {
     const region: RegionConfig = {
       id: `region-${Date.now()}`,
       label: `region_${regions.length + 1}`,
+      workbookId: activeWorkbookId,
       range: null,
       activeSheet: null,
       splitRules: [],
@@ -471,6 +550,7 @@ function AppContent() {
     setRegions(prev => [...prev, region])
     setActiveRegionId(region.id)
     setActiveBlockId('')
+    setParseResult(null)
     setHasUnsavedChanges(true)
   }, [regions.length, rememberWorkspace])
 
@@ -478,12 +558,14 @@ function AppContent() {
     rememberWorkspace()
     setRegions(prev => prev.filter(r => r.id !== regionId))
     if (activeRegionId === regionId) setActiveRegionId(null)
+    setParseResult(null)
     setHasUnsavedChanges(true)
   }, [activeRegionId, rememberWorkspace])
 
   const handleRegionChange = useCallback((regionId: string, partial: Partial<RegionConfig>) => {
     rememberWorkspace()
     setRegions(prev => prev.map(r => r.id === regionId ? { ...r, ...partial } : r))
+    setParseResult(null)
     setHasUnsavedChanges(true)
   }, [rememberWorkspace])
 
@@ -492,37 +574,31 @@ function AppContent() {
     if (region?.activeSheet) {
       const workbook = univerAPIRef.current?.getActiveWorkbook()
       workbook?.setActiveSheet(region.activeSheet)
-      setActiveSheetName(region.activeSheet)
+      setProjectActiveSheet(region.activeSheet)
     }
     setActiveRegionId(regionId)
     setActiveBlockId('')
   }, [])
 
   const handleSelectSheet = useCallback((sheetName: string) => {
+    if (loadedWorkbookId !== projectRef.current.activeWorkbookId) return
     const workbook = univerAPIRef.current?.getActiveWorkbook()
     if (!workbook) return
     workbook.setActiveSheet(sheetName)
-    setActiveSheetName(sheetName)
-  }, [])
-
-  const moveItem = <T extends { id: string }>(items: T[], id: string, direction: -1 | 1): T[] => {
-    const index = items.findIndex(item => item.id === id)
-    const target = index + direction
-    if (index < 0 || target < 0 || target >= items.length) return items
-    const next = [...items]
-    ;[next[index], next[target]] = [next[target], next[index]]
-    return next
-  }
+    setProjectActiveSheet(sheetName)
+  }, [loadedWorkbookId])
 
   const handleMoveBlock = useCallback((blockId: string, direction: -1 | 1) => {
     rememberWorkspace()
-    setBlocks(current => moveItem(current, blockId, direction))
+    setBlocks(current => moveItemWithinWorkbook(current, blockId, direction))
+    setParseResult(null)
     setHasUnsavedChanges(true)
   }, [rememberWorkspace])
 
   const handleMoveRegion = useCallback((regionId: string, direction: -1 | 1) => {
     rememberWorkspace()
-    setRegions(current => moveItem(current, regionId, direction))
+    setRegions(current => moveItemWithinWorkbook(current, regionId, direction))
+    setParseResult(null)
     setHasUnsavedChanges(true)
   }, [rememberWorkspace])
 
@@ -535,7 +611,7 @@ function AppContent() {
 
   const handleRegionRangeClick = useCallback((regionId: string) => {
     const region = regionsRef.current.find(r => r.id === regionId)
-    if (!region?.range) return
+    if (!region?.range || region.workbookId !== loadedWorkbookId) return
     const api = univerAPIRef.current
     if (!api) return
     const wb = api.getActiveWorkbook()
@@ -546,7 +622,7 @@ function AppContent() {
       sheet.scrollToCell(Math.max(0, region.range.startRow - 3), Math.max(0, region.range.startCol - 1))
     }
     setActiveRegionId(regionId)
-  }, [])
+  }, [loadedWorkbookId])
 
   const handleParse = useCallback(async () => {
     const clearPreview = () => {
@@ -555,28 +631,8 @@ function AppContent() {
       setPreviewRegionResults([])
       setPreviewActiveBlockId('')
     }
-    if (!univerAPI) {
-      const error = 'Spreadsheet is not initialized'
-      clearPreview()
-      const result = { success: false, data: {}, blocks: [], error }
-      setParseResult(result)
-      recordParseFailure('parse-preview', result)
-      message.error(error)
-      return
-    }
-    const workbook = univerAPI.getActiveWorkbook()
-    if (!workbook) {
-      const error = 'No workbook loaded'
-      clearPreview()
-      const result = { success: false, data: {}, blocks: [], error }
-      setParseResult(result)
-      recordParseFailure('parse-preview', result)
-      message.error(error)
-      return
-    }
-
-    const activeBlocks = blocks.filter(b => b.range)
-    if (!activeBlocks.length) {
+    const configuredBlocks = blocks.filter(b => b.range)
+    if (!configuredBlocks.length) {
       const error = 'Select a range for at least one block before parsing'
       clearPreview()
       const result = { success: false, data: {}, blocks: [], error }
@@ -586,7 +642,18 @@ function AppContent() {
       return
     }
 
-    const execution = parseWorkbook(createUniverWorkbookReader(workbook), blocks, regions)
+    const readers = new Map<string, import('./services/workbook').WorkbookReader>()
+    for (const projectWorkbook of projectWorkbooks) {
+      const path = workbookPathsRef.current.get(projectWorkbook.id)
+      if (!path) continue
+      const readResult = await getBridge().readFile(path)
+      if (readResult.status === 'ok') {
+        readers.set(projectWorkbook.id, await loadExcelJsWorkbook(readResult.value))
+      } else if (readResult.status === 'error') {
+        recordBridgeFailure('read-workbook-for-parse', readResult)
+      }
+    }
+    const execution = parseProjectWorkbooks(readers, blocks, regions)
     const result = execution.result
     if (!result.success) {
       clearPreview()
@@ -597,10 +664,10 @@ function AppContent() {
       return
     }
 
-    for (const block of activeBlocks) {
+    for (const block of configuredBlocks) {
       const filledValues = execution.snapshots.get(block.id)
       if (!filledValues) continue
-      handleBlockChange(block.id, { dataSnapshot: filledValues as unknown[][] })
+      setBlocks(prev => prev.map(item => item.id === block.id ? { ...item, dataSnapshot: filledValues as unknown[][] } : item))
     }
 
     setParseResult(result)
@@ -618,9 +685,9 @@ function AppContent() {
     setPreviewRegionResults(result.regionResults || [])
     setPreviewActiveBlockId(activeBlockId || activeBlocks[0]?.id || '')
     setPreviewModalOpen(true)
-  }, [univerAPI, blocks, regions, activeBlockId])
+  }, [activeBlocks, activeWorkbookId, blocks, projectWorkbooks, regions, activeBlockId])
 
-  const doExport = useCallback(async () => {
+  const saveProjectToDisk = useCallback(async (saveAs: boolean) => {
     if (!univerAPI) {
       message.error('Spreadsheet is not initialized')
       return
@@ -628,6 +695,7 @@ function AppContent() {
 
     try {
       const blocksWithHeaderSnapshots = await Promise.all(blocks.map(async (block) => {
+        if (block.workbookId !== activeWorkbookId) return block
         if (block.headerRows.length === 0 || !block.range) return block
         const workbook = univerAPI.getActiveWorkbook()
         if (!workbook) return block
@@ -659,45 +727,56 @@ function AppContent() {
         })),
       }))
 
-      const workbook = univerAPI.getActiveWorkbook()
-      const freshParseResult = workbook
-        ? parseWorkbook(createUniverWorkbookReader(workbook), blocks, regions).result
-        : parseResult
-
-      const session = serializeSession(
-        blocksWithHeaderSnapshots as BlockConfig[],
-        regionsWithSnapshots,
-        activeBlockId,
-        focusMode,
-        freshParseResult,
-      )
+      const persistedBlocks = (blocksWithHeaderSnapshots as BlockConfig[]).filter(block => Boolean(block.workbookId))
+      const persistedRegions = regionsWithSnapshots.filter(region => Boolean(region.workbookId))
+      let projectForSave: ProjectConfig = {
+        ...project,
+        blocks: persistedBlocks,
+        regions: persistedRegions,
+        activeBlockId: persistedBlocks.some(block => block.id === project.activeBlockId) ? project.activeBlockId : persistedBlocks[0]?.id ?? '',
+        activeRegionId: persistedRegions.some(region => region.id === project.activeRegionId) ? project.activeRegionId : null,
+      }
+      setProject(projectForSave)
+      const session = serializeProject(projectForSave, parseResult)
 
       const jsonStr = JSON.stringify(session, null, 2)
-      const result = await getBridge().saveJson('session.json', jsonStr)
+      const result = !saveAs && projectFilePath
+        ? await getBridge().saveJsonToPath(projectFilePath, jsonStr)
+        : await getBridge().saveJson(projectJsonFileName(projectForSave.name), jsonStr)
       if (result.status === 'ok') {
+        const savedProjectName = projectNameFromJsonPath(result.value.filePath)
+        if (savedProjectName && savedProjectName !== projectForSave.name) {
+          projectForSave = { ...projectForSave, name: savedProjectName }
+          const renamedJson = JSON.stringify(serializeProject(projectForSave, parseResult), null, 2)
+          const syncResult = await getBridge().saveJsonToPath(result.value.filePath, renamedJson)
+          if (syncResult.status === 'error') throw new Error(syncResult.error.message)
+          setProject(projectForSave)
+        }
+        setProjectFilePath(result.value.filePath)
         setHasUnsavedChanges(false)
         void getBridge().clearRecovery()
       } else if (result.status === 'error') {
         recordBridgeFailure('save-session', result)
-        message.error(result.error.message || 'Unable to save the JSON file. Your workspace recovery remains available.')
+        message.error(result.error.message || 'Unable to save the project. Your workspace recovery remains available.')
         console.error('Save failed:', result.error.message)
       }
     } catch (err) {
-      message.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
-      console.error('Export failed:', err)
+      message.error(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
+      console.error('Save failed:', err)
     }
-  }, [blocks, regions, activeBlockId, focusMode, parseResult, univerAPI])
+  }, [activeWorkbookId, blocks, parseResult, project, projectFilePath, regions, univerAPI])
 
-  const doExportRef = useRef(doExport)
-  doExportRef.current = doExport
+  const saveProjectRef = useRef(saveProjectToDisk)
+  saveProjectRef.current = saveProjectToDisk
 
-  const handleExportConfig = useCallback(async () => {
+  const handleSaveProject = useCallback(async (saveAs = false) => {
     const errors = validateBlocks(blocks)
     if (errors.length > 0) {
+      setPendingSaveAs(saveAs)
       setValidationErrors(errors)
       return
     }
-    await doExportRef.current()
+    await saveProjectRef.current(saveAs)
   }, [blocks])
 
   const handleImportConfig = useCallback(async () => {
@@ -711,13 +790,15 @@ function AppContent() {
         return
       }
       JSON.parse(result.value.content)
+      const importedProjectName = projectNameFromJsonPath(result.value.filePath)
 
-      const activeCount = blocksRef.current.filter(b => b.range).length
-      if (activeCount > 0) {
+      if (projectFilePath || projectRef.current.workbooks.length > 0 || hasUnsavedChanges) {
         setPendingImportContent(result.value.content)
+        setPendingImportProjectName(importedProjectName)
+        setPendingImportProjectPath(result.value.filePath)
         setShowImportWarning(true)
       } else {
-        applyImportContent(result.value.content)
+        applyImportContent(result.value.content, importedProjectName, result.value.filePath)
       }
     } catch (err) {
       const detail = err instanceof SyntaxError ? err.message : String(err)
@@ -725,15 +806,60 @@ function AppContent() {
       setImportError(`${prefix}: ${detail}`)
       console.error('Import failed:', err)
     }
-  }, [applyImportContent])
+  }, [applyImportContent, hasUnsavedChanges, projectFilePath])
 
   const handleConfirmImport = useCallback(() => {
     if (pendingImportContent) {
-      applyImportContent(pendingImportContent)
+      applyImportContent(pendingImportContent, pendingImportProjectName, pendingImportProjectPath)
     }
     setShowImportWarning(false)
     setPendingImportContent(null)
-  }, [pendingImportContent])
+    setPendingImportProjectName(null)
+    setPendingImportProjectPath(null)
+  }, [pendingImportContent, pendingImportProjectName, pendingImportProjectPath])
+
+  const resetProject = useCallback((openSettings = false) => {
+    projectLoadVersionRef.current += 1
+    const initialBlock = createDefaultBlock(0)
+    setProject({ ...createProject(), blocks: [initialBlock], activeBlockId: initialBlock.id })
+    setProjectFilePath(null)
+    workbookPathsRef.current.clear()
+    setOpenWorkbookIds([])
+    setRequestedWorkbook(null)
+    setLoadedWorkbookId(null)
+    setCloseSignal(signal => signal + 1)
+    setParseResult(null)
+    setPreviewModalOpen(false)
+    setPreviewModalData(new Map())
+    setPreviewRegionResults([])
+    setPreviewActiveBlockId('')
+    setActiveColIndex(null)
+    setReconcilingBlockId(null)
+    setReconcilingPreviewSheet(null)
+    setReconcilingPreviewRange(null)
+    setProjectSettingsOpen(openSettings)
+    setPendingProjectRemoval(null)
+    setImportError(null)
+    setValidationErrors(null)
+    setPendingImportContent(null)
+    setPendingImportProjectName(null)
+    setPendingImportProjectPath(null)
+    setShowImportWarning(false)
+    setDiagnosticsOpen(false)
+    setHasUnsavedChanges(false)
+    historyRef.current.clear()
+    setHistoryVersion(version => version + 1)
+    setRecoveryContent(null)
+    void getBridge().clearRecovery()
+  }, [])
+
+  const requestProjectReset = useCallback((action: 'new' | 'close') => {
+    if (projectFilePath || projectRef.current.workbooks.length > 0 || hasUnsavedChanges) {
+      setPendingProjectReset(action)
+      return
+    }
+    resetProject(action === 'new')
+  }, [hasUnsavedChanges, projectFilePath, resetProject])
 
   const { token } = theme.useToken()
 
@@ -756,17 +882,8 @@ function AppContent() {
   }, [blocks, regions, reconcilingBlockId, reconcilingPreviewSheet, reconcilingPreviewRange])
 
   useEffect(() => {
-    if (shouldReParse && blocks.length > 0) {
-      setShouldReParse(false)
-      if (blocks.some(b => b.range)) {
-        handleParse()
-      }
-    }
-  }, [shouldReParse, blocks, handleParse])
-
-  useEffect(() => {
-    if (!activeSheetName && sheetNames[0]) setActiveSheetName(sheetNames[0])
-  }, [activeSheetName, sheetNames])
+    if (!activeSheetName && sheetNames[0]) setProjectActiveSheet(sheetNames[0])
+  }, [activeSheetName, sheetNames, setProjectActiveSheet])
 
   const configurationDiagnostics = useMemo(() => validateBlocks(blocks), [blocks])
   const parseDiagnostics = parseResult?.diagnostics ?? []
@@ -795,23 +912,26 @@ function AppContent() {
       if (target?.matches('input, textarea, [contenteditable="true"]')) return
       if (event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) handleRedo(); else handleUndo(); return }
       if (event.key.toLowerCase() === 'y') { event.preventDefault(); handleRedo(); return }
-      if (event.key.toLowerCase() === 'o') { event.preventDefault(); handleOpenFile(); return }
-      if (event.key.toLowerCase() === 's') { event.preventDefault(); handleExportConfig(); return }
+      if (event.key.toLowerCase() === 'o') { event.preventDefault(); handleImportConfig(); return }
+      if (event.key.toLowerCase() === 's') { event.preventDefault(); void handleSaveProject(event.shiftKey); return }
       if (event.key === 'Enter' && blocksRef.current.some(block => block.range)) { event.preventDefault(); handleParse() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleExportConfig, handleOpenFile, handleParse, handleRedo, handleUndo])
+  }, [handleImportConfig, handleParse, handleRedo, handleSaveProject, handleUndo])
 
   const navigator = <WorkspaceNavigator
+    projectName={project.name}
     fileName={currentFileName}
-    sheetNames={sheetNames}
+    workbooks={projectWorkbooks}
+    activeWorkbookId={activeWorkbookId}
     activeSheet={activeSheetName}
-    blocks={blocks}
-    regions={regions}
+    blocks={activeBlocks}
+    regions={activeRegions}
     activeBlockId={activeBlockId}
     activeRegionId={activeRegionId}
-    onOpen={handleOpenFile}
+    onOpen={() => setProjectSettingsOpen(true)}
+    onSelectWorkbook={handleSelectWorkbook}
     onSelectSheet={handleSelectSheet}
     onSelectBlock={handleActivateBlock}
     onSelectRegion={handleActivateRegion}
@@ -835,22 +955,29 @@ function AppContent() {
           </Tooltip>
           <span className="app-brand-copy">
             <strong>Excel Block Parser</strong>
-            <small>Extraction workspace</small>
           </span>
         </div>
         <Tooltip title="Workspace navigation">
           <Button className="workspace-mobile-nav" aria-label="Workspace navigation" size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} />
         </Tooltip>
-        {currentFileName && (
-          <span className="workbook-chip" title={currentFileName}>
-            <span className="workbook-chip-label">WORKBOOK</span>
-            <span className="workbook-chip-name">
-              {currentFileName}
-            </span>
-            <Tooltip title="Close file">
-              <Button aria-label="Close workbook" size="small" type="text" icon={<CloseOutlined />} onClick={handleCloseFile} />
-            </Tooltip>
-          </span>
+        {openWorkbookIds.length > 0 && (
+          <div className="workbook-tabs" role="tablist" aria-label="Project workbooks">
+            {projectWorkbooks.filter(workbook => openWorkbookIds.includes(workbook.id)).map(workbook => (
+              <div key={workbook.id} className={`workbook-tab ${workbook.id === activeWorkbookId ? 'is-active' : ''}`}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workbook.id === activeWorkbookId}
+                  className="workbook-tab-select"
+                  title={workbook.name}
+                  onClick={() => handleSelectWorkbook(workbook.id)}
+                >
+                  <FileExcelOutlined />
+                  <span>{workbook.name}</span>
+                </button>
+              </div>
+            ))}
+          </div>
         )}
         <Space className="app-actions" size={6}>
           <Tooltip title="Undo">
@@ -859,35 +986,34 @@ function AppContent() {
           <Tooltip title="Redo">
             <Button aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" aria-label="Redo" icon={<RedoOutlined />} onClick={handleRedo} disabled={!historyRef.current.canRedo} />
           </Tooltip>
-          <Button aria-keyshortcuts="Control+O Meta+O" icon={<FolderOpenOutlined />} onClick={handleOpenFile}>
-            Open Excel
-          </Button>
-          <Tooltip title="Parse data and open preview window">
-            <Button
-              icon={<PlayCircleOutlined />}
-              aria-keyshortcuts="Control+Enter Meta+Enter"
-              onClick={handleParse}
-              disabled={!blocks.some(b => b.range)}
+          <Space.Compact className="project-command">
+            <Button aria-keyshortcuts="Control+O Meta+O" icon={<ImportOutlined />} onClick={handleImportConfig}>
+              Open Project
+            </Button>
+            <Dropdown
+              trigger={['click']}
+              placement="bottomRight"
+              overlayClassName="project-command-menu"
+              menu={{
+                items: [
+                  { key: 'new', icon: <FolderAddOutlined />, label: 'New Project' },
+                  { key: 'save', icon: <SaveOutlined />, label: 'Save Project', extra: <span aria-hidden="true">Ctrl+S</span> },
+                  { key: 'save-as', icon: <SaveOutlined />, label: 'Save Project As...', extra: <span aria-hidden="true">Ctrl+Shift+S</span> },
+                  { key: 'settings', icon: <SettingOutlined />, label: 'Project settings' },
+                  { type: 'divider' },
+                  { key: 'close', icon: <CloseOutlined />, label: 'Close Project', danger: true, disabled: !projectFilePath && projectWorkbooks.length === 0 && !hasUnsavedChanges },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'settings') setProjectSettingsOpen(true)
+                  else if (key === 'save') void handleSaveProject(false)
+                  else if (key === 'save-as') void handleSaveProject(true)
+                  else requestProjectReset(key as 'new' | 'close')
+                },
+              }}
             >
-              Parse & Preview
-            </Button>
-          </Tooltip>
-          <Tooltip title="Save session (config + data)">
-            <Button
-              type="primary"
-              icon={<ExportOutlined />}
-              aria-keyshortcuts="Control+S Meta+S"
-              disabled={blocks.length === 0}
-              onClick={handleExportConfig}
-            >
-              Export
-            </Button>
-          </Tooltip>
-          <Tooltip title="Restore saved session">
-            <Button icon={<ImportOutlined />} onClick={handleImportConfig}>
-              Import
-            </Button>
-          </Tooltip>
+              <Button aria-label="Project actions" icon={<DownOutlined />} />
+            </Dropdown>
+          </Space.Compact>
           <Tooltip title="Diagnostics">
             <Badge count={diagnosticCount} size="small" offset={[-2, 3]}>
               <Button aria-label="Diagnostics" icon={<WarningOutlined />} onClick={() => setDiagnosticsOpen(true)} />
@@ -914,14 +1040,22 @@ function AppContent() {
           <Splitter className="workspace-splitter">
             <Splitter.Panel defaultSize="70%" min="45%" max="82%">
               <section className="workspace-canvas" aria-label="Workbook canvas">
+                <header className="panel-heading canvas-heading">
+                  <div><strong>Excel Workbook</strong></div>
+                  <span>{currentFileName ?? 'Choose a file to begin'}</span>
+                </header>
                 <SpreadsheetPanel
                   activeBlockId={activeBlockId}
                   activeRegionId={activeRegionId}
                   activeColIndex={activeColIndex}
                   onSelectionChange={handleSelectionChange}
-                  onActiveSheetChange={setActiveSheetName}
+                  onActiveSheetChange={(workbookId, sheetName) => {
+                    if (workbookId === projectRef.current.activeWorkbookId && workbookId === loadedWorkbookId) setProjectActiveSheet(sheetName)
+                  }}
                   loadSignal={loadSignal}
+                  requestedWorkbook={requestedWorkbook}
                   onFileLoaded={handleFileLoaded}
+                  onLoadedWorkbookChange={setLoadedWorkbookId}
                   lockedRanges={lockedRanges}
                   closeSignal={closeSignal}
                   onOpenWorkbook={handleOpenFile}
@@ -931,16 +1065,16 @@ function AppContent() {
             <Splitter.Panel defaultSize="30%" min="18%">
               <aside className="inspector-panel" aria-label="Extraction inspector">
                 <header className="panel-heading inspector-heading">
-                  <div><span className="panel-kicker">CONFIGURE</span><strong>Extraction setup</strong></div>
-                  <span>{blocks.filter(block => block.range).length} active</span>
+                  <div><strong>Extraction setup</strong></div>
+                  <span>{activeBlocks.filter(block => block.range).length} active</span>
                 </header>
                 <ConfigPanel
-                  blocks={blocks}
+                  blocks={activeBlocks}
                   activeBlockId={activeBlockId}
                   activeColIndex={activeColIndex}
                   focusMode={focusMode}
                   parseResult={parseResult}
-                  regions={regions}
+                  regions={activeRegions}
                   activeRegionId={activeRegionId}
                   onActivateBlock={handleActivateBlock}
                   onBlockChange={handleBlockChange}
@@ -954,16 +1088,16 @@ function AppContent() {
                   onFocusModeChange={handleFocusModeChange}
                   onColumnFocus={setActiveColIndex}
                   onParse={handleParse}
-                    onReconcilingChange={(id) => {
-                      setReconcilingBlockId(id)
-                      if (!id) {
-                        setReconcilingPreviewSheet(null)
-                        setReconcilingPreviewRange(null)
-                        pendingReconcilingRangeRef.current = null
-                      }
-                    }}
-                    onReselectRange={handleReconcilingReselectRange}
-                    onPreviewSheet={setReconcilingPreviewSheet}
+                  onReconcilingChange={(id) => {
+                    setReconcilingBlockId(id)
+                    if (!id) {
+                      setReconcilingPreviewSheet(null)
+                      setReconcilingPreviewRange(null)
+                      pendingReconcilingRangeRef.current = null
+                    }
+                  }}
+                  onReselectRange={handleReconcilingReselectRange}
+                  onPreviewSheet={setReconcilingPreviewSheet}
                 />
               </aside>
             </Splitter.Panel>
@@ -1074,52 +1208,65 @@ function AppContent() {
         )}
       </Modal>
       <Modal
-        title="Replace Existing Blocks?"
+        title="Open another project?"
         open={showImportWarning}
-        onCancel={() => { setShowImportWarning(false); setPendingImportContent(null) }}
+        onCancel={() => { setShowImportWarning(false); setPendingImportContent(null); setPendingImportProjectName(null); setPendingImportProjectPath(null) }}
         onOk={handleConfirmImport}
-        okText="Replace All"
+        okText="Open Project"
         okButtonProps={{ danger: true }}
         cancelText="Cancel"
       >
         <p>
-          You have {blocks.filter(b => b.range).length} active block(s) with configured ranges.
-          Importing will replace ALL blocks and their configurations.
+          Opening another project will replace the current project configuration and detach all attached workbooks.
         </p>
         <p>This action cannot be undone.</p>
       </Modal>
       <Modal
-        title="Discard unsaved changes?"
-        open={showDiscardConfirm}
-        onCancel={() => { setShowDiscardConfirm(false); pendingFileActionRef.current = null }}
-        onOk={handleConfirmDiscard}
-        okText="Discard"
-        okButtonProps={{ danger: true }}
+        title={pendingProjectReset === 'new' ? 'Create a new project?' : 'Close project?'}
+        open={pendingProjectReset !== null}
+        onCancel={() => setPendingProjectReset(null)}
+        onOk={() => {
+          const action = pendingProjectReset
+          setPendingProjectReset(null)
+          if (action) resetProject(action === 'new')
+        }}
+        okText={pendingProjectReset === 'new' ? 'New Project' : 'Close Project'}
+        okButtonProps={{ danger: pendingProjectReset === 'close' }}
         cancelText="Cancel"
       >
-        <p>You have unsaved changes. Discarding will lose all modifications since your last export.</p>
+        <p>{pendingProjectReset === 'new'
+          ? 'This replaces the current project with a new empty project and detaches all workbooks.'
+          : 'This closes the current project and detaches all workbooks.'}</p>
+        {hasUnsavedChanges && <p>Unsaved project changes will be discarded.</p>}
       </Modal>
       <Modal
-        title="Switch workbook?"
-        open={showWorkbookSwitchConfirm}
-        onCancel={() => { setShowWorkbookSwitchConfirm(false); pendingFileActionRef.current = null }}
-        onOk={handleConfirmWorkbookSwitch}
-        okText="Switch workbook"
-        okButtonProps={{ danger: true }}
-        cancelText="Cancel"
+        title="Project settings"
+        open={projectSettingsOpen}
+        onCancel={() => setProjectSettingsOpen(false)}
+        footer={<Button onClick={() => setProjectSettingsOpen(false)}>Done</Button>}
       >
-        <p>Opening another workbook will replace the current workbook and its extraction setup.</p>
+        <div className="project-workbook-settings">
+          {projectWorkbooks.map(workbook => (
+            <div className="project-workbook-setting" key={workbook.id}>
+              <span><FileExcelOutlined /> {workbook.name}<small>{openWorkbookIds.includes(workbook.id) ? 'Available' : 'Unavailable'}</small></span>
+              <Space size={6}>
+                <Button size="small" onClick={() => void handleReassignProjectWorkbook(workbook.id)}>Reassign</Button>
+                <Button danger size="small" onClick={() => setPendingProjectRemoval(workbook.id)}>Remove</Button>
+              </Space>
+            </div>
+          ))}
+          <Button icon={<FolderOpenOutlined />} onClick={() => void handleAddProjectWorkbook()}>Add workbook source</Button>
+        </div>
       </Modal>
       <Modal
-        title="Close workbook?"
-        open={showWorkbookCloseConfirm}
-        onCancel={() => { setShowWorkbookCloseConfirm(false); pendingFileActionRef.current = null }}
-        onOk={handleConfirmWorkbookClose}
-        okText="Close workbook"
+        title="Remove project workbook?"
+        open={pendingProjectRemoval !== null}
+        onCancel={() => setPendingProjectRemoval(null)}
+        onOk={() => { if (pendingProjectRemoval) handleRemoveProjectWorkbook(pendingProjectRemoval) }}
+        okText="Remove source"
         okButtonProps={{ danger: true }}
-        cancelText="Cancel"
       >
-        <p>Closing will remove the current workbook and its extraction setup from this workspace.</p>
+        <p>This removes the workbook source and all blocks and regions mapped to it.</p>
       </Modal>
       <Modal
         title="Recover unsaved workspace?"
@@ -1137,15 +1284,15 @@ function AppContent() {
           void getBridge().clearRecovery()
         }}
       >
-        <p>An unsaved workspace from a previous session is available.</p>
+        <p>An unsaved project from the previous app session is available.</p>
         <p>Recover it to continue where you left off, or discard it to start fresh.</p>
       </Modal>
       <Modal
         title="Validation errors"
         open={validationErrors !== null}
         onCancel={() => setValidationErrors(null)}
-        onOk={() => { setValidationErrors(null); doExportRef.current() }}
-        okText="Export anyway"
+        onOk={() => { setValidationErrors(null); void saveProjectRef.current(pendingSaveAs) }}
+        okText="Save anyway"
         cancelText="Cancel"
       >
         <div style={{ maxHeight: 200, overflow: 'auto', fontSize: 13 }}>
@@ -1159,7 +1306,11 @@ function AppContent() {
 
 export function App() {
   return (
-    <ConfigProvider>
+    <ConfigProvider theme={{ token: {
+      colorPrimary: '#3390ec', colorInfo: '#3390ec', colorSuccess: '#39a883', colorWarning: '#e5a33e',
+      colorBgLayout: '#e7eff5', colorBgContainer: '#ffffff', colorBorder: '#d9e4ec', colorText: '#263645',
+      colorTextSecondary: '#7e8d9a', borderRadius: 8, borderRadiusSM: 6, controlHeight: 32, fontSize: 13,
+    } }}>
       <UniverProvider>
         <AppContent />
       </UniverProvider>

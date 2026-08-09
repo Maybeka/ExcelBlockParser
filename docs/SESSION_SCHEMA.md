@@ -1,66 +1,71 @@
-# Session And JSON Contract
+# Project JSON Contract
 
-## Stable Contract: Version 2
+## Stable Contract: Version 3
 
-The exported JSON document is the public contract between Excel Block Parser
-and downstream tools. Version 2 is the stabilization-release contract. New
-consumers must require `version: 2`; the application continues to import
-version 1 sessions and migrates them in memory by adding an empty
-`config.regions` array.
+The saved JSON document is the application project file and the public
+contract for downstream tools. Its filename, without `.json`, is the project
+name. Opening a file makes that filename authoritative; **Save Project As**
+therefore renames the project.
 
-The contract has two related uses:
+The project contains both editor configuration and the most recent extraction
+result:
 
-- **Template:** `config` describes reusable workbook extraction settings.
-- **Extraction output:** `data`, `blockResults`, and `regionResults` contain
-  the result of the most recent parse.
-
-Consumers that generate code must use `data` and, where needed,
-`blockResults`. They must not depend on workbook paths, React state, UI
-selection state, or `dataSnapshot`, which is an optional editor aid.
+- `project` defines workbook sources, extractors, regions, ordering, and active
+  editor state.
+- `data`, `blockResults`, and optional `regionResults` contain the most recent
+  successful run result.
+- `exportedAt` records when the project file was last saved.
 
 ## Required Top-Level Shape
 
 ```json
 {
-  "version": 2,
-  "exportedAt": "2026-07-16T00:00:00.000Z",
-  "config": {
+  "version": 3,
+  "exportedAt": "2026-08-09T00:00:00.000Z",
+  "project": {
+    "id": "project-1",
+    "name": "Example project",
+    "workbooks": [],
+    "activeWorkbookId": null,
     "blocks": [],
+    "regions": [],
     "activeBlockId": "",
-    "focusMode": "always-editable",
-    "regions": []
+    "activeRegionId": null,
+    "focusMode": "always-editable"
   },
   "data": {},
   "blockResults": []
 }
 ```
 
-`regionResults` is omitted when no configured region produced output. A
-top-level `sourceFileName` is optional and informational only.
+Each workbook has a stable `id`, display `name`, optional `sourcePath`, known
+`sheetNames`, and `activeSheetName`. Relative source paths are resolved from
+the project file directory. If a source cannot be opened, the application
+requires the user to reassign its path or remove it in Project settings.
 
-Each `blockResults` item has a stable `blockId`, `label`, `rowCount`, and
-`data` array. The keys in a row are the configured column keys. `data` is an
-object keyed by block label and contains the same row data for convenient
-consumption. Block labels therefore need to be unique for unambiguous output.
+Every block and region belongs to exactly one workbook through `workbookId`.
+Names need only be unique within that workbook. Parsed `data` is keyed first by
+workbook ID and then by extractor label so equal labels in different workbooks
+remain unambiguous.
 
-## Compatibility Rules
+## Lifecycle
 
-- Version 2 fields and their meaning are stable throughout the 1.x release
-  line.
-- Compatible changes may add optional fields only.
-- Renaming, removing, or changing the type/meaning of an existing v2 field
-  requires a new session version and an explicit migration.
-- `null` means an unavailable cell/configuration value; a missing optional
-  field means the feature was not exported.
-- Dates are exported as `YYYY-MM-DD`; export timestamps are ISO-8601 UTC
-  strings.
+- **Open Project** loads v3, authorizes configured workbook paths, and opens
+  all available workbooks.
+- **Save Project** overwrites the currently opened or previously saved path.
+- **Save Project As** chooses a new path and updates the project name from that
+  filename.
+- **New Project** creates an unsaved project; its first Save opens Save As.
+- **Close Project** clears the active project and attached workbook runtime.
 
-The machine-readable contract is [session-v2.schema.json](session-v2.schema.json).
-It is intentionally permissive for optional editor metadata while requiring
-the stable fields that downstream consumers depend on.
+## Compatibility
 
-## Migration
+The application reads legacy v1 and v2 session files and migrates them to a
+single-workbook v3 project in memory. Legacy files do not contain an authorized
+source path, so the workbook must be reassigned or removed before it can run.
+All newly saved files use version 3. The old
+[session-v2.schema.json](session-v2.schema.json) remains documentation for
+legacy import compatibility only.
 
-Version 1 sessions lack region configuration. Importing one creates
-`config.regions: []` and reports that it was migrated. Re-exporting produces
-the canonical version 2 form. No older session version is supported.
+The machine-readable current contract is
+[project-v3.schema.json](project-v3.schema.json).

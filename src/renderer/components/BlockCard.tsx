@@ -39,7 +39,7 @@ export function BlockCard({
   const [tagInput, setTagInput] = useState('')
 
   return (
-    <div onClick={onClick} style={{
+    <div className={`telegram-card ${isActive ? 'is-active' : ''}`} onClick={onClick} style={{
       marginBottom: 8,
       border: `1px solid ${isActive ? '#1677ff' : '#d9d9d9'}`,
       borderRadius: 6,
@@ -47,7 +47,7 @@ export function BlockCard({
       background: isActive ? '#f0f5ff' : '#fafafa',
       transition: 'border-color 0.15s, background 0.15s',
     }}>
-      <div style={{
+      <div className="telegram-card-header" style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '6px 10px',
         borderBottom: collapsed ? 'none' : '1px solid #f0f0f0',
@@ -137,7 +137,7 @@ export function BlockCard({
       )}
 
       {!collapsed && (
-        <div style={{ padding: '8px 12px', opacity: selectionLocked ? 0.5 : 1 }}>
+        <div className="telegram-card-body" style={{ padding: '8px 12px', opacity: selectionLocked ? 0.5 : 1 }}>
           {children}
         </div>
       )}

@@ -1,4 +1,5 @@
-import type { BlockConfig, RegionConfig, RegionParseResult, SessionConfig, ExportedSession, ParseResult } from '../types'
+import type { BlockConfig, ExportedProject, ExportedSession, ParseResult, ProjectConfig, ProjectWorkbook, RegionConfig, RegionParseResult, SessionConfig } from '../types'
+import { LEGACY_WORKBOOK_ID } from './project'
 
 export interface DeserializedSession {
   blocks: BlockConfig[]
@@ -15,6 +16,7 @@ export interface SessionLoadResult {
 }
 
 export const CURRENT_SESSION_VERSION = 2 as const
+export const CURRENT_PROJECT_VERSION = 3 as const
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -178,4 +180,142 @@ export function deserializeSession(json: ExportedSession): DeserializedSession {
   const result = loadSession(json)
   if (!result.session) throw new Error(result.errors.join(' '))
   return result.session
+}
+
+export interface DeserializedProject {
+  project: ProjectConfig
+  parseResult: ParseResult | null
+}
+
+export interface ProjectLoadResult {
+  project?: DeserializedProject
+  errors: string[]
+  migratedFrom?: 1 | 2
+}
+
+function validateWorkbook(value: unknown, index: number): string | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || !value.id || typeof value.name !== 'string' || !value.name) {
+    return `Invalid project workbook at index ${index}.`
+  }
+  if (value.sheetNames !== undefined && (!Array.isArray(value.sheetNames) || value.sheetNames.some(name => typeof name !== 'string'))) {
+    return `Invalid project workbook at index ${index}: sheetNames must be an array of strings.`
+  }
+  if (value.activeSheetName !== undefined && value.activeSheetName !== null && typeof value.activeSheetName !== 'string') {
+    return `Invalid project workbook at index ${index}: activeSheetName must be a string or null.`
+  }
+  if (value.sourcePath !== undefined && (typeof value.sourcePath !== 'string' || !value.sourcePath)) {
+    return `Invalid project workbook at index ${index}: sourcePath must be a non-empty string.`
+  }
+  return null
+}
+
+function parseResultFrom(value: Record<string, unknown>): ParseResult {
+  return {
+    success: true,
+    data: isRecord(value.data) ? value.data : {},
+    blocks: Array.isArray(value.blockResults) ? value.blockResults as ParseResult['blocks'] : [],
+    regionResults: Array.isArray(value.regionResults) ? value.regionResults as RegionParseResult[] : undefined,
+  }
+}
+
+/**
+ * Serializes the complete project, including configured workbook source paths.
+ * The desktop host authorizes those paths when the project is opened and the
+ * renderer asks the user to reassign or remove any unavailable source.
+ */
+export function serializeProject(project: ProjectConfig, parseResult: ParseResult | null): ExportedProject {
+  return {
+    version: CURRENT_PROJECT_VERSION,
+    exportedAt: new Date().toISOString(),
+    project,
+    data: parseResult?.data || {},
+    blockResults: parseResult?.blocks || [],
+    ...(parseResult?.regionResults?.length ? { regionResults: parseResult.regionResults } : {}),
+  }
+}
+
+/**
+ * Accepts the project schema and migrates legacy v1/v2 sessions into a
+ * one-workbook project. Legacy sessions do not carry a stable workbook ID, so
+ * their workbook is explicitly marked as needing attachment on import.
+ */
+export function loadProject(value: unknown): ProjectLoadResult {
+  if (!isRecord(value)) return { errors: ['Invalid project file: expected a JSON object.'] }
+
+  if (value.version === CURRENT_PROJECT_VERSION) {
+    if (!isRecord(value.project)) return { errors: ['Invalid project file: missing project object.'] }
+    const project = value.project
+    if (typeof project.id !== 'string' || typeof project.name !== 'string' || !Array.isArray(project.workbooks) || !Array.isArray(project.blocks) || !Array.isArray(project.regions)) {
+      return { errors: ['Invalid project file: project fields are incomplete.'] }
+    }
+    const errors = project.workbooks.map(validateWorkbook).filter((error): error is string => Boolean(error))
+    errors.push(...project.blocks.map(validateBlock).filter((error): error is string => Boolean(error)))
+    errors.push(...project.regions.map(validateRegion).filter((error): error is string => Boolean(error)))
+    const workbookIds = (project.workbooks as ProjectWorkbook[]).map(workbook => workbook.id)
+    const ids = new Set(workbookIds)
+    if (ids.size !== workbookIds.length) errors.push('Invalid project file: duplicate workbook IDs.')
+    const blockIds = (project.blocks as BlockConfig[]).map(block => block.id)
+    const regionIds = (project.regions as RegionConfig[]).map(region => region.id)
+    if (new Set(blockIds).size !== blockIds.length) errors.push('Invalid project file: duplicate block IDs.')
+    if (new Set(regionIds).size !== regionIds.length) errors.push('Invalid project file: duplicate region IDs.')
+    if (project.activeWorkbookId !== null && project.activeWorkbookId !== undefined && (typeof project.activeWorkbookId !== 'string' || !ids.has(project.activeWorkbookId))) {
+      errors.push('Invalid project file: active workbook is unavailable.')
+    }
+    for (const item of [...project.blocks as BlockConfig[], ...project.regions as RegionConfig[]]) {
+      if (typeof item.workbookId !== 'string' || !item.workbookId) {
+        errors.push(`Invalid project file: item "${item.label}" has no workbook mapping.`)
+      } else if (!ids.has(item.workbookId)) {
+        errors.push(`Invalid project file: item references unavailable workbook "${item.workbookId}".`)
+      }
+    }
+    const activeBlock = (project.blocks as BlockConfig[]).find(block => block.id === project.activeBlockId)
+    const activeRegion = (project.regions as RegionConfig[]).find(region => region.id === project.activeRegionId)
+    if (project.activeBlockId && (!activeBlock || activeBlock.workbookId !== project.activeWorkbookId)) {
+      errors.push('Invalid project file: active block does not belong to the active workbook.')
+    }
+    if (project.activeRegionId && (!activeRegion || activeRegion.workbookId !== project.activeWorkbookId)) {
+      errors.push('Invalid project file: active region does not belong to the active workbook.')
+    }
+    if (errors.length) return { errors }
+    return {
+      errors: [],
+      project: {
+        project: {
+          id: project.id,
+          name: project.name,
+          workbooks: project.workbooks as ProjectWorkbook[],
+          activeWorkbookId: typeof project.activeWorkbookId === 'string' ? project.activeWorkbookId : null,
+          blocks: project.blocks as BlockConfig[],
+          regions: project.regions as RegionConfig[],
+          activeBlockId: typeof project.activeBlockId === 'string' ? project.activeBlockId : '',
+          activeRegionId: typeof project.activeRegionId === 'string' ? project.activeRegionId : null,
+          focusMode: project.focusMode === 'activate-first' ? 'activate-first' : 'always-editable',
+        },
+        parseResult: parseResultFrom(value),
+      },
+    }
+  }
+
+  const legacy = loadSession(value)
+  if (!legacy.session) return { errors: legacy.errors }
+  const sourceFileName = typeof value.sourceFileName === 'string' && value.sourceFileName ? value.sourceFileName : 'Workbook to attach'
+  const workbook = { id: LEGACY_WORKBOOK_ID, name: sourceFileName }
+  return {
+    errors: [],
+    migratedFrom: value.version === 1 ? 1 : 2,
+    project: {
+      project: {
+        id: `project-${Date.now()}`,
+        name: 'Imported project',
+        workbooks: [workbook],
+        activeWorkbookId: workbook.id,
+        blocks: legacy.session.blocks.map(block => ({ ...block, workbookId: workbook.id })),
+        regions: legacy.session.regions.map(region => ({ ...region, workbookId: workbook.id })),
+        activeBlockId: legacy.session.activeBlockId,
+        activeRegionId: null,
+        focusMode: legacy.session.focusMode,
+      },
+      parseResult: legacy.session.parseResult,
+    },
+  }
 }

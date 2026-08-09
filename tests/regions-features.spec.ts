@@ -30,6 +30,7 @@ async function loadWorkbookFixture(page: import('@playwright/test').Page): Promi
       openXlsx: async () => ({ status: 'ok', value: '/fixtures/test_data.xlsx' }),
       readFile: async () => ({ status: 'ok', value: workbookBytes() }),
       saveJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/session.json' } }),
+      saveJsonToPath: async (filePath: string) => ({ status: 'ok', value: { filePath } }),
       openJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/session.json', content: sessionContent } }),
       saveRecovery: async () => ({ status: 'ok', value: undefined }),
       loadRecovery: async () => ({ status: 'ok', value: null }),
@@ -43,9 +44,12 @@ async function loadWorkbookFixture(page: import('@playwright/test').Page): Promi
     }
   }, { workbookBase64: workbook.toString('base64'), sessionContent: session })
   await page.goto('/')
-  await page.getByRole('button', { name: 'Open Excel' }).click()
+  await page.getByRole('button', { name: 'Open Project' }).click()
+  const settings = page.getByRole('dialog', { name: 'Project settings' })
+  await expect(settings).toBeVisible()
+  await settings.getByRole('button', { name: 'Reassign' }).click()
   await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
-  await page.getByRole('button', { name: 'Import' }).click()
+  await settings.getByRole('button', { name: 'Done' }).click()
   await expect(page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
   await page.waitForTimeout(500)
   const closePreview = page.getByRole('button', { name: 'Close preview' })

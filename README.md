@@ -23,11 +23,11 @@ npx electron out/main/index.js
 
 ## Example Workflow
 
-1. Open `examples/test_data.xlsx`.
-2. Select a table range in the spreadsheet canvas.
-3. Configure the block name, headers, field keys, types, mappings, and filters.
-4. Use **Parse & Preview** to inspect raw and parsed rows.
-5. Export the JSON session, or save the configuration and reuse it against a changed workbook.
+1. Create a project or open an existing project JSON file.
+2. Add `examples/test_data.xlsx` as a workbook source in **Project settings**.
+3. Select a table range and configure its extractor.
+4. Use **Run & Preview** in the extraction panel to inspect the result.
+5. Use **Save Project** or **Save Project As** to persist the complete project.
 
 `examples/test_data_v2.xlsx` is a deliberately changed source workbook for
 testing reconciliation.

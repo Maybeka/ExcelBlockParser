@@ -8,6 +8,7 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
         OpenXlsx: vi.fn(async () => '/tmp/workbook.xlsx'),
         ReadFile: vi.fn(async () => [1, 2, 3]),
         SaveJson: vi.fn(async () => ({ success: true, filePath: '/tmp/session.json', error: '' })),
+        SaveJsonToPath: vi.fn(async (path: string) => ({ success: true, filePath: path, error: '' })),
         OpenJson: vi.fn(async () => ({ filePath: '/tmp/session.json', content: '{"version":2}' })),
         SaveRecovery: vi.fn(async () => undefined),
         LoadRecovery: vi.fn(async () => '{"version":2}'),
@@ -33,6 +34,7 @@ describe('Wails bridge contract', () => {
     expect(readResult.status).toBe('ok')
     if (readResult.status === 'ok') expect([...new Uint8Array(readResult.value)]).toEqual([1, 2, 3])
     expect(await bridge.saveJson('session.json', '{"version":2}')).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json' } })
+    expect(await bridge.saveJsonToPath('/tmp/session.json', '{"version":2}')).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json' } })
     expect(await bridge.openJson()).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json', content: '{"version":2}' } })
     await bridge.saveRecovery('{"version":2}')
     expect(await bridge.loadRecovery()).toEqual({ status: 'ok', value: '{"version":2}' })

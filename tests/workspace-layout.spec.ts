@@ -6,7 +6,9 @@ test.describe('M3 workspace layout', () => {
     await page.getByRole('button', { name: 'Show workspace navigation' }).click()
 
     const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
-    await expect(navigator.getByText('Sheets', { exact: true })).toBeVisible()
+    await expect(navigator.locator('.workspace-project-avatar .anticon-folder')).toBeVisible()
+    await expect(navigator.locator('.workspace-project-avatar .anticon-file-excel')).toHaveCount(0)
+    await expect(navigator.locator('.workspace-section-title').filter({ hasText: 'Workbooks' })).toBeVisible()
     await expect(navigator.locator('.workspace-section-title').filter({ hasText: 'Extractors' })).toBeVisible()
     await expect(navigator.locator('.workspace-section-title').filter({ hasText: 'Regions' })).toBeVisible()
     await expect(navigator.getByText('block_1')).toBeVisible()
@@ -49,10 +51,32 @@ test.describe('M3 workspace layout', () => {
     await expect(navigation).toBeVisible()
   })
 
+  test('collapses workbook, extractor, and region sections independently', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+    const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
+
+    const workbooks = navigator.getByRole('button', { name: 'Workbooks' })
+    const extractors = navigator.getByRole('button', { name: 'Extractors' })
+    const regions = navigator.getByRole('button', { name: 'Regions' })
+    await expect(workbooks).toHaveAttribute('aria-expanded', 'true')
+    await expect(extractors).toHaveAttribute('aria-expanded', 'true')
+    await expect(regions).toHaveAttribute('aria-expanded', 'true')
+
+    await extractors.click()
+    await expect(extractors).toHaveAttribute('aria-expanded', 'false')
+    await expect(navigator.getByText('block_1', { exact: true })).toBeHidden()
+    await regions.click()
+    await expect(regions).toHaveAttribute('aria-expanded', 'false')
+    await expect(navigator.getByText('No regions configured.', { exact: true })).toBeHidden()
+    await workbooks.click()
+    await expect(workbooks).toHaveAttribute('aria-expanded', 'false')
+    await expect(navigator.getByText('Open workbooks whenever you need them.', { exact: true })).toBeHidden()
+  })
+
   test('exposes keyboard commands for common workspace actions', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('button', { name: 'Open Excel' })).toHaveAttribute('aria-keyshortcuts', /Control\+O/)
-    await expect(page.getByRole('button', { name: 'Parse & Preview' })).toHaveAttribute('aria-keyshortcuts', /Control\+Enter/)
-    await expect(page.getByRole('button', { name: 'Export' })).toHaveAttribute('aria-keyshortcuts', /Control\+S/)
+    await expect(page.getByRole('button', { name: 'Open Project' })).toHaveAttribute('aria-keyshortcuts', /Control\+O/)
+    await expect(page.getByRole('button', { name: 'Run & Preview' })).toHaveAttribute('aria-keyshortcuts', /Control\+Enter/)
   })
 })

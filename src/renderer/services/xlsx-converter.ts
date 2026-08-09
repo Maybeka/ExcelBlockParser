@@ -13,6 +13,7 @@ import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
+let convertedWorkbookCounter = 0
 
 export interface ConversionResult {
   workbookData: IWorkbookData
@@ -154,7 +155,9 @@ export async function convertXlsxToWorkbookData(
 
   return {
     workbookData: {
-      id: `workbook-${Date.now()}`,
+      // Univer keys units by ID. A timestamp alone can collide when files are
+      // loaded in quick succession, causing one workbook to replace another.
+      id: `workbook-${Date.now()}-${++convertedWorkbookCounter}-${Math.random().toString(36).slice(2, 8)}`,
       name: fileName,
       appVersion: '0.22.0',
       locale: LocaleType.EN_US,
