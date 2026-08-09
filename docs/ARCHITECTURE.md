@@ -44,11 +44,11 @@ headers, value mappings, merged cells, empty rows and columns, multiple sheets,
 regions, malformed templates, missing sheets, and reconciliation against a
 changed source workbook.
 
-## Deferred Architecture
+## Feature Architecture Direction
 
-The v1.0 architecture is limited to the extraction product and a host-neutral
-desktop bridge, with Wails as the production adapter. Extension and generator
-architecture is intentionally deferred until after v1.0.
+The production architecture is limited to the extraction product and a
+host-neutral desktop bridge, with Wails as the production adapter. Phase A core
+boundaries are complete; feature-module implementation remains gated.
 
 Post-v1 scenario growth will first use compile-time built-in feature modules,
 not dynamically installed plugins. The exact boundaries, adoption gates, exit

@@ -268,22 +268,20 @@ owned and released with the app should remain built-in modules.
 
 ## 8. Current Repository Assessment
 
-Assessment is against the working tree based on commit `19147c9` on
-2026-08-09, including the Gate A preparation changes described below.
+Assessment is against Phase A commit `8e08a22` on 2026-08-09 and the v1.1.0
+development baseline established afterward.
 
 | Gate A condition | Status | Current evidence |
 | --- | --- | --- |
-| Baseline is reproducible | Pass | The current working tree passed type checks, 166 renderer/unit tests, 3 main-process tests, Go tests, 29 browser tests with 4 skipped, 17 hidden Electron E2E tests, release-script tests, and the production build. |
+| Baseline is reproducible | Pass | Phase A passed type checks, 188 renderer/unit tests, 3 main-process tests, Go tests, 29 browser tests with 4 skipped, 17 hidden Electron E2E tests, release-script tests, and the production build. |
 | Current contract is explicit | Pass | Project v3 is documented and has `project-v3.schema.json`; legacy v1/v2 migration is implemented. |
 | Current behavior is protected | Pass | Direct tests cover project lifecycle, multi-workbook isolation and switching, save/recovery, Block, Region, diagnostics, and preview workflows. |
-| Change isolation is possible | Pass | Initial project/workbook commands are pure functions in `services/project.ts`, are exercised without rendering React, and are used by `App.tsx` for initialization, source maintenance, load completion, switching, removal, active-sheet changes, and save normalization. This creates a tested incremental boundary while Project v3 and UI behavior remain unchanged. |
+| Change isolation is possible | Pass | Project/workbook commands and coordinators are pure or host-neutral, are exercised without rendering React, and preserve Project v3 and current UI behavior. |
 | Ownership is recorded | Pass after this decision | This document defines the intended dependency and responsibility boundaries. |
 
-**Gate A decision:** admitted. Phase A may incrementally extract project
-lifecycle, workbook runtime coordination, execution, dirty state/history, and
-diagnostics behind host-neutral interfaces. Every increment must retain the
-pure-command tests, Project v3 round-trip behavior, and existing E2E workflows.
-Project v3 changes remain outside Phase A.
+**Gate A decision:** completed. Phase A extracted project lifecycle, workbook
+runtime coordination, execution, dirty state/history, and diagnostics behind
+host-neutral interfaces while retaining Project v3 and existing workflows.
 
 | Gate B condition | Status | Current evidence |
 | --- | --- | --- |

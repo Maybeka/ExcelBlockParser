@@ -7,7 +7,7 @@ fit for distribution. Run it against the Wails ZIP artifact on Windows 11 x64,
 not `npm run dev`, an Electron package, or a browser build.
 
 Each case has a pass/fail result. Stop the release and file a defect for any
-failure that corrupts session/output data, loses a recoverable workspace,
+failure that corrupts project/output data, loses a recoverable workspace,
 bypasses a file-size/type guard, or prevents the core workflow in TC-03.
 
 ## Tester Setup
@@ -34,8 +34,8 @@ test folder outside the repository:
 - `empty.xlsx`
 - `session.json`
 
-`session.json` is a version-1 fixture. It is deliberately used to verify the
-supported v1-to-v2 import migration. Keep the original unchanged. Create a
+`session.json` is a legacy Session v1 fixture. It is deliberately used to
+verify the supported v1-to-Project-v3 import migration. Keep the original unchanged. Create a
 separate `output/` directory for generated JSON files and screenshots.
 
 ### Install The Artifact

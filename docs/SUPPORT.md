@@ -4,24 +4,25 @@
 
 | Runtime | Status | Purpose |
 | --- | --- | --- |
-| Wails | v1.0 production target | Distributed desktop application |
+| Wails | Production runtime since v1.0.0 | Distributed desktop application |
 | Electron | Development-only | Fast renderer development and diagnostic E2E |
 | Browser mode | Development-only | Renderer tests without native bridge behavior |
 
-The v1.0 release platform is Windows 11 x64 through Wails. The v1 artifact is
-a ZIP package; installer selection is not part of the v1 release scope.
+The supported release platform is Windows 11 x64 through Wails. Version 1.0.0
+was distributed as a ZIP package; installer selection remains separate
+distribution-hardening work.
 Electron packaging is not a supported distribution channel.
 
 The tag workflow builds an unsigned Windows 11 x64 Wails ZIP candidate plus a
-SHA-256 sidecar. Manual acceptance on Windows 11 is required before publishing.
-Authenticode signing is post-v1 distribution hardening.
+SHA-256 sidecar. Manual acceptance on Windows 11 is required before publishing
+each release. Authenticode signing remains deferred distribution hardening.
 
 ## Supported Workbook Behavior
 
 - `.xlsx` and `.xls` selection, up to 100 MB per workbook.
 - Worksheet navigation, selected ranges, merged values, headers, mappings,
-  row filters, regions, previews, sessions, and reconciliation.
-- Session/recovery JSON up to 25 MB. Unsaved workspace configuration is
+  row filters, regions, previews, projects, and reconciliation.
+- Project/recovery JSON up to 25 MB. Unsaved workspace configuration is
   recovered after an interrupted session when the production host supports it.
 
 ## Known Limitations
@@ -35,5 +36,6 @@ Authenticode signing is post-v1 distribution hardening.
   conversion guard. Larger workbooks are intentionally rejected.
 - Autosave preserves workspace configuration and current parsed state, not an
   external workbook copy.
-- Computed properties are validated template metadata. v1 does not execute
-  Python-like expressions or include their derived values in parsed JSON.
+- Computed properties are validated template metadata. The application does
+  not execute Python-like expressions or include their derived values in
+  parsed JSON.

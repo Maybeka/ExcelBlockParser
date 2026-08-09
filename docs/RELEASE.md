@@ -2,16 +2,18 @@
 
 ## Supported Artifacts
 
-The v1 production artifact is an unsigned Wails Windows 11 x64 ZIP package
-with a SHA-256 sidecar. An installer is not part of the v1 release scope.
+The supported production artifact is an unsigned Wails Windows 11 x64 ZIP
+package with a SHA-256 sidecar. An installer is not part of the current
+distribution scope.
 
-Electron packages are development-only artifacts and are not v1 releases.
+Electron packages are development-only artifacts and are not production releases.
 
 ## Deferred Distribution Hardening
 
-Authenticode signing and installer distribution are explicitly post-v1 work.
+Authenticode signing and installer distribution are explicitly deferred work.
 They must be designed as protected release infrastructure before a later signed
-distribution is published. No signing secrets are required for v1.
+distribution is published. No signing secrets are required for the current
+unsigned ZIP workflow.
 
 ## Release Checklist
 

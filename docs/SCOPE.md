@@ -1,6 +1,6 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** v1.0.0 code baseline tagged; `main` contains post-tag project-workflow refinements
+**Status:** v1.0.0 released; `main` is the unreleased v1.1.0 development baseline
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
 **Last assessed:** 2026-08-09
@@ -106,9 +106,8 @@ The implemented application supports this general workflow:
 
 - Electron main and preload processes for fast local development and native
   workflow diagnostics.
-- Wails bindings and Go application code, intended to become the v1.0
-  production desktop host.
-- Native file open/save dialogs for workbooks, sessions, and JSON export.
+- Wails bindings and Go application code for the production desktop host.
+- Native file open/save dialogs for workbooks and project JSON.
 - Modal preview flow. The Electron-only preview window is not a v1 requirement.
 
 ## 4. Current Technical Architecture
@@ -130,19 +129,19 @@ ExcelJS
   - workbook ingestion and conversion source
 ```
 
-Wails is the selected production desktop host for v1.0. Electron remains a
+Wails is the production desktop host. Electron remains a
 development-only shell for rapid renderer work and diagnostic E2E coverage.
 The renderer must use the narrow bridge contract so both hosts retain behavioral
-parity during post-v1 refinement.
+parity during v1.1 development.
 
 ## 5. Quality and Verification Status
 
 The repository contains example workbooks plus unit, browser, Electron-native,
 Electron-main, Go safety, and Wails-build checks. Electron remains development
-coverage only; Wails desktop/WebView E2E is post-v1 work. Windows 11
-installed-artifact acceptance remains required before v1.0 can be released.
-See `docs/RELEASE_ACCEPTANCE.md` for the authoritative release gates rather
-than treating a historical test count as a release claim.
+coverage only; Wails desktop/WebView E2E is not a current requirement. Windows
+11 artifact acceptance is required for each production release. See
+`docs/RELEASE_ACCEPTANCE.md` for the authoritative release gates rather than
+treating a historical test count as a release claim.
 
 ## 6. Explicit Non-Goals Today
 
@@ -156,11 +155,11 @@ The current repository should not be represented as providing the following:
 - Guaranteed support for all Excel file features, especially macros, external
   links, pivot tables, complex charts, and every formula behavior.
 
-## 7. Post-v1 Code Generation and Extensions
+## 7. Future Code Generation and Extensions
 
-Generating source files from parsed JSON is a valid post-v1 extension. It must
-not delay the v1.0 extraction product. After the extraction contract is stable,
-it should be a separate, explicit phase:
+Generating source files from parsed JSON remains a valid future capability. It
+is separate from the current Gate B readiness work and should consume the
+stable extraction contract through an explicit phase:
 
 ```text
 Workbook -> extraction template -> validated JSON -> generator recipe -> files
@@ -210,53 +209,46 @@ interpreter/environment, stdin or a temporary JSON input file, timeouts,
 cancellation, output-size limits, and captured diagnostics. Third-party
 generators require an explicit user trust decision.
 
-## 8. v1.0 Release Gaps
+## 8. Current Refinement Priorities
 
-### Product and UX
+Version 1.0.0 is released and Phase A core-boundary extraction is complete.
+Current work should preserve Project v3 and the supported extraction workflow.
 
-- Establish a documented, versioned extraction-template schema as the core
-  product contract.
-- Redesign the editor around workbook navigation, canvas selection,
-  context-sensitive configuration, diagnostics, and preview rather than a
-  collection of expanding configuration panels.
-- Define validation severity, recovery behavior, and user-facing error
-  messages for incomplete or ambiguous extraction.
-- Add keyboard workflows, accessibility review, undo/redo, autosave/recovery,
-  and large-workbook performance limits.
+### Baseline maintenance
 
-### Engineering
+- Keep version, changelog, support, release, schema, and architecture documents
+  synchronized with the tagged release and current development line.
+- Preserve the complete automated Electron development suite and Windows/Wails
+  release acceptance without expanding GitHub verification unnecessarily.
+- Treat reported data loss, workbook identity, recovery, and persistence
+  defects as higher priority than architecture expansion.
 
-- Move parsing/orchestration logic out of the top-level React application into
-  independently testable domain services.
-- Separate `workbook`, `template`, `extraction`, `validation`, `ui`, and
-  `platform` ownership boundaries.
-- Define a single host-neutral desktop bridge and bring Wails behavior to
-  parity with the supported workflow.
-- Harden Wails filesystem and dialog boundaries; use the narrowest practical
-  privileges and validate all input paths/data at the Go boundary.
-- Add fixture-based integration tests from real workbooks to expected JSON.
-- Add fixture-based bridge integration tests for
-  open/save/import/export/preview/recovery workflows. Wails production E2E is
-  post-v1 work.
-- Add CI for linting, unit tests, builds, and packaging smoke tests.
+### Gate B readiness
 
-### Release readiness
+- Prototype a host-owned right-panel boundary with two materially different
+  built-in views, including failure and teardown behavior.
+- Define a Project v3 compatibility-adapter policy before considering a new
+  persistence schema.
+- Validate common lifecycle, transaction, diagnostics, cancellation, workbook
+  navigation, and result-view needs against Block, Region, and External
+  Structured Result Review.
+- Reassess Gate B from evidence. Do not freeze a module API, migrate all
+  features, or implement runtime plugins before the gate passes.
 
-- Create a root README with installation, supported formats, examples, and
-  troubleshooting.
-- Publish a compatibility matrix for Excel features and platform support.
-- Define versioning, changelog, migration, crash reporting, and support policy.
-- Establish Windows code signing and installer distribution after v1.
+Large-file decomposition is not an independent product goal. The remaining
+`WorkspaceApplication`, `ConfigPanel`, and reconciliation code should be split
+only where Gate B prototypes or defect isolation establish a concrete ownership
+boundary and focused tests.
 
 ## 9. Delivery Boundary
 
-The v1.0 path is limited to refining the existing extraction product and
-making the Wails host production-ready. Extensions and generators begin only
-after the v1.0 acceptance gate is passed.
+The v1.1 development line is limited to preserving the extraction product while
+collecting Gate B evidence for compile-time built-in feature modules. Runtime
+extensions and generators remain outside the current delivery boundary.
 
 ## 10. Definition of a Production-Ready First Release
 
-The first production release should reliably open supported workbooks, let a
+Every production release should reliably open supported workbooks, let a
 user create and save a reusable template, reapply that template to a changed
 workbook, identify actionable extraction differences, preview validated JSON,
 and export it without data loss in documented supported cases. It should be
@@ -264,6 +256,5 @@ packaged for its supported desktop platforms, have a tested migration path for
 saved templates, and provide clear errors when input falls outside its support
 boundary.
 
-Code generation should ship only after this extraction contract is stable; it
-is a consumer of reliable JSON rather than a substitute for extraction
-correctness.
+Code generation remains a consumer of reliable JSON rather than a substitute
+for extraction correctness. Its implementation is not part of Gate B readiness.

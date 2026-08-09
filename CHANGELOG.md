@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 - Unreleased
+
+- Added Project v3 as the current persistence contract, with stable workbook
+  identity and workbook-owned Block and Region configuration.
+- Added project New, Open, Save, Save As, Settings, and Close workflows with
+  multi-workbook loading, switching, unavailable-source resolution, and
+  project-wide parsing.
+- Established host-neutral project lifecycle, workbook runtime, spreadsheet
+  capability, execution, history, and diagnostics boundaries in Phase A.
+- Retained import compatibility for legacy Session v1 and v2 files.
+
 ## 1.0.0 - 2026-08-09
 
 The prior `v1.0.0` tag was planning material and is superseded by this Wails
@@ -16,7 +27,7 @@ Windows 11 x64 release.
 
 ## Compatibility
 
-- Session version 1 imports and migrates to version 2.
-- Version 2 is the current working schema and must remain compatible through
-  the v1.0 release. See
+- Project version 3 is the current saved-project format.
+- Legacy Session versions 1 and 2 remain importable and migrate to a
+  single-workbook Project v3 representation. See
   [docs/SESSION_SCHEMA.md](docs/SESSION_SCHEMA.md).

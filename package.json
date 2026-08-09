@@ -1,6 +1,6 @@
 {
   "name": "excel-block-parser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Load Excel, select a block, configure parsing, export JSON",
   "author": "Excel Block Parser contributors",
   "main": "./out/main/index.js",

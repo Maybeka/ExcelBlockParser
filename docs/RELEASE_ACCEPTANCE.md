@@ -1,30 +1,31 @@
-# v1.0 Release Acceptance
+# Release Acceptance
 
-Version 1.0 is not released until every gate below passes on the release
-candidate. Wails is the production runtime. Electron checks are retained to
-protect the shared renderer and bridge contract during development; they do not
-produce release artifacts.
+Version 1.0.0 was accepted and tagged on 2026-08-09. The gates below are the
+baseline for subsequent release candidates unless a version-specific release
+plan explicitly strengthens them. Wails is the production runtime. Electron
+checks protect the shared renderer and bridge contract during development; they
+do not produce release artifacts.
 
 ## Current Verification Status
 
 Automated desktop UI coverage currently runs through Electron only. The Wails
 Go layer has tests and build checks, but no Wails desktop/WebView E2E suite
-exists yet; that coverage is explicitly deferred until after v1. Electron is
-the automated desktop regression path for v1.
+exists yet; that coverage is not a current release requirement. Electron is
+the automated desktop regression path for the current development line.
 
 ## Product Gates
 
 1. The documented workbook-to-JSON workflow works without data loss for every
-   supported fixture: open, sheet navigation, range capture, block and region
-   configuration, parse, diagnostics, preview, export, session export/import,
+   supported fixture: project open/save, workbook loading, sheet navigation,
+   range capture, Block and Region configuration, parse, diagnostics, preview,
    reconciliation, and recovery.
 2. All destructive or context-changing actions have clear, correct state
-   handling: switching workbooks, closing workbooks, discard confirmation, and
-   left-navigation synchronization.
+   handling: switching workbooks, removing workbook sources, closing projects,
+   discard confirmation, and left-navigation synchronization.
 3. The workspace is dense, keyboard-accessible, responsive at supported window
    sizes, and has no stale sheet, selection, preview, or diagnostic state.
-4. Session schema v2 round-trips through JSON serialization/import without a
-   changed configuration or output. Version 1 imports retain their documented
+4. Project v3 round-trips through JSON serialization/import without semantic
+   data loss. Legacy Session v1 and v2 imports retain their documented
    migration behavior.
 
 ## Engineering Gates
@@ -36,7 +37,7 @@ the automated desktop regression path for v1.
    recovery, bridge errors, workbook lifecycle, and regression cases for every
    fixed release-blocking defect.
 3. Browser renderer tests and Electron development E2E pass. Wails
-   desktop/WebView E2E is post-v1 work; native bridge behavior is covered by
+   desktop/WebView E2E is not a current gate; native bridge behavior is covered by
    Go tests and the Windows 11 manual-acceptance gate.
 4. The Wails Go layer has unit/integration coverage for path authorization,
    size and time limits, recovery persistence, import/export, and bridge error
@@ -49,7 +50,7 @@ the automated desktop regression path for v1.
 ## Wails Production Gates
 
 1. The Wails bridge implements every production capability used by the renderer
-   with stable typed behavior: workbook/session open, JSON/session save,
+   with stable typed behavior: workbook/project open, project save,
    recovery save/load/clear, preview events, and error reporting.
 2. Wails uses explicit, tested path and size controls. Arbitrary renderer file
    access is prohibited.
@@ -58,7 +59,7 @@ the automated desktop regression path for v1.
 4. Launch, open, export, recovery, and close behavior is documented and
    manually accepted from the Wails ZIP candidate on Windows 11 x64.
 5. The candidate ZIP and its SHA-256 sidecar are retained with the release
-   evidence. Authenticode signing and installer metadata are post-v1 work.
+   evidence. Authenticode signing and installer metadata remain deferred.
 
 ## Performance Gate
 
@@ -67,8 +68,9 @@ seconds on the designated release runner. Workbooks that exceed documented
 limits are rejected with actionable diagnostics rather than partially
 processed.
 
-## Deferred Work
+## Architecture Boundary
 
-The extension platform, external plugins, Python code-generation runner, and
-LLM generation-artifact import are post-v1 work. They must not be introduced
-into the v1.0 release branch.
+Runtime plugins, Python code-generation execution, and in-app LLM integration
+are not part of the 1.1.0 development baseline. Built-in feature-module work is
+governed by `FEATURE_MODULE_ARCHITECTURE.md` and may begin only after its Gate B
+entry evidence is complete.

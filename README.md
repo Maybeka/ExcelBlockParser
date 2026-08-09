@@ -43,11 +43,12 @@ npm run test:packaged # optional Electron package smoke test; not a CI/release g
 npm run test:release  # release-tag/package-version consistency
 ```
 
-The v1 production candidate is a Wails Windows 11 x64 ZIP package. Create it
-on Windows with `npm run package:wails:win`; the command rejects a release tag
-that does not exactly match `package.json`.
+Version 1.0.0 was released as a Wails Windows 11 x64 ZIP package. `main` is the
+unreleased 1.1.0 development line. Create future Windows candidates with
+`npm run package:wails:win`; the command rejects a release tag that does not
+exactly match `package.json`.
 
-See [Session and JSON Contract](docs/SESSION_SCHEMA.md),
+See [Project JSON Contract](docs/SESSION_SCHEMA.md),
 [Support and Limitations](docs/SUPPORT.md), and
 [Release Acceptance](docs/RELEASE_ACCEPTANCE.md). Test packaged artifacts with the
 [Manual Acceptance Test Plan](docs/MANUAL_ACCEPTANCE_TEST_PLAN.md).

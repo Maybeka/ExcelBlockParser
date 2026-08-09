@@ -2,13 +2,13 @@
 
 ## Release Direction
 
-Wails is the only production packaging path for v1.0. Electron remains useful
+Wails is the only production packaging path. Electron remains useful
 for rapid renderer development, debugging, and its existing native test suite,
 but Electron packages must not be published as product releases.
 
-The v1 production target is Windows 11 x64. The distributed artifact is an
-unsigned ZIP plus a SHA-256 sidecar. Installers and Authenticode signing are
-post-v1 work.
+The supported production target is Windows 11 x64. The distributed artifact is
+an unsigned ZIP plus a SHA-256 sidecar. Installers and Authenticode signing are
+deferred distribution-hardening work.
 
 ## Wails Production Build
 
@@ -35,7 +35,7 @@ npm run test:native
 ```
 
 Electron builder scripts remain available for development investigation only.
-They must not define release platform support or be used to create a v1.0
+They must not define release platform support or be used to create a production
 artifact.
 
 ## Development Prerequisites
@@ -47,11 +47,11 @@ artifact.
 ## Release Checklist
 
 1. Prepare a clean release-candidate commit with its actual prerelease version
-   (for example, `1.0.0-rc.1`), then tag it `v1.0.0-rc.1`.
+   (for example, `1.1.0-rc.1`), then tag it `v1.1.0-rc.1`.
 2. Run the tag workflow and retain the generated ZIP and SHA-256 sidecar.
 3. Pass [docs/RELEASE_ACCEPTANCE.md](docs/RELEASE_ACCEPTANCE.md) and the
    Windows 11 x64 manual test plan against that candidate.
-4. After acceptance, update the version and changelog for `1.0.0`, rebuild the
-   final ZIP, and tag its commit `v1.0.0`.
+4. After acceptance, update the version and changelog for the final release,
+   rebuild the ZIP, and tag the matching commit.
 5. Publish the final ZIP, SHA-256, support notes, and acceptance evidence. Do
    not publish Electron packages as product releases.
