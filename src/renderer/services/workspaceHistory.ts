@@ -36,3 +36,50 @@ export class WorkspaceHistory {
 
   clear(): void { this.past = []; this.future = [] }
 }
+
+export interface WorkspaceTransition {
+  snapshot: WorkspaceSnapshot
+  dirty: boolean
+  changed: boolean
+}
+
+/** Coordinates atomic durable edits independently of React rendering. */
+export class WorkspaceStateCoordinator {
+  private history = new WorkspaceHistory()
+  private dirty = false
+
+  get canUndo(): boolean { return this.history.canUndo }
+  get canRedo(): boolean { return this.history.canRedo }
+  get isDirty(): boolean { return this.dirty }
+
+  transact(current: WorkspaceSnapshot, update: (snapshot: WorkspaceSnapshot) => WorkspaceSnapshot): WorkspaceTransition {
+    const next = update(cloneSnapshot(current))
+    if (JSON.stringify(next) === JSON.stringify(current)) return { snapshot: current, dirty: this.dirty, changed: false }
+    this.history.push(current)
+    this.dirty = true
+    return { snapshot: next, dirty: true, changed: true }
+  }
+
+  record(current: WorkspaceSnapshot): void {
+    this.history.push(current)
+    this.dirty = true
+  }
+
+  undo(current: WorkspaceSnapshot): WorkspaceTransition | null {
+    const snapshot = this.history.undo(current)
+    if (!snapshot) return null
+    this.dirty = true
+    return { snapshot, dirty: true, changed: true }
+  }
+
+  redo(current: WorkspaceSnapshot): WorkspaceTransition | null {
+    const snapshot = this.history.redo(current)
+    if (!snapshot) return null
+    this.dirty = true
+    return { snapshot, dirty: true, changed: true }
+  }
+
+  markSaved(): void { this.dirty = false }
+  markDirty(): void { this.dirty = true }
+  reset(): void { this.history.clear(); this.dirty = false }
+}

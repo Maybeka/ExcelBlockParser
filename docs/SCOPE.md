@@ -1,9 +1,9 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** v0.1 refinement; v1.0 not yet released
+**Status:** v1.0.0 code baseline tagged; `main` contains post-tag project-workflow refinements
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
-**Last assessed:** 2026-07-19
+**Last assessed:** 2026-08-09
 
 ## 1. Product Intent
 
@@ -133,7 +133,7 @@ ExcelJS
 Wails is the selected production desktop host for v1.0. Electron remains a
 development-only shell for rapid renderer work and diagnostic E2E coverage.
 The renderer must use the narrow bridge contract so both hosts retain behavioral
-parity during the v0.1 refinement period.
+parity during post-v1 refinement.
 
 ## 5. Quality and Verification Status
 
@@ -170,6 +170,11 @@ The generator must consume a documented JSON schema, not workbook coordinates,
 React state, or internal block identifiers. This keeps templates reusable and
 allows the same extracted data to drive Python, TypeScript, SQL, configuration,
 or test-fixture generators.
+
+Finite application-owned scenarios will first be implemented as compile-time
+built-in feature modules. A runtime plugin system is not justified by scenario
+count alone and remains gated on independent distribution, external ownership,
+and an approved trust model. See `FEATURE_MODULE_ARCHITECTURE.md`.
 
 ### Initial scope
 

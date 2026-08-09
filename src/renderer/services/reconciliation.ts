@@ -1,5 +1,6 @@
 import type { BlockConfig, CellRange, ColumnMapping, ReconciliationIssue, ReconciliationReport, SuggestedFix } from '../types'
 import { remapColumns } from './columnMapper'
+import type { WorkbookReader } from './workbook'
 
 export function detectSheetMismatch(
   blockSheet: string | null,
@@ -773,8 +774,8 @@ export function generateReconciliationReport(
 
 export async function runReconciliation(
   block: BlockConfig,
-  api: any,  // FUniver
-  availableSheets: string[],
+  workbook: WorkbookReader,
+  availableSheets: string[] = workbook.sheetNames(),
 ): Promise<ReconciliationReport> {
   const issues: ReconciliationIssue[] = []
   const fixes: SuggestedFix[] = []
@@ -802,8 +803,9 @@ export async function runReconciliation(
 
   // Step 2: Range + Content (requires sheet access)
   try {
-    const workbook = api?.getActiveWorkbook?.()
-    if (!workbook) {
+    const sheetName = block.activeSheet || availableSheets[0] || ''
+    const sourceSheet = workbook.getSheet(sheetName) || workbook.getActiveSheet()
+    if (!sourceSheet) {
       return {
         blockId: block.id,
         label: block.label,
@@ -812,17 +814,8 @@ export async function runReconciliation(
         suggestedFixes: fixes,
       }
     }
-
-    const sheetName = block.activeSheet || availableSheets[0] || ''
-    const sheet = workbook.getSheetByName?.(sheetName) || workbook.getActiveSheet?.()
-    if (!sheet) {
-      return {
-        blockId: block.id,
-        label: block.label,
-        status: 'ok',
-        issues,
-        suggestedFixes: fixes,
-      }
+    const sheet = {
+      getRange: (a1Notation: string) => ({ getValues: () => sourceSheet.getValuesByA1(a1Notation) }),
     }
 
     if (block.range) {

@@ -9,16 +9,23 @@ function columnLetter(index: number): string {
 }
 
 function makeSheet(sheet: ExcelJS.Worksheet): WorkbookSheet {
+  const valuesByCoordinates = (startRow: number, startCol: number, endRow: number, endCol: number): unknown[][] => {
+    const values: unknown[][] = []
+    for (let row = startRow; row <= endRow; row++) {
+      const result: unknown[] = []
+      for (let col = startCol; col <= endCol; col++) result.push(sheet.getCell(row + 1, col + 1).value ?? null)
+      values.push(result)
+    }
+    return values
+  }
   return {
     name: sheet.name,
-    getValues: (range: CellRange) => {
-      const values: unknown[][] = []
-      for (let row = range.startRow; row <= range.endRow; row++) {
-        const result: unknown[] = []
-        for (let col = range.startCol; col <= range.endCol; col++) result.push(sheet.getCell(row + 1, col + 1).value ?? null)
-        values.push(result)
-      }
-      return values
+    getValues: (range: CellRange) => valuesByCoordinates(range.startRow, range.startCol, range.endRow, range.endCol),
+    getValuesByA1: (a1Notation: string) => {
+      const [start, end = start] = a1Notation.split(':')
+      const startCell = sheet.getCell(start)
+      const endCell = sheet.getCell(end)
+      return valuesByCoordinates(startCell.row - 1, startCell.col - 1, endCell.row - 1, endCell.col - 1)
     },
     getMergedRanges: () => Object.keys((sheet as any)._merges ?? {}).map(a1 => {
       const match = a1.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/)

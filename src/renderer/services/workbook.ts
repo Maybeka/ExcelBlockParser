@@ -3,6 +3,7 @@ import type { CellRange } from '../types'
 export interface WorkbookSheet {
   name: string
   getValues(range: CellRange): unknown[][]
+  getValuesByA1(a1Notation: string): unknown[][]
   getMergedRanges(): CellRange[]
 }
 
@@ -40,6 +41,7 @@ export function createUniverWorkbookReader(workbook: any): WorkbookReader {
   const wrap = (sheet: any): WorkbookSheet => ({
     name: sheet.getSheetName?.() ?? '',
     getValues: (range) => sheet.getRange(range.a1Notation).getValues() as unknown[][],
+    getValuesByA1: (a1Notation) => sheet.getRange(a1Notation).getValues() as unknown[][],
     getMergedRanges: () => {
       try { return (sheet.getMergedRanges?.() ?? []).map(toRange) } catch { return [] }
     },

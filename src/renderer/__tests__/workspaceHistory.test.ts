@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { WorkspaceHistory, type WorkspaceSnapshot } from '../services/workspaceHistory'
+import { WorkspaceHistory, WorkspaceStateCoordinator, type WorkspaceSnapshot } from '../services/workspaceHistory'
 
 function snapshot(label: string): WorkspaceSnapshot {
   return {
@@ -25,5 +25,27 @@ describe('WorkspaceHistory', () => {
     history.push(first)
     first.blocks[0].label = 'mutated'
     expect(history.undo(snapshot('second'))?.blocks[0].label).toBe('first')
+  })
+})
+
+describe('WorkspaceStateCoordinator', () => {
+  it('records one atomic transaction and dirty transition', () => {
+    const coordinator = new WorkspaceStateCoordinator()
+    const current = snapshot('one')
+    const changed = coordinator.transact(current, value => ({ ...value, name: 'two' }))
+    expect(changed).toMatchObject({ changed: true, dirty: true, snapshot: { name: 'two' } })
+    expect(coordinator.canUndo).toBe(true)
+    expect(coordinator.undo(changed.snapshot)?.snapshot.name).toBe('Test project')
+  })
+
+  it('does not create history for an unchanged transaction and resets on close', () => {
+    const coordinator = new WorkspaceStateCoordinator()
+    expect(coordinator.transact(snapshot('one'), value => value).changed).toBe(false)
+    expect(coordinator.canUndo).toBe(false)
+    coordinator.record(snapshot('one'))
+    expect(coordinator.isDirty).toBe(true)
+    coordinator.reset()
+    expect(coordinator.isDirty).toBe(false)
+    expect(coordinator.canUndo).toBe(false)
   })
 })

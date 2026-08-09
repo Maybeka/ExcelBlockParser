@@ -2,11 +2,11 @@ import { useCallback, useState, useRef, useEffect, useMemo, Fragment } from 'rea
 import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider, Tag, Dropdown } from 'antd'
 import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined, PlayCircleOutlined, TagOutlined } from '@ant-design/icons'
 import type { CellRange, ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, RegionConfig, Tag as TagType } from '../types'
-import { useUniver } from '../context/UniverContext'
 import { remapColumns } from '../services/columnMapper'
 import { applyRowAdjustFix, runReconciliation } from '../services/reconciliation'
 import { addTag, removeTag, filterBlocksByTag, getAllTags } from '../services/tagUtils'
 import { validateExpression } from '../services/pythonValidator'
+import type { SpreadsheetCapability } from '../services/spreadsheetCapability'
 import { RegionPanel } from './RegionPanel'
 import { BlockCard } from './BlockCard'
 
@@ -32,6 +32,7 @@ const FALLBACK_TYPE_OPTIONS: { value: ValueMapFallbackType; label: string }[] = 
 export type FocusMode = 'always-editable' | 'activate-first'
 
 interface ConfigPanelProps {
+  spreadsheet: SpreadsheetCapability
   blocks: BlockConfig[]
   activeBlockId: string
   activeColIndex: number | null
@@ -152,14 +153,13 @@ function parseHeaderRowsInput(input: string): number[] | null {
   return [...rows].sort((a, b) => a - b)
 }
 
-function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, sheetNames, univerRef, onPreviewSheet, onColumnFocus }: {
+function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, spreadsheet, onPreviewSheet, onColumnFocus }: {
   report: ReconciliationReport
   block: BlockConfig
   onApply: (block: BlockConfig) => void
   onClose: () => void
   onReselectRange?: (onRange: (range: CellRange) => void) => void
-  sheetNames: string[]
-  univerRef: { current: any }
+  spreadsheet: SpreadsheetCapability
   onPreviewSheet?: (sheetName: string | null) => void
   onColumnFocus?: (colIndex: number | null) => void
 }) {
@@ -182,10 +182,7 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
   const switchSheet = (sheetName: string) => {
     setSelectedSheet(sheetName || '')
     onPreviewSheet?.(sheetName || null)
-    const api = univerRef.current
-    if (!api) return
-    const wb = api.getActiveWorkbook()
-    if (wb) wb.setActiveSheet(sheetName)
+    spreadsheet.setActiveSheet(sheetName)
   }
 
   useEffect(() => {
@@ -208,11 +205,7 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
     .map(c => ({ value: c.key }))
 
   const handleCancel = () => {
-    const api = univerRef.current
-    if (api && block.activeSheet) {
-      const wb = api.getActiveWorkbook()
-      if (wb) wb.setActiveSheet(block.activeSheet)
-    }
+    if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
     onClose()
   }
 
@@ -288,7 +281,7 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
         value={selectedSheet || undefined}
         placeholder="Auto (active sheet)"
         onChange={switchSheet}
-        options={sheetNames.map(s => ({ value: s, label: s }))}
+        options={spreadsheet.sheetNames().map(s => ({ value: s, label: s }))}
         allowClear
         optionRender={renderOption}
       />
@@ -356,14 +349,9 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
             onClick={() => {
               const range = selectedRange || block.range
               if (!range) return
-              const api = univerRef.current
-              if (!api) return
-              const wb = api.getActiveWorkbook()
-              if (!wb) return
               const activeSheet = selectedSheet || block.activeSheet
-              if (activeSheet) wb.setActiveSheet(activeSheet)
-              const sheet = activeSheet ? wb.getSheetByName(activeSheet) : wb.getActiveSheet()
-              if (sheet) sheet.scrollToCell(Math.max(0, range.startRow - 1), Math.max(0, col.colIndex - 3))
+              if (activeSheet) spreadsheet.setActiveSheet(activeSheet)
+              spreadsheet.scrollTo(activeSheet, range.startRow - 1, col.colIndex - 3)
             }}
           >{col.colLetter}</span>
           <AutoComplete
@@ -406,6 +394,7 @@ function ReconciliationTabs({ report, block, onApply, onClose, onReselectRange, 
 }
 
 export function ConfigPanel({
+  spreadsheet,
   blocks,
   activeBlockId,
   activeColIndex,
@@ -441,8 +430,6 @@ export function ConfigPanel({
   const blockInputRefs = useRef<Record<string, { focus: () => void; select: () => void } | null>>({})
   const shouldAutoFocus = useRef(false)
   const prevBlockCountRef = useRef(blocks.length)
-  const { univerAPI, sheetNames } = useUniver()
-
   const [searchText, setSearchText] = useState('')
   const [searchTarget, setSearchTarget] = useState<'all' | 'title' | 'columnName' | 'tag'>('all')
   const [tagFilter, setTagFilter] = useState<string | undefined>(undefined)
@@ -500,8 +487,6 @@ export function ConfigPanel({
   const [columnTables, setColumnTables] = useState<Record<string, ColumnTableState>>({})
   const blocksRef = useRef(blocks)
   blocksRef.current = blocks
-  const univerRef = useRef(univerAPI)
-  univerRef.current = univerAPI
 
   const handleAdd = useCallback(() => {
     shouldAutoFocus.current = true
@@ -522,10 +507,6 @@ export function ConfigPanel({
     prevBlockCountRef.current = blocks.length
   }, [blocks])
 
-  const scrollToCellCenter = (sheet: any, row: number, col: number) => {
-    sheet.scrollToCell(Math.max(0, row - 3), Math.max(0, col - 1))
-  }
-
   const fetchColumnData = useCallback(async (mapKey: string, blockId: string, colIndex: number) => {
     const block = blocksRef.current.find(b => b.id === blockId)
     if (!block?.range) {
@@ -533,14 +514,8 @@ export function ConfigPanel({
       return
     }
     try {
-      const api = univerRef.current
-      if (!api) { setColumnTables(prev => ({ ...prev, [mapKey]: { ...prev[mapKey], loading: false } })); return }
-      const workbook = api.getActiveWorkbook()
-      if (!workbook) { setColumnTables(prev => ({ ...prev, [mapKey]: { ...prev[mapKey], loading: false } })); return }
-      const sheet = block.activeSheet ? workbook.getSheetByName(block.activeSheet) : workbook.getActiveSheet()
-      if (!sheet) { setColumnTables(prev => ({ ...prev, [mapKey]: { ...prev[mapKey], loading: false } })); return }
-      const frange = sheet.getRange(block.range.a1Notation)
-      const rawValues = frange.getValues() as unknown[][]
+      const rawValues = spreadsheet.readRange(block.activeSheet, block.range)
+      if (!rawValues) { setColumnTables(prev => ({ ...prev, [mapKey]: { ...prev[mapKey], loading: false } })); return }
       const startCol = block.range.startCol
       const headerSet = new Set(block.headerRows)
       const dataRows = rawValues.filter((_, i) => !headerSet.has(i))
@@ -562,7 +537,7 @@ export function ConfigPanel({
     } catch {
       setColumnTables(prev => ({ ...prev, [mapKey]: { ...prev[mapKey], loading: false } }))
     }
-  }, [])
+  }, [spreadsheet])
 
   const toggleTableView = useCallback((mapKey: string, blockId: string, colIndex: number) => {
     setColumnTables(prev => {
@@ -666,14 +641,8 @@ export function ConfigPanel({
   const regenerateColumnKey = useCallback((blockId: string, colIndex: number) => {
     const block = blocks.find(b => b.id === blockId)
     if (!block?.range) return
-    const api = univerRef.current
-    if (!api) return
-    const workbook = api.getActiveWorkbook()
-    if (!workbook) return
-    const sheet = block.activeSheet ? workbook.getSheetByName(block.activeSheet) : workbook.getActiveSheet()
-    if (!sheet) return
-    const frange = sheet.getRange(block.range.a1Notation)
-    const rawValues = frange.getValues() as unknown[][]
+    const rawValues = spreadsheet.readRange(block.activeSheet, block.range)
+    if (!rawValues) return
     const relCol = colIndex - block.range.startCol
     const keyParts: string[] = []
     for (const r of block.headerRows) {
@@ -689,19 +658,13 @@ export function ConfigPanel({
         ? `column_${block.columns.find(c => c.colIndex === colIndex)!.colLetter}`
         : 'column'
     updateColumn(blockId, colIndex, { key: newKey })
-  }, [blocks, updateColumn])
+  }, [blocks, spreadsheet, updateColumn])
 
   const regenerateAllColumnKeys = useCallback((blockId: string) => {
     const block = blocks.find(b => b.id === blockId)
     if (!block?.range) return
-    const api = univerRef.current
-    if (!api) return
-    const workbook = api.getActiveWorkbook()
-    if (!workbook) return
-    const sheet = block.activeSheet ? workbook.getSheetByName(block.activeSheet) : workbook.getActiveSheet()
-    if (!sheet) return
-    const frange = sheet.getRange(block.range.a1Notation)
-    const rawValues = frange.getValues() as unknown[][]
+    const rawValues = spreadsheet.readRange(block.activeSheet, block.range)
+    if (!rawValues) return
 
     const updatedColumns = block.columns.map(col => {
       const relCol = col.colIndex - block.range!.startCol
@@ -720,7 +683,7 @@ export function ConfigPanel({
     })
 
     onBlockChange(blockId, { columns: updatedColumns })
-  }, [blocks, onBlockChange])
+  }, [blocks, onBlockChange, spreadsheet])
 
   const addValueMapEntry = useCallback((blockId: string, colIndex: number) => {
     const block = blocks.find(b => b.id === blockId)
@@ -989,15 +952,8 @@ export function ConfigPanel({
                       e.stopPropagation()
                       if (isOtherBlockInReconciling) return
                       onActivateBlock(block.id)
-                      const api = univerRef.current
-                      if (!api) return
-                      const wb = api.getActiveWorkbook()
-                      if (!wb) return
-                      if (block.activeSheet) wb.setActiveSheet(block.activeSheet)
-                      const targetSheet = block.activeSheet ? wb.getSheetByName(block.activeSheet) : wb.getActiveSheet()
-                      if (targetSheet && block.range) {
-                        scrollToCellCenter(targetSheet, block.range.startRow, block.range.startCol)
-                      }
+                      if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
+                      spreadsheet.scrollTo(block.activeSheet, block.range.startRow - 3, block.range.startCol - 1)
                     }}
                     onMouseDown={e => e.stopPropagation()}
                     style={{
@@ -1031,31 +987,19 @@ export function ConfigPanel({
                     if (controlsLocked || !block?.range) return
                     onActivateBlock(block.id)
                     if (reconcilingBlockId === block.id) {
-                      const a = univerRef.current
-                      if (a && block.activeSheet) {
-                        const w = a.getActiveWorkbook()
-                        if (w) w.setActiveSheet(block.activeSheet)
-                      }
+                      if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
                       setReconcilingBlockId(null)
                       onReconcilingChange?.(null)
                       return
                     }
-                    const api = univerRef.current
-                    if (!api) return
-                    const wb = api.getActiveWorkbook()
-                    if (block.activeSheet && wb) {
-                      wb.setActiveSheet(block.activeSheet)
-                    }
+                    const workbook = spreadsheet.workbookReader()
+                    if (!workbook) return
+                    if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
                     const el = normalContentRef.current[block.id]
                     if (el) setReconHeights(prev => ({ ...prev, [block.id]: el.offsetHeight }))
-                    const sheets: string[] = []
-                    if (wb) {
-                      const fs = wb.getSheets()
-                      if (fs) for (const s of fs) sheets.push(s.getSheetName())
-                    }
-                    const report = await runReconciliation(block, api, sheets)
+                    const report = await runReconciliation(block, workbook, spreadsheet.sheetNames())
                     setReconReports(prev => ({ ...prev, [block.id]: report }))
-                    onPreviewSheet?.(block.activeSheet || wb?.getActiveSheet()?.getSheetName() || null)
+                    onPreviewSheet?.(block.activeSheet || spreadsheet.activeSheetName())
                     setReconcilingBlockId(block.id)
                     onReconcilingChange?.(block.id)
                   }}
@@ -1165,7 +1109,7 @@ export function ConfigPanel({
 
             {reconcilingBlockId === block.id && reconReports[block.id] ? (
               <div style={{ overflow: 'auto', height: reconHeights[block.id] || 'auto' }}>
-                <ReconciliationTabs report={reconReports[block.id]} block={block} onReselectRange={onReselectRange} onPreviewSheet={onPreviewSheet} sheetNames={sheetNames} univerRef={univerRef} onColumnFocus={onColumnFocus} onApply={(updatedBlock) => {
+                <ReconciliationTabs report={reconReports[block.id]} block={block} onReselectRange={onReselectRange} onPreviewSheet={onPreviewSheet} spreadsheet={spreadsheet} onColumnFocus={onColumnFocus} onApply={(updatedBlock) => {
                   onBlockChange(updatedBlock.id, updatedBlock)
                   setReconcilingBlockId(null)
                   onReconcilingChange?.(null)
@@ -1287,13 +1231,8 @@ export function ConfigPanel({
                               }}
                               onClick={() => {
                                 if (!block.range) return
-                                const api = univerRef.current
-                                if (!api) return
-                                const wb = api.getActiveWorkbook()
-                                if (!wb) return
-                                if (block.activeSheet) wb.setActiveSheet(block.activeSheet)
-                                const sheet = block.activeSheet ? wb.getSheetByName(block.activeSheet) : wb.getActiveSheet()
-                                if (sheet) sheet.scrollToCell(Math.max(0, block.range.startRow - 1), Math.max(0, col.colIndex - 3))
+                                if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
+                                spreadsheet.scrollTo(block.activeSheet, block.range.startRow - 1, col.colIndex - 3)
                               }}>
                                 {col.colLetter}
                               </span>

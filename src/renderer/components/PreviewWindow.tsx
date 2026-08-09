@@ -2,14 +2,19 @@ import { useEffect, useState, useCallback } from 'react'
 import { Layout, Segmented, Input, Spin, Typography, Empty, Result, Alert, Button, Select, Tooltip } from 'antd'
 import { CodeOutlined, CloseOutlined, DatabaseOutlined, FileTextOutlined, SearchOutlined } from '@ant-design/icons'
 import { PreviewTable } from './PreviewTable'
-import { getBridge } from '../services/bridge'
 import ReactJson from '@microlink/react-json-view'
 import type { PreviewData } from '../types'
 
 const { Header, Content } = Layout
 const { Text } = Typography
 
+export interface PreviewDataSource {
+  getData(blockId: string): Promise<PreviewData | undefined>
+  onReload(callback: (blockId: string) => void): () => void
+}
+
 interface PreviewWindowProps {
+  dataSource?: PreviewDataSource
   /** Pre-loaded preview data (modal mode — skips bridge fetching) */
   previewData?: PreviewData | null
   /** All available blocks for switching (modal mode) */
@@ -22,7 +27,7 @@ interface PreviewWindowProps {
   onClose?: () => void
 }
 
-export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId: propBlockId, onBlockChange, onClose }: PreviewWindowProps = {}) {
+export function PreviewWindow({ dataSource, previewData: propData, allBlocks, activeBlockId: propBlockId, onBlockChange, onClose }: PreviewWindowProps = {}) {
   const isModal = !!propData || !!allBlocks
   const [previewData, setPreviewData] = useState<PreviewData | null>(propData || null)
   const [visibleModes, setVisibleModes] = useState<('raw' | 'parsed')[]>(['raw', 'parsed'])
@@ -48,7 +53,8 @@ export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId:
     if (!silent) setLoading(true)
     setError(null)
     try {
-      const data = await getBridge().getPreviewData(id) as PreviewData | undefined
+      if (!dataSource) throw new Error('Preview data source is unavailable')
+      const data = await dataSource.getData(id)
       if (data) {
         setPreviewData(data)
       }
@@ -57,17 +63,17 @@ export function PreviewWindow({ previewData: propData, allBlocks, activeBlockId:
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [])
+  }, [dataSource])
 
   // Listen for reload events from main process (window mode only)
   useEffect(() => {
-    if (isModal) return
-    const cleanup = getBridge().onPreviewReload((id: string) => {
+    if (isModal || !dataSource) return
+    const cleanup = dataSource.onReload((id: string) => {
       setBlockId(id)
       fetchData(id, true)
     })
     return cleanup
-  }, [fetchData, isModal])
+  }, [dataSource, fetchData, isModal])
 
   useEffect(() => {
     if (isModal) return

@@ -168,19 +168,18 @@ describe('reconciliation primitives', () => {
   it('runs the UI-facing reconciliation path and suggests a content refresh without mutation', async () => {
     const originalBlock = structuredClone(block)
     const sheet = {
-      getRange: () => ({
-        getValues: () => [['name', 'status'], ['Ada', 'inactive']],
-      }),
+      name: 'Customers',
+      getValues: () => [['name', 'status'], ['Ada', 'inactive']],
+      getValuesByA1: () => [['name', 'status'], ['Ada', 'inactive']],
+      getMergedRanges: () => [],
     }
     const report = await runReconciliation(
       block,
       {
-        getActiveWorkbook: () => ({
-          getSheetByName: () => sheet,
-          getActiveSheet: () => sheet,
-        }),
+        sheetNames: () => ['Customers'],
+        getSheet: () => sheet,
+        getActiveSheet: () => sheet,
       },
-      ['Customers'],
     )
 
     expect(report.status).toBe('ok')
@@ -200,20 +199,20 @@ describe('reconciliation primitives', () => {
       headerSnapshot: [['name', 'status']],
     }
     const sheet = {
-      getRange: (a1: string) => ({
-        getValues: () => {
-          if (a1 === 'A1:B1') return [['not', 'the header']]
-          if (a1 === 'A3:B3') return [['name', 'status']]
-          if (a1 === 'B1:B2') return [['status'], ['active']]
-          return [['name', 'status'], ['Ada', 'active']]
-        },
-      }),
+      name: 'Customers',
+      getValues: () => [['name', 'status'], ['Ada', 'active']],
+      getValuesByA1: (a1: string) => {
+        if (a1 === 'A1:B1') return [['not', 'the header']]
+        if (a1 === 'A3:B3') return [['name', 'status']]
+        if (a1 === 'B1:B2') return [['status'], ['active']]
+        return [['name', 'status'], ['Ada', 'active']]
+      },
+      getMergedRanges: () => [],
     }
 
     const report = await runReconciliation(
       shiftedBlock,
-      { getActiveWorkbook: () => ({ getSheetByName: () => sheet, getActiveSheet: () => sheet }) },
-      ['Customers'],
+      { sheetNames: () => ['Customers'], getSheet: () => sheet, getActiveSheet: () => sheet },
     )
 
     expect(report.status).toBe('rows-mismatch')
