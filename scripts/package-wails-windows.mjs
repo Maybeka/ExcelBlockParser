@@ -3,6 +3,7 @@ import { readFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { releaseVersionForPackage } from './release-version.mjs'
+import { powershellLiteral } from './windows-powershell.mjs'
 
 const root = process.cwd()
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
@@ -30,9 +31,7 @@ run('powershell.exe', [
   '-NoProfile',
   '-NonInteractive',
   '-Command',
-  'param($source, $destination) Compress-Archive -LiteralPath $source -DestinationPath $destination -Force',
-  executable,
-  archive,
+  `Compress-Archive -LiteralPath ${powershellLiteral(executable)} -DestinationPath ${powershellLiteral(archive)} -Force`,
 ])
 
 const hash = createHash('sha256').update(await readFile(archive)).digest('hex')
