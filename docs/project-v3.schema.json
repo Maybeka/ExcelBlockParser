@@ -7,50 +7,210 @@
   "properties": {
     "version": { "const": 3 },
     "exportedAt": { "type": "string", "format": "date-time" },
+    "project": { "$ref": "#/$defs/project" },
+    "data": { "type": "object" },
+    "blockResults": { "type": "array", "items": { "$ref": "#/$defs/blockResult" } },
+    "regionResults": { "type": "array", "items": { "$ref": "#/$defs/regionResult" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "jsonValue": {
+      "anyOf": [
+        { "type": ["string", "number", "boolean", "null"] },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "cellRange": {
+      "type": "object",
+      "required": ["startRow", "startCol", "endRow", "endCol", "a1Notation"],
+      "properties": {
+        "startRow": { "type": "integer", "minimum": 0 },
+        "startCol": { "type": "integer", "minimum": 0 },
+        "endRow": { "type": "integer", "minimum": 0 },
+        "endCol": { "type": "integer", "minimum": 0 },
+        "a1Notation": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "valueMapEntry": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "$ref": "#/$defs/jsonValue" }
+      },
+      "additionalProperties": false
+    },
+    "columnMapping": {
+      "type": "object",
+      "required": ["colIndex", "colLetter", "suggestedKey", "key", "type", "skip", "valueMap"],
+      "properties": {
+        "colIndex": { "type": "integer", "minimum": 0 },
+        "colLetter": { "type": "string", "minLength": 1 },
+        "suggestedKey": { "type": "string" },
+        "key": { "type": "string" },
+        "type": { "enum": ["auto", "string", "integer", "float", "boolean", "date", "valueMapping"] },
+        "skip": { "type": "boolean" },
+        "valueMap": { "type": "array", "items": { "$ref": "#/$defs/valueMapEntry" } },
+        "valueMapFallbackType": { "enum": ["auto", "string", "integer", "float", "boolean", "date"] }
+      },
+      "additionalProperties": false
+    },
+    "rowIgnoreRule": {
+      "type": "object",
+      "required": ["operator"],
+      "properties": {
+        "column": { "type": "string" },
+        "operator": { "enum": ["eq", "neq", "contains", "empty", "regex"] },
+        "value": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "tag": {
+      "type": "object",
+      "required": ["type", "key"],
+      "properties": {
+        "type": { "enum": ["label", "kv"] },
+        "key": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "computedProperty": {
+      "type": "object",
+      "required": ["id", "label", "expression"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "expression": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "block": {
+      "type": "object",
+      "required": ["id", "label", "range", "activeSheet", "headerRows", "collapsed", "selectionLocked", "columns", "dataSnapshot"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "workbookId": { "type": ["string", "null"] },
+        "range": { "oneOf": [{ "$ref": "#/$defs/cellRange" }, { "type": "null" }] },
+        "activeSheet": { "type": ["string", "null"] },
+        "headerRows": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "uniqueItems": true },
+        "collapsed": { "type": "boolean" },
+        "selectionLocked": { "type": "boolean" },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/columnMapping" } },
+        "dataSnapshot": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } } },
+            { "type": "null" }
+          ]
+        },
+        "headerSnapshot": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+          ]
+        },
+        "ignoreRules": { "type": "array", "items": { "$ref": "#/$defs/rowIgnoreRule" } },
+        "skipEmptyColumns": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } },
+        "computedProperties": { "type": "array", "items": { "$ref": "#/$defs/computedProperty" } }
+      },
+      "additionalProperties": false
+    },
+    "ownedBlock": {
+      "allOf": [
+        { "$ref": "#/$defs/block" },
+        { "type": "object", "required": ["workbookId"], "properties": { "workbookId": { "type": "string", "minLength": 1 } } }
+      ]
+    },
+    "splitRule": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["keyword", "emptyRow", "emptyColumn"] },
+        "keyword": { "type": "string" },
+        "minGap": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "region": {
+      "type": "object",
+      "required": ["id", "label", "workbookId", "range", "activeSheet", "splitRules", "blocks", "collapsed", "selectionLocked"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "workbookId": { "type": "string", "minLength": 1 },
+        "range": { "oneOf": [{ "$ref": "#/$defs/cellRange" }, { "type": "null" }] },
+        "activeSheet": { "type": ["string", "null"] },
+        "splitRules": { "type": "array", "items": { "$ref": "#/$defs/splitRule" } },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
+        "collapsed": { "type": "boolean" },
+        "selectionLocked": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } }
+      },
+      "additionalProperties": false
+    },
+    "workbook": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "sheetNames": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "activeSheetName": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
     "project": {
       "type": "object",
       "required": ["id", "name", "workbooks", "activeWorkbookId", "blocks", "regions", "activeBlockId", "activeRegionId", "focusMode"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
-        "workbooks": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["id", "name"],
-            "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "name": { "type": "string", "minLength": 1 },
-              "sourcePath": { "type": "string", "minLength": 1 },
-              "sheetNames": { "type": "array", "items": { "type": "string" } },
-              "activeSheetName": { "type": ["string", "null"] }
-            },
-            "additionalProperties": true
-          }
-        },
+        "workbooks": { "type": "array", "items": { "$ref": "#/$defs/workbook" } },
         "activeWorkbookId": { "type": ["string", "null"] },
-        "blocks": { "type": "array", "items": { "$ref": "#/$defs/projectItem" } },
-        "regions": { "type": "array", "items": { "$ref": "#/$defs/projectItem" } },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/ownedBlock" } },
+        "regions": { "type": "array", "items": { "$ref": "#/$defs/region" } },
         "activeBlockId": { "type": "string" },
         "activeRegionId": { "type": ["string", "null"] },
         "focusMode": { "enum": ["always-editable", "activate-first"] }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
-    "data": { "type": "object" },
-    "blockResults": { "type": "array" },
-    "regionResults": { "type": "array" }
-  },
-  "$defs": {
-    "projectItem": {
+    "blockResult": {
       "type": "object",
-      "required": ["id", "workbookId"],
+      "required": ["blockId", "label", "workbookId", "data", "rowCount"],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "workbookId": { "type": "string", "minLength": 1 }
+        "blockId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "workbookId": { "type": "string", "minLength": 1 },
+        "data": { "type": "array", "items": { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } } },
+        "rowCount": { "type": "integer", "minimum": 0 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
+    },
+    "regionBlockResult": {
+      "type": "object",
+      "required": ["blockLabel", "rows"],
+      "properties": {
+        "blockLabel": { "type": "string" },
+        "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+      },
+      "additionalProperties": false
+    },
+    "regionResult": {
+      "type": "object",
+      "required": ["regionId", "label", "workbookId", "blocks"],
+      "properties": {
+        "regionId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "workbookId": { "type": "string", "minLength": 1 },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/regionBlockResult" } }
+      },
+      "additionalProperties": false
     }
-  },
-  "additionalProperties": false
+  }
 }

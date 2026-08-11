@@ -138,7 +138,7 @@ func (a *App) OpenJson() (*JsonOpenResult, error) {
 		return nil, nil
 	}
 
-	content, err := readJSONFile(path, maxSessionBytes, "Session file")
+	content, err := readJSONFile(path, maxProjectBytes, "Project file")
 	if err != nil {
 		return nil, err
 	}

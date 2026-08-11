@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "exportedAt": "2026-08-10T00:00:00.000Z",
+  "project": {
+    "id": "example-project",
+    "name": "Example project",
+    "workbooks": [
+      { "id": "example-workbook", "name": "test_data.xlsx", "sheetNames": ["Sheet1"], "activeSheetName": "Sheet1" }
+    ],
+    "activeWorkbookId": "example-workbook",
+    "blocks": [
+      {
+        "id": "example-block",
+        "label": "Block 1",
+        "workbookId": "example-workbook",
+        "range": { "startRow": 0, "startCol": 0, "endRow": 8, "endCol": 3, "a1Notation": "A1:D9" },
+        "activeSheet": "Sheet1",
+        "headerRows": [0],
+        "collapsed": false,
+        "selectionLocked": true,
+        "columns": [
+          { "colIndex": 0, "colLetter": "A", "suggestedKey": "name", "key": "name", "type": "string", "skip": false, "valueMap": [] },
+          { "colIndex": 1, "colLetter": "B", "suggestedKey": "age", "key": "age", "type": "integer", "skip": false, "valueMap": [] },
+          { "colIndex": 2, "colLetter": "C", "suggestedKey": "score", "key": "score", "type": "float", "skip": false, "valueMap": [] },
+          { "colIndex": 3, "colLetter": "D", "suggestedKey": "city", "key": "city", "type": "string", "skip": false, "valueMap": [] }
+        ],
+        "dataSnapshot": null,
+        "headerSnapshot": [["Name", "Age", "Score", "City"]]
+      }
+    ],
+    "regions": [],
+    "activeBlockId": "example-block",
+    "activeRegionId": null,
+    "focusMode": "always-editable"
+  },
+  "data": {},
+  "blockResults": []
+}

@@ -1,12 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { isSupportedWorkbookPath, MAX_SESSION_BYTES, MAX_WORKBOOK_BYTES, sanitizeJsonFileName, withTimeout } from './fileSafety'
+import { isSupportedWorkbookPath, MAX_PROJECT_BYTES, MAX_WORKBOOK_BYTES, sanitizeJsonFileName, withTimeout } from './fileSafety'
 
 let mainWindow: BrowserWindow | null = null
 let previewWindow: BrowserWindow | null = null
 const previewDataStore = new Map<string, unknown>()
 const approvedWorkbookPaths = new Set<string>()
+const approvedWorkbookAliases = new Map<string, string>()
 const approvedProjectPaths = new Set<string>()
 const isElectronE2E = process.env.ELECTRON_E2E === '1'
 const showElectronE2EWindows = process.env.ELECTRON_E2E_SHOW_WINDOWS === '1'
@@ -56,13 +57,15 @@ async function authorizeProjectSources(content: string, projectPath?: string): P
   const workbooks = value?.version === 3 && Array.isArray(value?.project?.workbooks) ? value.project.workbooks : []
   for (const workbook of workbooks) {
     if (!workbook || typeof workbook.sourcePath !== 'string' || !workbook.sourcePath) continue
+    const persistedPath = workbook.sourcePath
     const sourcePath = isAbsolute(workbook.sourcePath) || !projectPath
       ? workbook.sourcePath
       : resolve(dirname(projectPath), workbook.sourcePath)
-    workbook.sourcePath = sourcePath
-    try { await approveWorkbook(sourcePath) } catch { /* renderer presents reassign/remove actions */ }
+    try {
+      approvedWorkbookAliases.set(persistedPath, await approveWorkbook(sourcePath))
+    } catch { /* renderer presents reassign/remove actions */ }
   }
-  return JSON.stringify(value)
+  return content
 }
 
 function createWindow(): void {
@@ -115,7 +118,7 @@ ipcMain.handle('file:open', async (event) => {
 ipcMain.handle('file:read', async (event, requestedPath: unknown) => {
   assertMainWindowSender(event)
   if (typeof requestedPath !== 'string') throw new Error('Invalid workbook path.')
-  const filePath = await realpath(requestedPath)
+  const filePath = await realpath(approvedWorkbookAliases.get(requestedPath) ?? requestedPath)
   if (!approvedWorkbookPaths.has(filePath)) throw new Error('The workbook must be selected through the Open dialog.')
   const buffer = await readLimitedFile(filePath, MAX_WORKBOOK_BYTES, 'Workbook')
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
@@ -125,7 +128,7 @@ ipcMain.handle('file:save', async (event, defaultName: unknown, jsonData: unknow
   assertMainWindowSender(event)
   if (!mainWindow) return { success: false, error: 'No window' }
   if (typeof jsonData !== 'string') return { success: false, error: 'Project data must be JSON text.' }
-  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) return { success: false, error: 'Project exceeds the 25 MB limit.' }
+  if (Buffer.byteLength(jsonData, 'utf8') > MAX_PROJECT_BYTES) return { success: false, error: 'Project exceeds the 25 MB limit.' }
   try { JSON.parse(jsonData) } catch { return { success: false, error: 'Project data is not valid JSON.' } }
   if (isElectronE2E && process.env.ELECTRON_E2E_CANCEL_DIALOGS === '1') return { success: false, error: 'Cancelled' }
   const testSavePath = isElectronE2E ? process.env.ELECTRON_E2E_SAVE_PATH : undefined
@@ -150,7 +153,7 @@ ipcMain.handle('file:writeJson', async (event, requestedPath: unknown, jsonData:
   if (typeof requestedPath !== 'string' || typeof jsonData !== 'string') return { success: false, error: 'Invalid project save request.' }
   const filePath = resolve(requestedPath)
   if (!approvedProjectPaths.has(filePath)) return { success: false, error: 'The project must be opened or saved through the application first.' }
-  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) return { success: false, error: 'Project exceeds the 25 MB limit.' }
+  if (Buffer.byteLength(jsonData, 'utf8') > MAX_PROJECT_BYTES) return { success: false, error: 'Project exceeds the 25 MB limit.' }
   try { JSON.parse(jsonData) } catch { return { success: false, error: 'Project data is not valid JSON.' } }
   try {
     await withTimeout(writeFile(filePath, jsonData, 'utf-8'), 'Writing the project file timed out after 30 seconds.')
@@ -173,7 +176,8 @@ ipcMain.handle('file:openJson', async (event) => {
   if (result.canceled || !result.filePaths.length) return null
   try {
     const filePath = resolve(result.filePaths[0])
-    const raw = (await readLimitedFile(filePath, MAX_SESSION_BYTES, 'Session file')).toString('utf-8')
+    const raw = (await readLimitedFile(filePath, MAX_PROJECT_BYTES, 'Project file')).toString('utf-8')
+    approvedWorkbookAliases.clear()
     const content = await authorizeProjectSources(raw, filePath)
     approvedProjectPaths.add(filePath)
     return { filePath, content }
@@ -185,7 +189,7 @@ ipcMain.handle('file:openJson', async (event) => {
 ipcMain.handle('recovery:save', async (event, jsonData: unknown) => {
   assertMainWindowSender(event)
   if (typeof jsonData !== 'string') throw new Error('Recovery data must be JSON text.')
-  if (Buffer.byteLength(jsonData, 'utf8') > MAX_SESSION_BYTES) throw new Error('Recovery data exceeds the 25 MB limit.')
+  if (Buffer.byteLength(jsonData, 'utf8') > MAX_PROJECT_BYTES) throw new Error('Recovery data exceeds the 25 MB limit.')
   JSON.parse(jsonData)
   const target = await recoveryPath()
   const temporary = `${target}.tmp`
@@ -197,7 +201,7 @@ ipcMain.handle('recovery:load', async (event) => {
   assertMainWindowSender(event)
   const target = await recoveryPath()
   try {
-    const content = (await readLimitedFile(target, MAX_SESSION_BYTES, 'Recovery data')).toString('utf-8')
+    const content = (await readLimitedFile(target, MAX_PROJECT_BYTES, 'Recovery data')).toString('utf-8')
     return await authorizeProjectSources(content)
   } catch (error: any) {
     if (error?.code === 'ENOENT') return null

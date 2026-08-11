@@ -1,14 +1,14 @@
 import { useCallback, useState, useRef, useEffect, useMemo, Fragment } from 'react'
-import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider, Tag, Dropdown } from 'antd'
+import { Input, InputNumber, Select, Checkbox, Button, Switch, Segmented, Tooltip, Modal, Typography, AutoComplete, Divider, Tag } from 'antd'
 import { PlusOutlined, DeleteOutlined, CaretDownOutlined, CaretRightOutlined, SettingOutlined, SearchOutlined, ClearOutlined, ReloadOutlined, CloseOutlined, EditOutlined, CheckOutlined, ExpandOutlined, CompressOutlined, PlayCircleOutlined, TagOutlined } from '@ant-design/icons'
-import type { CellRange, ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, RegionConfig, Tag as TagType } from '../types'
+import type { CellRange, ColumnType, ColumnMapping, BlockConfig, ValueMapEntry, ParseResult, ValueMapFallbackType, ReconciliationReport, Tag as TagType } from '../types'
 import { remapColumns } from '../services/columnMapper'
 import { applyRowAdjustFix, runReconciliation } from '../services/reconciliation'
 import { addTag, removeTag, filterBlocksByTag, getAllTags } from '../services/tagUtils'
 import { validateExpression } from '../services/pythonValidator'
 import type { SpreadsheetCapability } from '../services/spreadsheetCapability'
-import { RegionPanel } from './RegionPanel'
 import { BlockCard } from './BlockCard'
+import { isValidVariableName } from '../features/extraction/validation'
 
 const TYPE_OPTIONS: { value: ColumnType; label: string }[] = [
   { value: 'auto', label: 'auto' },
@@ -31,24 +31,17 @@ const FALLBACK_TYPE_OPTIONS: { value: ValueMapFallbackType; label: string }[] = 
 
 export type FocusMode = 'always-editable' | 'activate-first'
 
-interface ConfigPanelProps {
+export interface ConfigPanelProps {
   spreadsheet: SpreadsheetCapability
   blocks: BlockConfig[]
   activeBlockId: string
   activeColIndex: number | null
   focusMode: FocusMode
   parseResult: ParseResult | null
-  regions: RegionConfig[]
-  activeRegionId: string | null
   onActivateBlock: (blockId: string) => void
   onBlockChange: (blockId: string, partial: Partial<BlockConfig>) => void
   onAddBlock: () => void
   onDeleteBlock: (blockId: string) => void
-  onAddRegion: () => void
-  onDeleteRegion: (regionId: string) => void
-  onRegionChange: (regionId: string, partial: Partial<RegionConfig>) => void
-  onActivateRegion?: (regionId: string) => void
-  onRegionRangeClick?: (regionId: string) => void
   onFocusModeChange: (mode: FocusMode) => void
   onColumnFocus: (colIndex: number | null) => void
   onParse: () => void
@@ -72,45 +65,6 @@ function headerRowsToKey(parts: string[]): string {
     .join('_')
     .replace(/^(\d)/, '_$1')
     || 'column'
-}
-
-export function isValidVariableName(name: string): boolean {
-  if (!name.trim()) return true
-  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)
-}
-
-export function validateBlocks(blocks: BlockConfig[]): string[] {
-  const errors: string[] = []
-
-  const labelCounts = new Map<string, { count: number; label: string }>()
-  blocks.forEach(block => {
-    const label = (block.label || '').trim()
-    if (!label) return
-    const key = `${block.workbookId ?? 'unassigned'}\u0000${label}`
-    const current = labelCounts.get(key)
-    labelCounts.set(key, { count: (current?.count ?? 0) + 1, label })
-  })
-  labelCounts.forEach(({ count, label }) => { if (count > 1) errors.push(`Duplicate block name: "${label}"`) })
-
-  blocks.forEach(b => {
-    if (b.label && !isValidVariableName(b.label)) {
-      errors.push(`Invalid block name: "${b.label}"`)
-    }
-  })
-
-  blocks.forEach(b => {
-    const keyCounts = new Map<string, number>()
-    b.columns.forEach(c => {
-      const k = c.key || c.suggestedKey
-      if (k) {
-        keyCounts.set(k, (keyCounts.get(k) || 0) + 1)
-        if (!isValidVariableName(k)) errors.push(`Invalid key in "${b.label || 'block'}": "${k}"`)
-      }
-    })
-    keyCounts.forEach((count, k) => { if (count > 1) errors.push(`Duplicate key in "${b.label || 'block'}": "${k}"`) })
-  })
-
-  return errors
 }
 
 /**
@@ -400,17 +354,10 @@ export function ConfigPanel({
   activeColIndex,
   focusMode,
   parseResult,
-  regions,
-  activeRegionId,
   onActivateBlock,
   onBlockChange,
   onAddBlock,
   onDeleteBlock,
-  onAddRegion,
-  onDeleteRegion,
-  onRegionChange,
-  onActivateRegion,
-  onRegionRangeClick,
   onFocusModeChange,
   onColumnFocus,
   onParse,
@@ -421,7 +368,7 @@ export function ConfigPanel({
   const [expandedMaps, setExpandedMaps] = useState<Set<string>>(new Set())
   const [showSettings, setShowSettings] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string; type: 'block' | 'region' } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
   const [reconcilingBlockId, setReconcilingBlockId] = useState<string | null>(null)
   const [reconReports, setReconReports] = useState<Record<string, ReconciliationReport>>({})
   const [reconHeights, setReconHeights] = useState<Record<string, number>>({})
@@ -732,7 +679,7 @@ export function ConfigPanel({
 
   if (!blocks.length) {
     return (
-      <div style={{ padding: 16 }}><Dropdown.Button style={{ width: '100%' }} icon={<PlusOutlined />} onClick={handleAdd} menu={{ items: [{ key: 'add-region', label: 'Add Region', onClick: onAddRegion }] }}>Add</Dropdown.Button></div>
+      <div style={{ padding: 16 }}><Button block icon={<PlusOutlined />} onClick={handleAdd}>Add Block</Button></div>
     )
   }
 
@@ -760,7 +707,6 @@ export function ConfigPanel({
               icon={<CompressOutlined />}
               onClick={() => {
                 blocks.forEach(b => { if (!b.collapsed) onBlockChange(b.id, { collapsed: true }) })
-                regions.forEach(r => { if (!r.collapsed) onRegionChange(r.id, { collapsed: true }) })
               }}
             />
           </Tooltip>
@@ -770,7 +716,6 @@ export function ConfigPanel({
               icon={<ExpandOutlined />}
               onClick={() => {
                 blocks.forEach(b => { if (b.collapsed) onBlockChange(b.id, { collapsed: false }) })
-                regions.forEach(r => { if (r.collapsed) onRegionChange(r.id, { collapsed: false }) })
               }}
             />
           </Tooltip>
@@ -807,16 +752,13 @@ export function ConfigPanel({
             />
           </Tooltip>
           <span style={{ marginLeft: 12, flexShrink: 0 }}>
-            <Dropdown.Button
+            <Button
               size="small"
               icon={<PlusOutlined />}
               onClick={handleAdd}
-              menu={{
-                items: [{ key: 'add-region', label: 'Add Region', onClick: onAddRegion }],
-              }}
             >
-              Add
-            </Dropdown.Button>
+              Add Block
+            </Button>
           </span>
         </div>
 
@@ -1031,7 +973,7 @@ export function ConfigPanel({
                 aria-label="Delete block"
                 size="small" type="text" danger
                 icon={<DeleteOutlined />}
-                onClick={() => setDeleteTarget({ id: block.id, label: headerLabel, type: 'block' })}
+                onClick={() => setDeleteTarget({ id: block.id, label: headerLabel })}
                 onMouseDown={e => e.stopPropagation()}
                 disabled={controlsLocked}
               />
@@ -1666,24 +1608,11 @@ export function ConfigPanel({
         </div>
       )}
 
-      <RegionPanel
-        regions={regions}
-        activeRegionId={activeRegionId}
-        onActivateRegion={onActivateRegion || (() => {})}
-        onRegionChange={onRegionChange}
-        onDeleteRegion={(regionId, label) => setDeleteTarget({ id: regionId, label, type: 'region' })}
-        onRangeClick={onRegionRangeClick}
-      />
-
-
       <Modal
-        title={deleteTarget?.type === 'region' ? 'Delete region' : 'Delete block'}
+        title="Delete block"
         open={!!deleteTarget}
         onOk={() => {
-          if (deleteTarget) {
-            if (deleteTarget.type === 'region') onDeleteRegion(deleteTarget.id)
-            else onDeleteBlock(deleteTarget.id)
-          }
+          if (deleteTarget) onDeleteBlock(deleteTarget.id)
           setDeleteTarget(null)
         }}
         onCancel={() => setDeleteTarget(null)}

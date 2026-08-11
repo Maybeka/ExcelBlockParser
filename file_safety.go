@@ -13,7 +13,7 @@ import (
 
 const (
 	maxWorkbookBytes int64 = 100 * 1024 * 1024
-	maxSessionBytes  int64 = 25 * 1024 * 1024
+	maxProjectBytes  int64 = 25 * 1024 * 1024
 	fileReadTimeout        = 30 * time.Second
 )
 
@@ -116,7 +116,7 @@ func writeJSONFile(path string, jsonData string) error {
 	if !strings.EqualFold(filepath.Ext(path), ".json") {
 		return errors.New("export path must use the .json extension")
 	}
-	if int64(len([]byte(jsonData))) > maxSessionBytes {
+	if int64(len([]byte(jsonData))) > maxProjectBytes {
 		return errors.New("export exceeds the 25 MB limit")
 	}
 	if !json.Valid([]byte(jsonData)) {
@@ -170,7 +170,7 @@ func recoveryFilePath(baseDir string) string {
 }
 
 func saveRecovery(baseDir, jsonData string) error {
-	if int64(len([]byte(jsonData))) > maxSessionBytes {
+	if int64(len([]byte(jsonData))) > maxProjectBytes {
 		return errors.New("recovery data exceeds the 25 MB limit")
 	}
 	if !json.Valid([]byte(jsonData)) {
@@ -213,7 +213,7 @@ func loadRecovery(baseDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("unable to read recovery data: %w", err)
 	}
-	if int64(len(data)) > maxSessionBytes {
+	if int64(len(data)) > maxProjectBytes {
 		return "", errors.New("recovery data exceeds the 25 MB limit")
 	}
 	if !json.Valid(data) {

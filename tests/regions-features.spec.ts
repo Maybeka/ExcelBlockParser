@@ -15,9 +15,9 @@ import { resolve } from 'node:path'
 const root = process.cwd()
 
 async function loadWorkbookFixture(page: import('@playwright/test').Page): Promise<void> {
-  const [workbook, session] = await Promise.all([
+  const [workbook, project] = await Promise.all([
     readFile(resolve(root, 'examples', 'test_data.xlsx')),
-    readFile(resolve(root, 'examples', 'session.json'), 'utf8'),
+    readFile(resolve(root, 'examples', 'project.json'), 'utf8'),
   ])
   await page.addInitScript(({ workbookBase64, sessionContent }) => {
     const workbookBytes = () => {
@@ -29,9 +29,9 @@ async function loadWorkbookFixture(page: import('@playwright/test').Page): Promi
     ;(window as any).electronAPI = {
       openXlsx: async () => ({ status: 'ok', value: '/fixtures/test_data.xlsx' }),
       readFile: async () => ({ status: 'ok', value: workbookBytes() }),
-      saveJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/session.json' } }),
+      saveJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/project.json' } }),
       saveJsonToPath: async (filePath: string) => ({ status: 'ok', value: { filePath } }),
-      openJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/session.json', content: sessionContent } }),
+      openJson: async () => ({ status: 'ok', value: { filePath: '/fixtures/project.json', content: sessionContent } }),
       saveRecovery: async () => ({ status: 'ok', value: undefined }),
       loadRecovery: async () => ({ status: 'ok', value: null }),
       clearRecovery: async () => ({ status: 'ok', value: undefined }),
@@ -42,7 +42,7 @@ async function loadWorkbookFixture(page: import('@playwright/test').Page): Promi
       closePreviewWindow: async () => undefined,
       onPreviewReload: () => () => undefined,
     }
-  }, { workbookBase64: workbook.toString('base64'), sessionContent: session })
+  }, { workbookBase64: workbook.toString('base64'), sessionContent: project })
   await page.goto('/')
   await page.getByRole('button', { name: 'Open Project' }).click()
   const settings = page.getByRole('dialog', { name: 'Project settings' })
@@ -62,8 +62,8 @@ async function loadWorkbookFixture(page: import('@playwright/test').Page): Promi
 test.describe('Region Creation', () => {
   async function addRegion(page: import('@playwright/test').Page): Promise<void> {
     await page.goto('/')
-    await page.getByRole('button', { name: 'plus', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Add Region', exact: true }).click()
+    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+    await page.getByRole('button', { name: /Add Region/ }).click()
     await expect(page.getByRole('textbox', { name: 'Region 1' })).toHaveValue('region_1')
   }
 

@@ -3,7 +3,7 @@
 **Status:** v1.0.0 released; `main` is the unreleased v1.1.0 development baseline
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
-**Last assessed:** 2026-08-09
+**Last assessed:** 2026-08-10
 
 ## 1. Product Intent
 
@@ -19,7 +19,7 @@ later versions of the workbook.
 
 The durable output of the product is therefore two related artifacts:
 
-1. An extraction template (the saved session/configuration).
+1. An extraction project (the saved Project v3 configuration).
 2. Validated JSON produced by applying that template to a workbook.
 
 ## 2. Current User Workflow
@@ -91,7 +91,7 @@ The implemented application supports this general workflow:
 ### 3.5 Project persistence and reconciliation
 
 - Versioned v3 project serialization and deserialization.
-- Import compatibility for legacy session versions 1 and 2.
+- Strict Project v3 import; versions 1 and 2 are explicitly unsupported.
 - New, Open, Save, Save As, Settings, and Close project lifecycle controls.
 - Complete project persistence including workbook sources, configuration, and
   the most recent run output.
@@ -158,7 +158,7 @@ The current repository should not be represented as providing the following:
 ## 7. Future Code Generation and Extensions
 
 Generating source files from parsed JSON remains a valid future capability. It
-is separate from the current Gate B readiness work and should consume the
+is separate from the current Phase B module implementation and should consume the
 stable extraction contract through an explicit phase:
 
 ```text
@@ -211,8 +211,9 @@ generators require an explicit user trust decision.
 
 ## 8. Current Refinement Priorities
 
-Version 1.0.0 is released and Phase A core-boundary extraction is complete.
-Current work should preserve Project v3 and the supported extraction workflow.
+Version 1.0.0 is released, Phase A is complete, and Gate B admitted the
+compile-time built-in module architecture. Current work should preserve Project
+v3 and the supported extraction workflow while Phase B operationalizes it.
 
 ### Baseline maintenance
 
@@ -223,28 +224,27 @@ Current work should preserve Project v3 and the supported extraction workflow.
 - Treat reported data loss, workbook identity, recovery, and persistence
   defects as higher priority than architecture expansion.
 
-### Gate B readiness
+### Phase B implementation status
 
-- Prototype a host-owned right-panel boundary with two materially different
-  built-in views, including failure and teardown behavior.
-- Define a Project v3 compatibility-adapter policy before considering a new
-  persistence schema.
-- Validate common lifecycle, transaction, diagnostics, cancellation, workbook
-  navigation, and result-view needs against Block, Region, and External
-  Structured Result Review.
-- Reassess Gate B from evidence. Do not freeze a module API, migrate all
-  features, or implement runtime plugins before the gate passes.
+- Block and Region use the admitted registration, lifecycle, transaction,
+  diagnostics, execution, panel, preview, save-preparation, and navigation contracts.
+- Strict Project v3 schema/runtime conformance, complete golden round-trips,
+  malformed input, ownership, and persistence tests protect the current format.
+- Session v1/v2 import is removed; only Project v3 is supported.
+- External Structured Result Review remains a bounded development fixture with
+  strict candidate validation and no filesystem, execution, or production navigation.
+- Runtime plugins, in-app LLM calls, and generated-code execution remain deferred.
 
 Large-file decomposition is not an independent product goal. The remaining
 `WorkspaceApplication`, `ConfigPanel`, and reconciliation code should be split
-only where Gate B prototypes or defect isolation establish a concrete ownership
+only where module ownership or defect isolation establishes a concrete ownership
 boundary and focused tests.
 
 ## 9. Delivery Boundary
 
 The v1.1 development line is limited to preserving the extraction product while
-collecting Gate B evidence for compile-time built-in feature modules. Runtime
-extensions and generators remain outside the current delivery boundary.
+operationalizing compile-time built-in feature modules. Runtime extensions and
+generators remain outside the current delivery boundary.
 
 ## 10. Definition of a Production-Ready First Release
 
@@ -252,9 +252,9 @@ Every production release should reliably open supported workbooks, let a
 user create and save a reusable template, reapply that template to a changed
 workbook, identify actionable extraction differences, preview validated JSON,
 and export it without data loss in documented supported cases. It should be
-packaged for its supported desktop platforms, have a tested migration path for
-saved templates, and provide clear errors when input falls outside its support
+packaged for its supported desktop platforms, preserve the supported Project v3
+contract, reject unsupported versions clearly, and provide clear errors when input falls outside its support
 boundary.
 
 Code generation remains a consumer of reliable JSON rather than a substitute
-for extraction correctness. Its implementation is not part of Gate B readiness.
+for extraction correctness. Its implementation is not part of Phase B.

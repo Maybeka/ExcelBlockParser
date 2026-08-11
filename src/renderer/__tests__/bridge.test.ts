@@ -7,11 +7,11 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
       App: {
         OpenXlsx: vi.fn(async () => '/tmp/workbook.xlsx'),
         ReadFile: vi.fn(async () => [1, 2, 3]),
-        SaveJson: vi.fn(async () => ({ success: true, filePath: '/tmp/session.json', error: '' })),
+        SaveJson: vi.fn(async () => ({ success: true, filePath: '/tmp/project.json', error: '' })),
         SaveJsonToPath: vi.fn(async (path: string) => ({ success: true, filePath: path, error: '' })),
-        OpenJson: vi.fn(async () => ({ filePath: '/tmp/session.json', content: '{"version":2}' })),
+        OpenJson: vi.fn(async () => ({ filePath: '/tmp/project.json', content: '{"version":3}' })),
         SaveRecovery: vi.fn(async () => undefined),
-        LoadRecovery: vi.fn(async () => '{"version":2}'),
+        LoadRecovery: vi.fn(async () => '{"version":3}'),
         ClearRecovery: vi.fn(async () => undefined),
         OpenPreviewWindow: vi.fn(async () => undefined),
         SetPreviewData: vi.fn(async () => undefined),
@@ -33,11 +33,11 @@ describe('Wails bridge contract', () => {
     const readResult = await bridge.readFile('/tmp/workbook.xlsx')
     expect(readResult.status).toBe('ok')
     if (readResult.status === 'ok') expect([...new Uint8Array(readResult.value)]).toEqual([1, 2, 3])
-    expect(await bridge.saveJson('session.json', '{"version":2}')).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json' } })
-    expect(await bridge.saveJsonToPath('/tmp/session.json', '{"version":2}')).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json' } })
-    expect(await bridge.openJson()).toEqual({ status: 'ok', value: { filePath: '/tmp/session.json', content: '{"version":2}' } })
-    await bridge.saveRecovery('{"version":2}')
-    expect(await bridge.loadRecovery()).toEqual({ status: 'ok', value: '{"version":2}' })
+    expect(await bridge.saveJson('project.json', '{"version":3}')).toEqual({ status: 'ok', value: { filePath: '/tmp/project.json' } })
+    expect(await bridge.saveJsonToPath('/tmp/project.json', '{"version":3}')).toEqual({ status: 'ok', value: { filePath: '/tmp/project.json' } })
+    expect(await bridge.openJson()).toEqual({ status: 'ok', value: { filePath: '/tmp/project.json', content: '{"version":3}' } })
+    await bridge.saveRecovery('{"version":3}')
+    expect(await bridge.loadRecovery()).toEqual({ status: 'ok', value: '{"version":3}' })
     await bridge.clearRecovery()
     await bridge.openPreviewWindow('block')
     await bridge.setPreviewData('block', { blockId: 'block' })

@@ -1,12 +1,12 @@
 export const MAX_WORKBOOK_BYTES = 100 * 1024 * 1024
-export const MAX_SESSION_BYTES = 25 * 1024 * 1024
+export const MAX_PROJECT_BYTES = 25 * 1024 * 1024
 export const FILE_READ_TIMEOUT_MS = 30_000
 
 export function isSupportedWorkbookPath(filePath: string): boolean {
   return /\.(xlsx|xls)$/i.test(filePath)
 }
 
-export function sanitizeJsonFileName(value: unknown, fallback = 'session.json'): string {
+export function sanitizeJsonFileName(value: unknown, fallback = 'project.json'): string {
   if (typeof value !== 'string') return fallback
   const name = value.split(/[\\/]/).pop()?.replace(/[^a-zA-Z0-9._-]/g, '_') ?? ''
   if (!name) return fallback

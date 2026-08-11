@@ -25,15 +25,14 @@ the automated desktop regression path for the current development line.
 3. The workspace is dense, keyboard-accessible, responsive at supported window
    sizes, and has no stale sheet, selection, preview, or diagnostic state.
 4. Project v3 round-trips through JSON serialization/import without semantic
-   data loss. Legacy Session v1 and v2 imports retain their documented
-   migration behavior.
+   data loss. Versions 1 and 2 are rejected as unsupported.
 
 ## Engineering Gates
 
 1. Type checking, configured quality checks, unit tests, and fixture-based
    integration tests pass in continuous integration. A linter is required only
    after it is intentionally configured as a repository check.
-2. Tests cover extraction semantics, malformed sessions, reconciliation,
+2. Tests cover extraction semantics, malformed projects, reconciliation,
    recovery, bridge errors, workbook lifecycle, and regression cases for every
    fixed release-blocking defect.
 3. Browser renderer tests and Electron development E2E pass. Wails
@@ -72,5 +71,5 @@ processed.
 
 Runtime plugins, Python code-generation execution, and in-app LLM integration
 are not part of the 1.1.0 development baseline. Built-in feature-module work is
-governed by `FEATURE_MODULE_ARCHITECTURE.md` and may begin only after its Gate B
-entry evidence is complete.
+governed by `FEATURE_MODULE_ARCHITECTURE.md`; Gate B and its Phase B
+implementation have preserved the release gates above.

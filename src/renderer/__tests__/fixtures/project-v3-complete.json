@@ -1,0 +1,129 @@
+{
+  "version": 3,
+  "exportedAt": "2026-08-10T00:00:00.000Z",
+  "project": {
+    "id": "project-complete",
+    "name": "Complete v3 fixture",
+    "workbooks": [
+      {
+        "id": "sales",
+        "name": "sales.xlsx",
+        "sourcePath": "workbooks/sales.xlsx",
+        "sheetNames": ["Orders", "Summary"],
+        "activeSheetName": "Orders"
+      },
+      {
+        "id": "costs",
+        "name": "costs.xlsx",
+        "sourcePath": "C:\\Projects\\costs.xlsx",
+        "sheetNames": ["Costs"],
+        "activeSheetName": "Costs"
+      }
+    ],
+    "activeWorkbookId": "sales",
+    "blocks": [
+      {
+        "id": "sales-block",
+        "label": "records",
+        "workbookId": "sales",
+        "range": { "startRow": 0, "startCol": 0, "endRow": 2, "endCol": 1, "a1Notation": "A1:B3" },
+        "activeSheet": "Orders",
+        "headerRows": [0],
+        "collapsed": false,
+        "selectionLocked": true,
+        "columns": [
+          {
+            "colIndex": 0,
+            "colLetter": "A",
+            "suggestedKey": "status",
+            "key": "status",
+            "type": "valueMapping",
+            "skip": false,
+            "valueMap": [{ "from": "Y", "to": true }, { "from": "N", "to": false }],
+            "valueMapFallbackType": "string"
+          },
+          {
+            "colIndex": 1,
+            "colLetter": "B",
+            "suggestedKey": "amount",
+            "key": "amount",
+            "type": "float",
+            "skip": false,
+            "valueMap": []
+          }
+        ],
+        "dataSnapshot": [["Status", "Amount"], ["Y", 12.5], ["N", 7]],
+        "headerSnapshot": [["Status", "Amount"]],
+        "ignoreRules": [{ "column": "status", "operator": "eq", "value": "ignored" }],
+        "skipEmptyColumns": true,
+        "tags": [{ "type": "label", "key": "primary" }, { "type": "kv", "key": "owner", "value": "finance" }],
+        "computedProperties": [{ "id": "computed-1", "label": "total", "expression": "amount * 2" }]
+      },
+      {
+        "id": "costs-block",
+        "label": "records",
+        "workbookId": "costs",
+        "range": null,
+        "activeSheet": "Costs",
+        "headerRows": [0],
+        "collapsed": true,
+        "selectionLocked": false,
+        "columns": [],
+        "dataSnapshot": null
+      }
+    ],
+    "regions": [
+      {
+        "id": "sales-region",
+        "label": "Quarter groups",
+        "workbookId": "sales",
+        "range": { "startRow": 4, "startCol": 0, "endRow": 10, "endCol": 2, "a1Notation": "A5:C11" },
+        "activeSheet": "Summary",
+        "splitRules": [
+          { "type": "keyword", "keyword": "TOTAL" },
+          { "type": "emptyRow", "minGap": 1 }
+        ],
+        "blocks": [
+          {
+            "id": "nested-1",
+            "label": "quarter_1",
+            "range": null,
+            "activeSheet": "Summary",
+            "headerRows": [0],
+            "collapsed": false,
+            "selectionLocked": false,
+            "columns": [],
+            "dataSnapshot": null
+          }
+        ],
+        "collapsed": false,
+        "selectionLocked": true,
+        "tags": [{ "type": "label", "key": "quarterly" }]
+      }
+    ],
+    "activeBlockId": "sales-block",
+    "activeRegionId": "sales-region",
+    "focusMode": "activate-first"
+  },
+  "data": {
+    "sales": { "records": [{ "status": true, "amount": 12.5 }] },
+    "costs": { "records": [] }
+  },
+  "blockResults": [
+    {
+      "blockId": "sales-block",
+      "label": "records",
+      "workbookId": "sales",
+      "data": [{ "status": true, "amount": 12.5 }],
+      "rowCount": 1
+    }
+  ],
+  "regionResults": [
+    {
+      "regionId": "sales-region",
+      "label": "Quarter groups",
+      "workbookId": "sales",
+      "blocks": [{ "blockLabel": "block_1", "rows": [["Q1", "10"], ["Q2", "20"]] }]
+    }
+  ]
+}

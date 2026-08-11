@@ -60,12 +60,9 @@ remain unambiguous.
 
 ## Compatibility
 
-The application reads legacy v1 and v2 session files and migrates them to a
-single-workbook v3 project in memory. Legacy files do not contain an authorized
-source path, so the workbook must be reassigned or removed before it can run.
-All newly saved files use version 3. The old
-[session-v2.schema.json](session-v2.schema.json) remains documentation for
-legacy import compatibility only.
+Project v3 is the only supported project format. Versions 1 and 2 are rejected
+with an unsupported-version error; the application does not attempt partial or
+best-effort migration. All newly saved files use version 3.
 
 The machine-readable current contract is
 [project-v3.schema.json](project-v3.schema.json).

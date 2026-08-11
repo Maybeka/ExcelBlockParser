@@ -1,22 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { parseProjectWorkbooks } from '../services/extraction'
 import { loadProject, serializeProject } from '../services/serializer'
-import { validateBlocks } from '../components/ConfigPanel'
+import { validateBlocks } from '../features/extraction/validation'
+import { blocksForWorkbook, moveBlock, removeBlock } from '../features/extraction/model'
+import { builtInFeatureRegistry } from '../features/builtinRegistry'
 import type { BlockConfig, ProjectConfig } from '../types'
 import type { WorkbookReader } from '../services/workbook'
 import {
   applyProjectCommand,
   activateProjectWorkbook,
   addProjectWorkbook,
-  createInitialProject,
-  moveItemWithinWorkbook,
-  prepareProjectForSave,
+  createProject,
   projectJsonFileName,
   projectNameFromJsonPath,
   reassignProjectWorkbook,
   rejectProjectCommand,
   recordProjectWorkbookLoaded,
-  removeBlockForWorkbook,
   removeProjectWorkbook,
   setActiveWorkbookSheet,
 } from '../services/project'
@@ -34,12 +33,12 @@ function workbook(value: string): WorkbookReader {
 }
 
 describe('project workspace', () => {
-  it('creates an unsaved project through a feature-owned initial block factory', () => {
-    const project = createInitialProject(workbookId => block('draft', workbookId))
+  it('creates an unsaved project through registered feature initialization', () => {
+    const project = builtInFeatureRegistry.initialize(createProject())
     expect(project.workbooks).toEqual([])
     expect(project.blocks).toHaveLength(1)
-    expect(project.blocks[0]).toMatchObject({ id: 'draft', workbookId: null })
-    expect(project.activeBlockId).toBe('draft')
+    expect(project.blocks[0]).toMatchObject({ label: 'block_1', workbookId: null })
+    expect(project.activeBlockId).toBe(project.blocks[0].id)
     expect(project.activeWorkbookId).toBeNull()
   })
 
@@ -68,11 +67,9 @@ describe('project workspace', () => {
     expect(loaded.project?.project.workbooks[0].activeSheetName).toBe('Summary')
   })
 
-  it('migrates legacy sessions into a project with an attachable workbook', () => {
-    const loaded = loadProject({ version: 2, sourceFileName: 'legacy.xlsx', exportedAt: '', config: { blocks: [block('legacy-block', 'ignored')], regions: [], activeBlockId: 'legacy-block', focusMode: 'always-editable' }, data: {}, blockResults: [] })
-    expect(loaded.migratedFrom).toBe(2)
-    expect(loaded.project?.project.workbooks).toEqual([{ id: 'workbook-legacy', name: 'legacy.xlsx' }])
-    expect(loaded.project?.project.blocks[0].workbookId).toBe('workbook-legacy')
+  it('rejects legacy session versions explicitly', () => {
+    expect(loadProject({ version: 2 }).errors).toEqual(['Invalid project file: unsupported project version.'])
+    expect(loadProject({ version: 1 }).errors).toEqual(['Invalid project file: unsupported project version.'])
   })
 
   it('rejects persisted project items without a valid workbook mapping', () => {
@@ -112,14 +109,22 @@ describe('project workspace', () => {
   it('keeps other workbooks when deleting the last block of one workbook', () => {
     const sales = block('sales-block', 'sales')
     const costs = block('costs-block', 'costs')
-    const fallback = block('sales-fallback', 'sales')
-    const result = removeBlockForWorkbook([sales, costs], sales.id, 'sales', () => fallback)
-    expect(result.blocks).toEqual([costs, fallback])
-    expect(result.activeBlockId).toBe(fallback.id)
+    const project = { ...createProject(), workbooks: [{ id: 'sales', name: 'sales.xlsx' }, { id: 'costs', name: 'costs.xlsx' }], activeWorkbookId: 'sales', blocks: [sales, costs], activeBlockId: sales.id }
+    const result = removeBlock(project, sales.id)
+    expect(result.blocks[0]).toBe(costs)
+    expect(blocksForWorkbook(result, 'sales')).toHaveLength(1)
+    expect(result.activeBlockId).toBe(blocksForWorkbook(result, 'sales')[0].id)
+  })
+
+  it('preserves the active block when deleting a different block', () => {
+    const active = block('active', 'sales')
+    const removed = block('removed', 'sales')
+    const project = { ...createProject(), blocks: [active, removed], activeBlockId: active.id }
+    expect(removeBlock(project, removed.id).activeBlockId).toBe(active.id)
   })
 
   it('adds and reassigns configured workbook sources without changing scenario state', () => {
-    const initial = createInitialProject(workbookId => block('draft', workbookId))
+    const initial = builtInFeatureRegistry.initialize(createProject())
     const added = addProjectWorkbook(initial, { id: 'sales', name: 'sales.xlsx', sourcePath: 'old/sales.xlsx' })
     expect(added.workbooks).toEqual([{ id: 'sales', name: 'sales.xlsx', sourcePath: 'old/sales.xlsx' }])
     expect(addProjectWorkbook(added, { id: 'duplicate-name', name: 'sales.xlsx' })).toBe(added)
@@ -141,7 +146,7 @@ describe('project workspace', () => {
     const loaded = recordProjectWorkbookLoaded(project, {
       workbookId: 'sales', fileName: 'selected-name.xlsx', filePath: '/data/sales.xlsx',
       sheetNames: ['Orders', 'Summary'], activeSheetName: 'Summary',
-    }, workbookId => block('new-block', workbookId))
+    }, builtInFeatureRegistry)
 
     expect(loaded.workbooks[0]).toMatchObject({
       id: 'sales', name: 'sales.xlsx', sourcePath: '/data/sales.xlsx',
@@ -163,9 +168,10 @@ describe('project workspace', () => {
     const loaded = recordProjectWorkbookLoaded(project, {
       workbookId: 'sales', fileName: 'sales.xlsx', filePath: '/data/sales.xlsx',
       sheetNames: ['Sheet1'], activeSheetName: 'Sheet1',
-    }, workbookId => block('sales-default', workbookId))
-    expect(loaded.blocks.map(item => [item.id, item.workbookId])).toEqual([['sales-default', 'sales']])
-    expect(loaded.activeBlockId).toBe('sales-default')
+    }, builtInFeatureRegistry)
+    expect(loaded.blocks).toHaveLength(1)
+    expect(loaded.blocks[0]).toMatchObject({ label: 'block_1', workbookId: 'sales' })
+    expect(loaded.activeBlockId).toBe(loaded.blocks[0].id)
   })
 
   it('switches workbook and sheet atomically with workbook-scoped active state', () => {
@@ -178,7 +184,7 @@ describe('project workspace', () => {
       activeWorkbookId: 'sales', blocks: [block('sales-block', 'sales'), block('costs-block', 'costs')], regions: [],
       activeBlockId: 'sales-block', activeRegionId: 'stale-region', focusMode: 'always-editable',
     }
-    const switched = activateProjectWorkbook(project, 'costs', 'Summary')
+    const switched = activateProjectWorkbook(project, 'costs', builtInFeatureRegistry, 'Summary')
     expect(switched.activeWorkbookId).toBe('costs')
     expect(switched.activeBlockId).toBe('costs-block')
     expect(switched.activeRegionId).toBeNull()
@@ -186,7 +192,7 @@ describe('project workspace', () => {
 
     const sheetChanged = setActiveWorkbookSheet(switched, 'Detail')
     expect(sheetChanged.workbooks.find(item => item.id === 'costs')?.activeSheetName).toBe('Detail')
-    expect(activateProjectWorkbook(sheetChanged, 'missing')).toBe(sheetChanged)
+    expect(activateProjectWorkbook(sheetChanged, 'missing', builtInFeatureRegistry)).toBe(sheetChanged)
   })
 
   it('removes a workbook and all of its owned state without disturbing the remaining workbook', () => {
@@ -197,11 +203,11 @@ describe('project workspace', () => {
       regions: [{ id: 'sales-region', label: 'sales', workbookId: 'sales', range: null, activeSheet: null, splitRules: [], blocks: [], collapsed: false, selectionLocked: false }],
       activeBlockId: 'sales-block', activeRegionId: 'sales-region', focusMode: 'always-editable',
     }
-    const detached = removeProjectWorkbook(project, 'sales')
+    const detached = removeProjectWorkbook(project, 'sales', builtInFeatureRegistry)
     expect(detached.activeWorkbookId).toBeNull()
     expect(detached.activeBlockId).toBe('')
 
-    const removed = removeProjectWorkbook(project, 'sales', 'costs')
+    const removed = removeProjectWorkbook(project, 'sales', builtInFeatureRegistry, 'costs')
     expect(removed.workbooks.map(item => item.id)).toEqual(['costs'])
     expect(removed.blocks.map(item => item.id)).toEqual(['costs-block'])
     expect(removed.regions).toEqual([])
@@ -219,7 +225,7 @@ describe('project workspace', () => {
       regions: [{ id: 'sales-region', label: 'sales', workbookId: 'sales', range: null, activeSheet: null, splitRules: [], blocks: [], collapsed: false, selectionLocked: false }],
       activeBlockId: 'sales-active', activeRegionId: 'sales-region', focusMode: 'always-editable',
     }
-    const removed = removeProjectWorkbook(project, 'costs')
+    const removed = removeProjectWorkbook(project, 'costs', builtInFeatureRegistry)
     expect(removed.activeWorkbookId).toBe('sales')
     expect(removed.activeBlockId).toBe('sales-active')
     expect(removed.activeRegionId).toBe('sales-region')
@@ -234,7 +240,7 @@ describe('project workspace', () => {
       regions: [{ id: 'draft-region', label: 'draft', workbookId: null, range: null, activeSheet: null, splitRules: [], blocks: [], collapsed: false, selectionLocked: false }],
       activeBlockId: 'draft', activeRegionId: 'draft-region', focusMode: 'always-editable',
     }
-    const prepared = prepareProjectForSave(project)
+    const prepared = builtInFeatureRegistry.prepareForSave(project)
     expect(prepared.blocks).toEqual([owned])
     expect(prepared.regions).toEqual([])
     expect(prepared.activeBlockId).toBe('owned')
@@ -246,10 +252,10 @@ describe('project workspace', () => {
     const costsA = block('costs-a', 'costs')
     const salesB = block('sales-b', 'sales')
     const costsB = block('costs-b', 'costs')
-    expect(moveItemWithinWorkbook([salesA, costsA, salesB, costsB], salesB.id, -1).map(item => item.id))
+    const project = { ...createProject(), blocks: [salesA, costsA, salesB, costsB] }
+    expect(moveBlock(project, salesB.id, -1).blocks.map(item => item.id))
       .toEqual(['sales-b', 'costs-a', 'sales-a', 'costs-b'])
-    expect(moveItemWithinWorkbook([salesA, costsA, salesB, costsB], salesA.id, -1))
-      .toEqual([salesA, costsA, salesB, costsB])
+    expect(moveBlock(project, salesA.id, -1)).toBe(project)
   })
 
   it('rejects duplicate project item IDs during import', () => {
@@ -263,7 +269,7 @@ describe('project workspace', () => {
   })
 
   it('reports changed, unchanged, and rejected command outcomes explicitly', () => {
-    const project = createInitialProject(workbookId => block('draft', workbookId))
+    const project = builtInFeatureRegistry.initialize(createProject())
     expect(applyProjectCommand(project, current => current).status).toBe('unchanged')
     expect(applyProjectCommand(project, current => ({ ...current, name: 'Renamed' })).status).toBe('changed')
     expect(rejectProjectCommand(project, 'Workbook is unavailable')).toMatchObject({ status: 'rejected', reason: 'Workbook is unavailable' })

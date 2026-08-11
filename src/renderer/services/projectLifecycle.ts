@@ -2,20 +2,24 @@ import type { BridgeResult } from '../../shared/bridgeResult'
 import type { ParseResult, ProjectConfig } from '../types'
 import type { WorkbookReader } from './workbook'
 import { loadProject, serializeProject } from './serializer'
-import { prepareProjectForSave, projectJsonFileName, projectNameFromJsonPath } from './project'
+import { projectJsonFileName, projectNameFromJsonPath } from './project'
 
 export interface ProjectDocument {
   project: ProjectConfig
   parseResult: ParseResult | null
   filePath: string | null
-  migratedFrom?: 1 | 2
 }
 
 export type DecodeProjectResult =
   | { status: 'ok'; document: ProjectDocument }
   | { status: 'error'; message: string }
 
+export const MAX_PROJECT_JSON_BYTES = 25 * 1024 * 1024
+
 export function decodeProjectDocument(content: string, filePath: string | null = null): DecodeProjectResult {
+  if (new TextEncoder().encode(content).byteLength > MAX_PROJECT_JSON_BYTES) {
+    return { status: 'error', message: 'Invalid project file: exceeds the 25 MB limit.' }
+  }
   let value: unknown
   try {
     value = JSON.parse(content)
@@ -31,7 +35,6 @@ export function decodeProjectDocument(content: string, filePath: string | null =
       project: fileName ? { ...loaded.project.project, name: fileName } : loaded.project.project,
       parseResult: loaded.project.parseResult,
       filePath,
-      migratedFrom: loaded.migratedFrom,
     },
   }
 }
@@ -98,8 +101,9 @@ export async function saveProjectDocument(
   parseResult: ParseResult | null,
   currentPath: string | null,
   saveAs: boolean,
+  prepareProject: (project: ProjectConfig) => ProjectConfig,
 ): Promise<SaveProjectResult> {
-  let projectForSave = prepareProjectForSave(project)
+  let projectForSave = prepareProject(project)
   const content = JSON.stringify(serializeProject(projectForSave, parseResult), null, 2)
   const write = !saveAs && currentPath
     ? await writer.saveJsonToPath(currentPath, content)

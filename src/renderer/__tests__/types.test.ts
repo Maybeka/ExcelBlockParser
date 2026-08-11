@@ -100,50 +100,6 @@ describe('BlockConfig extensions', () => {
   })
 })
 
-describe('ExportedSession version', () => {
-  it('accepts version 2', () => {
-    const session: import('../types').ExportedSession = {
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      config: { blocks: [], activeBlockId: '', focusMode: 'activate-first' },
-      data: {},
-      blockResults: [],
-    }
-    expect(session.version).toBe(2)
-  })
-  it('accepts version 1', () => {
-    const session: import('../types').ExportedSession = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      config: { blocks: [], activeBlockId: '', focusMode: 'activate-first' },
-      data: {},
-      blockResults: [],
-    }
-    expect(session.version).toBe(1)
-  })
-})
-
-describe('SessionConfig regions', () => {
-  it('accepts optional regions field', () => {
-    const config: import('../types').SessionConfig = {
-      blocks: [],
-      activeBlockId: '',
-      focusMode: 'activate-first',
-      regions: [{
-        id: 'r1',
-        label: 'R1',
-        range: null,
-        activeSheet: null,
-        splitRules: [],
-        blocks: [],
-        collapsed: false,
-        selectionLocked: false,
-      }],
-    }
-    expect(config.regions).toHaveLength(1)
-  })
-})
-
 describe('RegionBlockResult and RegionParseResult', () => {
   it('creates region parse result', () => {
     const result: import('../types').RegionParseResult = {

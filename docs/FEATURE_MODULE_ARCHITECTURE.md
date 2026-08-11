@@ -1,8 +1,8 @@
 # Feature Module Architecture and Adoption Gates
 
-**Status:** Phase A complete; Gate B not admitted
+**Status:** Gate B admitted; Phase B implementation complete
 **Applies to:** Post-v1 scenario growth
-**Last assessed:** 2026-08-09 after Phase A verification
+**Last assessed:** 2026-08-10 after Phase B strict-exit verification
 
 ## 1. Decision
 
@@ -202,7 +202,7 @@ Gate A must pass, plus all of the following:
 | A third scenario is concrete | A written use case defines its inputs, project state, workbook operations, UI, output, diagnostics, and lifecycle. |
 | Commonality is demonstrated | Block, Region, and the third scenario share lifecycle needs that can be expressed without feature-ID branches. |
 | Core orchestration is extracted | Project/workbook commands, execution coordination, dirty state, history, and diagnostics are testable without rendering `App.tsx`. |
-| Persistence strategy is approved | v3 adapters and any future schema migration preserve existing projects and unknown state. |
+| Persistence strategy is approved | v3 adapters preserve Project v3 documents; any future schema migration preserves current-project and unknown state. |
 | UI host contract is prototyped | Two materially different right-panel views mount, fail, and unmount without leaking state or global styles. |
 
 The third scenario is a hard gate. Without it, an interface derived only from
@@ -248,10 +248,12 @@ owned and released with the app should remain built-in modules.
   unavailable workbook resolution.
 - Module errors are isolated by the panel host and do not make the project
   unsavable or corrupt another module's state.
-- Contract tests and end-to-end tests cover activation, execution, persistence,
-  migration, failure, teardown, and multi-workbook ownership.
-- Project v3 compatibility or an explicitly versioned migration is proven with
-  fixtures.
+- Contract tests and end-to-end tests cover activation, execution, Project v3
+  persistence, failure, teardown, and multi-workbook ownership.
+- Project v3 compatibility is proven by strict schema/runtime agreement,
+  complete-field golden round-trips, malformed-input and ownership matrices,
+  persistence workflow tests, and before/after module-extraction semantic comparisons.
+  Session v1/v2 import has been removed; Project v3 is the only supported format.
 
 ### Phase C exit: runtime extensions supportable
 
@@ -274,7 +276,7 @@ development baseline established afterward.
 | Gate A condition | Status | Current evidence |
 | --- | --- | --- |
 | Baseline is reproducible | Pass | Phase A passed type checks, 188 renderer/unit tests, 3 main-process tests, Go tests, 29 browser tests with 4 skipped, 17 hidden Electron E2E tests, release-script tests, and the production build. |
-| Current contract is explicit | Pass | Project v3 is documented and has `project-v3.schema.json`; legacy v1/v2 migration is implemented. |
+| Current contract is explicit | Pass | Project v3 is documented, strictly validated by schema and runtime, and versions 1/2 are rejected. |
 | Current behavior is protected | Pass | Direct tests cover project lifecycle, multi-workbook isolation and switching, save/recovery, Block, Region, diagnostics, and preview workflows. |
 | Change isolation is possible | Pass | Project/workbook commands and coordinators are pure or host-neutral, are exercised without rendering React, and preserve Project v3 and current UI behavior. |
 | Ownership is recorded | Pass after this decision | This document defines the intended dependency and responsibility boundaries. |
@@ -286,15 +288,15 @@ host-neutral interfaces while retaining Project v3 and existing workflows.
 | Gate B condition | Status | Current evidence |
 | --- | --- | --- |
 | A third scenario is concrete | Pass | `SCENARIO_EXTERNAL_RESULT_REVIEW.md` defines inputs, state, workbook operations, right-panel and result UI, output, diagnostics, security, and lifecycle for external/LLM-generated result review. |
-| Commonality is demonstrated | Partial | The third scenario confirms shared needs for transactions, diagnostics, cancellation, workbook navigation, panel hosting, and persistence, but no common contract prototype exists yet. |
+| Commonality is demonstrated | Pass | `GATE_B_DECISION.md` records the ownership matrix; the production registry exercises lifecycle, transactions, diagnostics, execution isolation, panels, and bounded workbook capabilities for all three scenarios. |
 | Core orchestration is extracted | Pass | `App.tsx` is an 18-line composition root. Project lifecycle, workbook runtime, execution/preview preparation, workspace history/dirty transitions, and diagnostic focus decisions have UI-independent services and tests. |
-| Persistence strategy is approved | Partial | Project v3 is stable, but its top-level `blocks` and `regions` fields encode current scenarios directly; no feature-state adapter policy is implemented. |
-| UI host contract is prototyped | Fail | The right panel renders Block and Region through application-owned branches rather than a feature registration host. |
+| Persistence strategy is approved | Pass | Typed internal adapters round-trip a complete Project v3 fixture canonically, validate encoded state, and return structured failures without mutating prior state. |
+| UI host contract is prototyped | Pass | Extraction Setup and a materially different development-only External Review view mount through `FeaturePanelHost`; browser tests cover render failure, shell survival, focus, unmount, and scoped styles. |
 
-**Gate B decision:** not admitted. Core extraction is no longer the blocker, but
-the common feature contract, v3 adapter policy, and two-view panel-host prototype
-are not yet proven. The repository must not freeze or broadly implement a
-feature-module API yet.
+**Gate B decision:** admitted on 2026-08-09. The direct R0-R6 evidence and
+scope decision are recorded in `GATE_B_DECISION.md`. Phase B completed the
+compile-time built-in module contract on 2026-08-10; Gate C remains explicitly
+closed.
 
 | Gate C condition | Status | Current evidence |
 | --- | --- | --- |
@@ -317,14 +319,27 @@ registry.
 | Composition root | `App.tsx` is 18 lines and only mounts theme, Univer, and `WorkspaceApplication`. |
 | Independent orchestration | `projectLifecycle`, `workbookRuntime`, `projectExecution`, `workspaceHistory`, and `diagnostics` have direct unit tests. |
 | Bounded capabilities | `SpreadsheetCapability` contains workbook/sheet/range operations and imports no Block or Region type. |
-| Persistence compatibility | Existing serializer migration and Project v3 round-trip tests pass; native open/save/save-as workflows pass. |
+| Persistence compatibility | Strict Project v3 schema/runtime, canonical round-trip, persistence, and native open/save/save-as tests pass; Project versions 1 and 2 are rejected. |
 | Scenario isolation | Config, preview, reconciliation, execution persistence, and diagnostics use capability or reader interfaces rather than bridge or raw Univer objects. |
 | Workflow regression | Type check; 188 renderer tests; 3 main tests; 29 browser tests with 4 expected skips; 17 Electron tests; Go tests; 5 release tests; production build. |
 
-## 10. Approved Next Work
+## 10. Phase B Exit Evidence
 
-Do not start runtime plugins. The next architecture work is limited to Gate B
-evidence: prototype two materially different built-in right-panel views, define
-the v3 compatibility adapter policy, and validate the common contract against
-Block, Region, and External Structured Result Review. Gate B must be reassessed
-after that evidence exists.
+Phase B completed on 2026-08-10 without adding runtime plugin loading or
+Project v1/v2 compatibility.
+
+| Exit standard | Evidence |
+| --- | --- |
+| Common operational contract | Block, Region, and External Review register schema identity, lifecycle, validation, diagnostics, execution, and panel contributions through the same registries. |
+| Branch-free host composition | Selection, canvas ranges, active items, execution readiness, diagnostic focus, navigation, panels, and result views are registry contributions; the shell does not dispatch on Block or Region IDs. |
+| Strict Project v3 | AJV schema and runtime validation use one complete-field golden fixture, 20 malformed structural cases, semantic ownership cases, canonical round-trips, non-mutation checks, and explicit v1/v2 rejection. |
+| Persistence | The complete fixture passes Save, Save As, recovery, undo/redo, workbook switching, reassignment/removal, unavailable-source handling, and Electron native open/save without semantic loss. |
+| Failure and cancellation | Contract tests isolate execution/save failures, lifecycle cleanup, panel render failures, and late async cancellation. |
+| Verification | Type check; 206 renderer tests; 3 main tests; 33 browser tests with 4 expected Electron-only skips; 18 Electron E2E tests; Go tests; 7 release-script tests; production build. |
+
+## 11. Approved Next Work
+
+Do not start runtime plugins. Phase B is complete. Continue feature refinement,
+Project v3 regression coverage, and Windows 11 release preparation. External
+Structured Result Review remains development-only until a separate product and
+persistence decision promotes it; Gate C remains closed.

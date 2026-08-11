@@ -44,7 +44,7 @@ func TestAppPreviewDataLifecycle(t *testing.T) {
 
 func TestAppRecoveryLifecycle(t *testing.T) {
 	app := &App{recoveryDir: t.TempDir()}
-	content := `{"version":2,"config":{"blocks":[]}}`
+	content := `{"version":3,"project":{"id":"project-1"}}`
 
 	if err := app.SaveRecovery(content); err != nil {
 		t.Fatalf("save recovery: %v", err)

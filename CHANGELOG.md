@@ -9,7 +9,11 @@
   project-wide parsing.
 - Established host-neutral project lifecycle, workbook runtime, spreadsheet
   capability, execution, history, and diagnostics boundaries in Phase A.
-- Retained import compatibility for legacy Session v1 and v2 files.
+- Completed Phase B with one compile-time registry for Block, Region, and the
+  bounded External Result Review prototype, including lifecycle, execution,
+  diagnostics, save preparation, panels, and navigation contributions.
+- Removed legacy Session v1/v2 import and migration; Project v3 is now the only
+  supported persisted format.
 
 ## 1.0.0 - 2026-08-09
 
@@ -28,6 +32,5 @@ Windows 11 x64 release.
 ## Compatibility
 
 - Project version 3 is the current saved-project format.
-- Legacy Session versions 1 and 2 remain importable and migrate to a
-  single-workbook Project v3 representation. See
+- Versions 1 and 2 are rejected as unsupported. See
   [docs/SESSION_SCHEMA.md](docs/SESSION_SCHEMA.md).

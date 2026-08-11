@@ -6,7 +6,8 @@ import { resolve } from 'node:path'
 const root = process.cwd()
 const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
 const multiSheetWorkbookPath = resolve(root, 'examples', 'multi_sheet.xlsx')
-const sessionPath = resolve(root, 'examples', 'session.json')
+const projectFixturePath = resolve(root, 'examples', 'project.json')
+const completeProjectV3FixturePath = resolve(root, 'src', 'renderer', '__tests__', 'fixtures', 'project-v3-complete.json')
 let userDataDirectory = ''
 
 async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = false): Promise<{ app: ElectronApplication; page: Page }> {
@@ -119,7 +120,7 @@ test.describe('Electron native workflow', () => {
   })
 
   test('parses an imported workbook configuration and opens the preview', async () => {
-    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: sessionPath })
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: projectFixturePath })
     try {
       await importIntoOpenWorkbook(page)
       const settings = page.getByRole('dialog', { name: 'Project settings' })
@@ -205,8 +206,8 @@ test.describe('Electron native workflow', () => {
 
   test('imports configuration and saves the project through native IPC', async () => {
     const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-e2e-'))
-    const output = resolve(directory, 'session.json')
-    const { app, page } = await launch({ ELECTRON_E2E_IMPORT_PATH: sessionPath, ELECTRON_E2E_SAVE_PATH: output })
+    const output = resolve(directory, 'project.json')
+    const { app, page } = await launch({ ELECTRON_E2E_IMPORT_PATH: projectFixturePath, ELECTRON_E2E_SAVE_PATH: output })
     try {
       await page.getByRole('button', { name: 'Open Project' }).click()
       const settings = page.getByRole('dialog', { name: 'Project settings' })
@@ -223,10 +224,42 @@ test.describe('Electron native workflow', () => {
     }
   })
 
+  test('opens and saves the complete Project v3 golden fixture through native IPC', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-v3-e2e-'))
+    const output = resolve(directory, 'Complete v3 fixture.json')
+    const { app, page } = await launch({
+      ELECTRON_E2E_IMPORT_PATH: completeProjectV3FixturePath,
+      ELECTRON_E2E_SAVE_PATH: output,
+    })
+    try {
+      await page.getByRole('button', { name: 'Open Project' }).click()
+      const settings = page.getByRole('dialog', { name: 'Project settings' })
+      await expect(settings.getByText('sales.xlsx')).toBeVisible()
+      await expect(settings.getByText('costs.xlsx')).toBeVisible()
+      await expect(settings.getByText('Unavailable', { exact: true })).toHaveCount(2)
+      await settings.getByRole('button', { name: 'Done' }).click()
+
+      await page.getByRole('button', { name: 'Project actions' }).click()
+      await page.getByRole('menuitem', { name: /Save Project As/ }).click()
+      const saveAnyway = page.getByRole('button', { name: 'Save anyway' })
+      if (await saveAnyway.isVisible().catch(() => false)) await saveAnyway.click()
+      await expect.poll(async () => { try { await access(output); return true } catch { return false } }).toBe(true)
+
+      const source = JSON.parse(await readFile(completeProjectV3FixturePath, 'utf8'))
+      const saved = JSON.parse(await readFile(output, 'utf8'))
+      delete source.exportedAt
+      delete saved.exportedAt
+      expect(saved).toEqual(source)
+    } finally {
+      await app.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   test('saves an opened project back to its current path', async () => {
     const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-save-e2e-'))
     const projectPath = resolve(directory, 'Current project.json')
-    await copyFile(sessionPath, projectPath)
+    await copyFile(projectFixturePath, projectPath)
     const { app, page } = await launch({ ELECTRON_E2E_IMPORT_PATH: projectPath })
     try {
       await page.getByRole('button', { name: 'Open Project' }).click()
@@ -265,8 +298,8 @@ test.describe('Electron native workflow', () => {
 
   test('retains an open workbook when native config import fails', async () => {
     const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-e2e-'))
-    const missingSession = resolve(directory, 'missing-session.json')
-    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: missingSession })
+    const missingProject = resolve(directory, 'missing-project.json')
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: missingProject })
     try {
       await addWorkbookSource(page, 'test_data.xlsx')
       await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
@@ -317,12 +350,12 @@ test.describe('Electron native workflow', () => {
     }
   })
 
-  test('persists and clears a valid recovery session through native IPC', async () => {
+  test('persists and clears a valid recovery project through native IPC', async () => {
     const { app, page } = await launch()
     const recovery = JSON.stringify({
-      version: 2,
+      version: 3,
       exportedAt: '2026-07-16T00:00:00.000Z',
-      config: { blocks: [], activeBlockId: '', focusMode: 'always-editable', regions: [] },
+      project: { id: 'recovery-project', name: 'Recovery', workbooks: [], activeWorkbookId: null, blocks: [], regions: [], activeBlockId: '', activeRegionId: null, focusMode: 'always-editable' },
       data: {},
       blockResults: [],
     })
@@ -341,7 +374,7 @@ test.describe('Electron native workflow', () => {
   })
 
   test('offers and restores a recovery workspace after restart', async () => {
-    const recovery = await readFile(sessionPath, 'utf8')
+    const recovery = await readFile(projectFixturePath, 'utf8')
     const first = await launch()
     try {
       await first.page.evaluate(async (content) => {
@@ -370,7 +403,7 @@ test.describe('Electron native workflow', () => {
   })
 
   test('discards a recovery workspace after restart', async () => {
-    const recovery = await readFile(sessionPath, 'utf8')
+    const recovery = await readFile(projectFixturePath, 'utf8')
     const first = await launch()
     try {
       await first.page.evaluate(async (content) => {

@@ -1,33 +1,26 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import type { SetStateAction } from 'react'
-import { Badge, Button, Drawer, Dropdown, Layout, Modal, Splitter, Space, theme, Tooltip, message, Alert, Tabs, Table, Empty } from 'antd'
+import { Suspense, useState, useCallback, useRef, useMemo, useEffect } from 'react'
+import { Badge, Button, Drawer, Dropdown, Layout, Modal, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
 import { FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
-import { ConfigPanel, validateBlocks } from './components/ConfigPanel'
-import type { CellRange, BlockConfig, ParseResult, ProjectConfig, ProjectWorkbook, RegionConfig, RegionParseResult } from './types'
-import type { FocusMode } from './components/ConfigPanel'
+import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
+import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
+import { gateBPrototypePanel } from './features/panel/gateBPrototypePanels'
+import type { WorkspaceFeaturePanelContext, WorkspaceReconciliationItem } from './features/panel/workspacePanel'
+import { builtInFeaturePanelRegistry, builtInFeatureRegistry } from './features/builtinRegistry'
 import { useUniver } from './context/UniverContext'
 import { getBridge } from './services/bridge'
 import { recordBridgeFailure, recordParseFailure } from './services/observability'
-import { generateColumnMappings, suggestMappingsForWorkbook } from './services/extraction'
 import { loadExcelJsWorkbook } from './services/exceljsWorkbook'
 import {
   activateProjectWorkbook,
   addProjectWorkbook,
-  blocksForWorkbook,
-  createInitialProject,
+  createProject,
   createProjectWorkbook,
-  LEGACY_WORKBOOK_ID,
-  moveItemWithinWorkbook,
   reassignProjectWorkbook,
   recordProjectWorkbookLoaded,
-  regionsForWorkbook,
-  removeBlockForWorkbook,
   removeProjectWorkbook,
   setActiveWorkbookSheet,
 } from './services/project'
-import { PreviewWindow } from './components/PreviewWindow'
-import type { PreviewData } from './types'
 import { WorkspaceNavigator } from './components/WorkspaceNavigator'
 import { DiagnosticsDrawer } from './components/DiagnosticsDrawer'
 import { WorkspaceStateCoordinator, type WorkspaceSnapshot } from './services/workspaceHistory'
@@ -45,48 +38,17 @@ import {
   type WorkbookRuntimeState,
 } from './services/workbookRuntime'
 import { decodeProjectDocument, inspectProjectWorkbookSources, projectRecoveryContent, saveProjectDocument } from './services/projectLifecycle'
-import { executeProject } from './services/projectExecution'
-import { captureExtractionSnapshots } from './services/extractionPersistence'
-import { diagnosticFocusTarget, orderDiagnostics, type DiagnosticFocusTarget } from './services/diagnostics'
-
-let blockCounter = 1
-function nextBlockId(): string {
-  return `block-${blockCounter++}-${Date.now()}`
-}
-
-function createDefaultBlock(lastNum: number, workbookId: string | null = null): BlockConfig {
-  const num = lastNum + 1
-  return {
-    id: nextBlockId(),
-    label: `block_${num}`,
-    workbookId,
-    range: null,
-    activeSheet: null,
-    headerRows: [0],
-    collapsed: false,
-    selectionLocked: false,
-    columns: [],
-    dataSnapshot: null,
-  }
-}
-
-function resolveState<T>(current: T, next: SetStateAction<T>): T {
-  return typeof next === 'function' ? (next as (value: T) => T)(current) : next
-}
+import { executeProject, type ProjectExecutionResult } from './services/projectExecution'
+import { orderDiagnostics, type DiagnosticFocusTarget } from './services/diagnostics'
 
 export function WorkspaceApplication() {
   const { univerAPI, sheetNames } = useUniver()
   const spreadsheet = useMemo(() => createUniverSpreadsheetCapability(univerAPI, sheetNames), [sheetNames, univerAPI])
 
   const [project, setProject] = useState<ProjectConfig>(() => {
-    return createInitialProject(workbookId => createDefaultBlock(0, workbookId))
+    return builtInFeatureRegistry.initialize(createProject())
   })
-  const { blocks, regions, workbooks: projectWorkbooks, activeWorkbookId, activeBlockId, activeRegionId, focusMode } = project
-  const setBlocks = useCallback((next: SetStateAction<BlockConfig[]>) => setProject(current => ({ ...current, blocks: resolveState(current.blocks, next) })), [])
-  const setRegions = useCallback((next: SetStateAction<RegionConfig[]>) => setProject(current => ({ ...current, regions: resolveState(current.regions, next) })), [])
-  const setActiveBlockId = useCallback((next: SetStateAction<string>) => setProject(current => ({ ...current, activeBlockId: resolveState(current.activeBlockId, next) })), [])
-  const setActiveRegionId = useCallback((next: SetStateAction<string | null>) => setProject(current => ({ ...current, activeRegionId: resolveState(current.activeRegionId, next) })), [])
-  const setFocusMode = useCallback((next: SetStateAction<FocusMode>) => setProject(current => ({ ...current, focusMode: resolveState(current.focusMode, next) })), [])
+  const { workbooks: projectWorkbooks, activeWorkbookId } = project
   const [parseResult, setParseResult] = useState<ParseResult | null>(null)
   const [loadSignal, setLoadSignal] = useState(0)
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null)
@@ -95,18 +57,16 @@ export function WorkspaceApplication() {
   const [showImportWarning, setShowImportWarning] = useState(false)
   const [pendingProjectReset, setPendingProjectReset] = useState<'new' | 'close' | null>(null)
   const [pendingImportContent, setPendingImportContent] = useState<string | null>(null)
+  const [featurePanelPrototypeSearch, setFeaturePanelPrototypeSearch] = useState(() => window.location.search)
   const [pendingImportProjectName, setPendingImportProjectName] = useState<string | null>(null)
   const [pendingImportProjectPath, setPendingImportProjectPath] = useState<string | null>(null)
-  const [reconcilingBlockId, setReconcilingBlockId] = useState<string | null>(null)
-  const reconcilingBlockIdRef = useRef(reconcilingBlockId)
-  reconcilingBlockIdRef.current = reconcilingBlockId
+  const [reconcilingItem, setReconcilingItem] = useState<WorkspaceReconciliationItem | null>(null)
+  const reconcilingItemRef = useRef(reconcilingItem)
+  reconcilingItemRef.current = reconcilingItem
   const [reconcilingPreviewSheet, setReconcilingPreviewSheet] = useState<string | null>(null)
   const [reconcilingPreviewRange, setReconcilingPreviewRange] = useState<CellRange | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
-  const [previewModalOpen, setPreviewModalOpen] = useState(false)
-  const [previewModalData, setPreviewModalData] = useState<Map<string, PreviewData>>(new Map())
-  const [previewActiveBlockId, setPreviewActiveBlockId] = useState<string>('')
-  const [previewRegionResults, setPreviewRegionResults] = useState<RegionParseResult[]>([])
+  const [previewExecution, setPreviewExecution] = useState<Extract<ProjectExecutionResult, { status: 'complete' }> | null>(null)
   const [workbookRuntime, setWorkbookRuntime] = useState<WorkbookRuntimeState>(() => createWorkbookRuntimeState())
   const workbookRuntimeRef = useRef(workbookRuntime)
   workbookRuntimeRef.current = workbookRuntime
@@ -134,24 +94,24 @@ export function WorkspaceApplication() {
   }, [])
   const [historyVersion, setHistoryVersion] = useState(0)
   const executionGenerationRef = useRef(0)
+  const executionControllerRef = useRef<AbortController | null>(null)
   const pendingReconcilingRangeRef = useRef<{ range: CellRange; activeSheet: string | null } | null>(null)
 
-  const activeBlockIdRef = useRef(activeBlockId)
-  activeBlockIdRef.current = activeBlockId
-  const blocksRef = useRef(blocks)
-  blocksRef.current = blocks
-
-  const regionsRef = useRef(regions)
-  regionsRef.current = regions
-  const activeRegionIdRef = useRef(activeRegionId)
-  activeRegionIdRef.current = activeRegionId
-  const focusModeRef = useRef(focusMode)
-  focusModeRef.current = focusMode
   const projectRef = useRef(project)
   projectRef.current = project
 
-  const activeBlocks = useMemo(() => blocksForWorkbook(blocks, activeWorkbookId), [activeWorkbookId, blocks])
-  const activeRegions = useMemo(() => regionsForWorkbook(regions, activeWorkbookId), [activeWorkbookId, regions])
+  useEffect(() => {
+    let closing = false
+    void builtInFeatureRegistry.open(project).then(() => {
+      if (!closing) return builtInFeatureRegistry.activate(project)
+    })
+    return () => {
+      closing = true
+      executionControllerRef.current?.abort()
+      void builtInFeatureRegistry.close(project)
+    }
+  }, [project.id])
+
   const currentFileName = useMemo(
     () => projectWorkbooks.find(workbook => workbook.id === activeWorkbookId)?.name ?? null,
     [activeWorkbookId, projectWorkbooks],
@@ -193,7 +153,6 @@ export function WorkspaceApplication() {
   const applyImportContent = useCallback((content: string, projectName?: string | null, projectPath?: string | null) => {
     const decoded = decodeProjectDocument(content, projectPath ?? null)
     if (decoded.status === 'error') { setImportError(decoded.message); return }
-    if (decoded.document.migratedFrom) message.info(`Migrated legacy project file v${decoded.document.migratedFrom} to project v3.`)
     const importedProject = projectName ? { ...decoded.document.project, name: projectName } : decoded.document.project
     const loadingRuntime = updateWorkbookRuntime(beginWorkbookProjectLoad)
     const loadVersion = loadingRuntime.loadGeneration
@@ -216,13 +175,14 @@ export function WorkspaceApplication() {
 
       const preferredId = importedProject.activeWorkbookId
       const nextActiveId = preferredId && availability.availableIds.includes(preferredId) ? preferredId : availability.availableIds[0] ?? null
-      setProject(current => ({
-        ...current,
-        workbooks: current.workbooks.map(workbook => availability.metadata.has(workbook.id) ? { ...workbook, ...availability.metadata.get(workbook.id)! } : workbook),
-        activeWorkbookId: nextActiveId,
-        activeBlockId: blocksForWorkbook(current.blocks, nextActiveId)[0]?.id ?? '',
-        activeRegionId: null,
-      }))
+      setProject(current => {
+        const withMetadata = {
+          ...current,
+          workbooks: current.workbooks.map(workbook => availability.metadata.has(workbook.id) ? { ...workbook, ...availability.metadata.get(workbook.id)! } : workbook),
+        }
+        if (!nextActiveId) return withMetadata
+        return activateProjectWorkbook(withMetadata, nextActiveId, builtInFeatureRegistry)
+      })
       updateWorkbookRuntime(current => replaceAvailableWorkbooks(
         current,
         availability.paths,
@@ -236,6 +196,13 @@ export function WorkspaceApplication() {
       }
     })()
   }, [updateWorkbookRuntime])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const updatePrototype = () => setFeaturePanelPrototypeSearch(window.location.search)
+    window.addEventListener('popstate', updatePrototype)
+    return () => window.removeEventListener('popstate', updatePrototype)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -272,7 +239,7 @@ export function WorkspaceApplication() {
     const name = path.split(/[/\\]/).pop() ?? ''
     const source = projectRef.current.workbooks.find(workbook => workbook.name === name && !workbookRuntimeRef.current.paths[workbook.id])
       ?? projectRef.current.workbooks.find(workbook => workbook.name === name)
-      ?? projectRef.current.workbooks.find(workbook => workbook.id === LEGACY_WORKBOOK_ID && !workbookRuntimeRef.current.paths[workbook.id])
+      ?? projectRef.current.workbooks.find(workbook => !workbookRuntimeRef.current.paths[workbook.id])
     if (!source) {
       message.error(`"${name}" is not a workbook source in this project. Add it in Project settings.`)
       return
@@ -318,15 +285,15 @@ export function WorkspaceApplication() {
     updateWorkbookRuntime(() => plan.state)
     setProject(current => {
       if (workbookId !== activeWorkbookId) return current
-      if (plan.nextActiveWorkbookId) return activateProjectWorkbook(current, plan.nextActiveWorkbookId)
-      return { ...current, activeWorkbookId: null, activeBlockId: '', activeRegionId: null }
+      if (plan.nextActiveWorkbookId) return activateProjectWorkbook(current, plan.nextActiveWorkbookId, builtInFeatureRegistry)
+      return builtInFeatureRegistry.activateWorkbook({ ...current, activeWorkbookId: null }, '')
     })
     setParseResult(null)
   }, [activeWorkbookId, updateWorkbookRuntime])
 
   const handleRemoveProjectWorkbook = useCallback((workbookId: string) => {
     detachWorkbook(workbookId)
-    setProject(current => removeProjectWorkbook(current, workbookId))
+    setProject(current => removeProjectWorkbook(current, workbookId, builtInFeatureRegistry))
     setPendingProjectRemoval(null)
     setPendingImportContent(null)
     setPendingImportProjectName(null)
@@ -348,7 +315,7 @@ export function WorkspaceApplication() {
       filePath,
       sheetNames: loadedSheetNames,
       activeSheetName: loadedActiveSheetName,
-    }, ownerId => createDefaultBlock(0, ownerId)))
+    }, builtInFeatureRegistry))
     setParseResult(null)
   }, [updateWorkbookRuntime])
 
@@ -359,80 +326,25 @@ export function WorkspaceApplication() {
       message.warning(`Open ${workbook?.name ?? 'this workbook'} to attach it to the project.`)
       return
     }
-    setProject(current => activateProjectWorkbook(current, workbookId, sheetName))
+    setProject(current => activateProjectWorkbook(current, workbookId, builtInFeatureRegistry, sheetName))
     updateWorkbookRuntime(current => requestWorkbookLoad(current, workbookId, path, sheetName ?? workbook.activeSheetName))
   }, [updateWorkbookRuntime])
 
   const handleSelectionChange = useCallback(async (sourceWorkbookId: string, range: CellRange | null, activeSheet: string | null) => {
     if (sourceWorkbookId !== projectRef.current.activeWorkbookId || sourceWorkbookId !== loadedWorkbookId) return
-    setProjectActiveSheet(activeSheet)
-    const blockId = activeBlockIdRef.current
-    const currentBlock = blocksRef.current.find(b => b.id === blockId)
-    const regionId = activeRegionIdRef.current
-    const currentRegion = regionsRef.current.find(r => r.id === regionId)
-
-    // When reconciling, track selection for Reselect Range even if locked
-    if (reconcilingBlockIdRef.current && range) {
+    if (reconcilingItemRef.current && range) {
       pendingReconcilingRangeRef.current = { range, activeSheet }
     }
-
-    if (range && range.startRow === range.endRow && range.startCol === range.endCol) {
-      if (currentRegion?.selectionLocked || currentBlock?.selectionLocked) return
-      if (!currentRegion) range = null
-    }
-
-    if (range && currentRegion) {
-      if (currentRegion.selectionLocked) return
+    const current = projectRef.current
+    const withSheet = setActiveWorkbookSheet(current, activeSheet)
+    const next = builtInFeatureRegistry.selectionChanged(withSheet, { workbookId: sourceWorkbookId, range, activeSheet }, spreadsheet)
+    if (next !== withSheet) {
       rememberWorkspace()
-      setRegions(prev => prev.map(r =>
-        r.id === regionId ? { ...r, range, activeSheet } : r,
-      ))
       setParseResult(null)
-      return
+      setHasUnsavedChanges(true)
     }
-
-    if (range && currentBlock?.selectionLocked) return
-
-    if (!range) {
-      if (currentBlock?.selectionLocked) return
-      if (currentRegion) {
-        rememberWorkspace()
-        setRegions(prev => prev.map(r =>
-          r.id === regionId ? { ...r, range: null } : r,
-        ))
-        setParseResult(null)
-        return
-      }
-      rememberWorkspace()
-      setBlocks(prev => prev.map(b =>
-        b.id === blockId ? { ...b, range: null, columns: [] } : b,
-      ))
-      setParseResult(null)
-      return
-    }
-
-    const headerRows = currentBlock?.headerRows ?? [0]
-    const workbook = spreadsheet.workbookReader()
-    const mappings = workbook
-      ? suggestMappingsForWorkbook(workbook, range, headerRows, currentBlock?.activeSheet ?? activeSheet)
-      : generateColumnMappings(range)
-
-    rememberWorkspace()
-    setBlocks(prev => prev.map(b =>
-      b.id === blockId ? { ...b, range, activeSheet, columns: mappings } : b,
-    ))
-    setParseResult(null)
-  }, [loadedWorkbookId, spreadsheet])
-
-  const handleActivateBlock = useCallback((blockId: string) => {
-    const block = blocksRef.current.find(b => b.id === blockId)
-    if (block?.workbookId === loadedWorkbookId && block?.activeSheet && !reconcilingBlockIdRef.current) {
-      if (spreadsheet.activeSheetName() !== block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
-    }
-    setProjectActiveSheet(block?.activeSheet ?? null)
-    setActiveBlockId(blockId)
-    setActiveRegionId(null)
-  }, [loadedWorkbookId, spreadsheet])
+    if (next !== current) setProject(next)
+  }, [loadedWorkbookId, rememberWorkspace, spreadsheet])
 
   const handleReconcilingReselectRange = useCallback((onRange: (range: CellRange) => void) => {
     const pending = pendingReconcilingRangeRef.current
@@ -443,129 +355,18 @@ export function WorkspaceApplication() {
     pendingReconcilingRangeRef.current = null
   }, [])
 
-  const handleBlockChange = useCallback((blockId: string, partial: Partial<BlockConfig>) => {
-    rememberWorkspace()
-    setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, ...partial } : b))
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [rememberWorkspace])
-
-  const handleAddBlock = useCallback(() => {
-    rememberWorkspace()
-    const maxNum = blocksRef.current.reduce((max, b) => {
-      const m = (b.label || '').match(/^block_(\d+)$/)
-      return m ? Math.max(max, parseInt(m[1], 10)) : max
-    }, 0)
-    const block = createDefaultBlock(maxNum, activeWorkbookId)
-    setBlocks(prev => [...prev, block])
-    setActiveBlockId(block.id)
-    setActiveRegionId(null)
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [rememberWorkspace])
-
-  const handleDeleteBlock = useCallback((blockId: string) => {
-    rememberWorkspace()
-    setBlocks(prev => {
-      if (!activeWorkbookId) return prev
-      const next = removeBlockForWorkbook(prev, blockId, activeWorkbookId, () => createDefaultBlock(0, activeWorkbookId))
-      if (!next.blocks.some(block => block.id === activeBlockIdRef.current)) setActiveBlockId(next.activeBlockId)
-      return next.blocks
-    })
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [rememberWorkspace])
-
-  const handleAddRegion = useCallback(() => {
-    rememberWorkspace()
-    const region: RegionConfig = {
-      id: `region-${Date.now()}`,
-      label: `region_${regions.length + 1}`,
-      workbookId: activeWorkbookId,
-      range: null,
-      activeSheet: null,
-      splitRules: [],
-      blocks: [],
-      collapsed: false,
-      selectionLocked: false,
-    }
-    setRegions(prev => [...prev, region])
-    setActiveRegionId(region.id)
-    setActiveBlockId('')
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [regions.length, rememberWorkspace])
-
-  const handleDeleteRegion = useCallback((regionId: string) => {
-    rememberWorkspace()
-    setRegions(prev => prev.filter(r => r.id !== regionId))
-    if (activeRegionId === regionId) setActiveRegionId(null)
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [activeRegionId, rememberWorkspace])
-
-  const handleRegionChange = useCallback((regionId: string, partial: Partial<RegionConfig>) => {
-    rememberWorkspace()
-    setRegions(prev => prev.map(r => r.id === regionId ? { ...r, ...partial } : r))
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [rememberWorkspace])
-
-  const handleActivateRegion = useCallback((regionId: string) => {
-    const region = regionsRef.current.find(item => item.id === regionId)
-    if (region?.activeSheet) {
-      spreadsheet.setActiveSheet(region.activeSheet)
-      setProjectActiveSheet(region.activeSheet)
-    }
-    setActiveRegionId(regionId)
-    setActiveBlockId('')
-  }, [spreadsheet])
-
   const handleSelectSheet = useCallback((sheetName: string) => {
     if (loadedWorkbookId !== projectRef.current.activeWorkbookId) return
     if (!spreadsheet.setActiveSheet(sheetName)) return
     setProjectActiveSheet(sheetName)
   }, [loadedWorkbookId, spreadsheet])
 
-  const handleMoveBlock = useCallback((blockId: string, direction: -1 | 1) => {
-    rememberWorkspace()
-    setBlocks(current => moveItemWithinWorkbook(current, blockId, direction))
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [rememberWorkspace])
-
-  const handleMoveRegion = useCallback((regionId: string, direction: -1 | 1) => {
-    rememberWorkspace()
-    setRegions(current => moveItemWithinWorkbook(current, regionId, direction))
-    setParseResult(null)
-    setHasUnsavedChanges(true)
-  }, [rememberWorkspace])
-
-  const handleFocusModeChange = useCallback((mode: FocusMode) => {
-    if (mode === focusModeRef.current) return
-    rememberWorkspace()
-    setFocusMode(mode)
-    setHasUnsavedChanges(true)
-  }, [rememberWorkspace])
-
-  const handleRegionRangeClick = useCallback((regionId: string) => {
-    const region = regionsRef.current.find(r => r.id === regionId)
-    if (!region?.range || region.workbookId !== loadedWorkbookId) return
-    if (region.activeSheet) spreadsheet.setActiveSheet(region.activeSheet)
-    spreadsheet.scrollTo(region.activeSheet, region.range.startRow - 3, region.range.startCol - 1)
-    setActiveRegionId(regionId)
-  }, [loadedWorkbookId, spreadsheet])
-
   const handleParse = useCallback(async () => {
     const clearPreview = () => {
-      setPreviewModalOpen(false)
-      setPreviewModalData(new Map())
-      setPreviewRegionResults([])
-      setPreviewActiveBlockId('')
+      setPreviewExecution(null)
     }
-    const configuredBlocks = blocks.filter(b => b.range)
-    if (!configuredBlocks.length) {
-      const error = 'Select a range for at least one block before parsing'
+    if (!builtInFeatureRegistry.executionReady(projectRef.current)) {
+      const error = 'Configure at least one feature range before running'
       clearPreview()
       const result = { success: false, data: {}, blocks: [], error }
       setParseResult(result)
@@ -574,6 +375,9 @@ export function WorkspaceApplication() {
       return
     }
 
+    executionControllerRef.current?.abort()
+    const controller = new AbortController()
+    executionControllerRef.current = controller
     const generation = ++executionGenerationRef.current
     const execution = await executeProject(
       projectRef.current,
@@ -581,6 +385,7 @@ export function WorkspaceApplication() {
       path => getBridge().readFile(path),
       loadExcelJsWorkbook,
       () => executionGenerationRef.current === generation,
+      controller.signal,
     )
     if (execution.status === 'stale') return
     const result = execution.result
@@ -595,17 +400,16 @@ export function WorkspaceApplication() {
 
     setProject(execution.project)
     setParseResult(result)
-    const allPreviewData = new Map([...execution.previews].filter(([id]) => activeBlocks.some(block => block.id === id)))
-    setPreviewModalData(allPreviewData)
-    setPreviewRegionResults(result.regionResults || [])
-    setPreviewActiveBlockId(activeBlockId || activeBlocks[0]?.id || '')
-    setPreviewModalOpen(true)
-  }, [activeBlocks, blocks, activeBlockId])
+    setPreviewExecution(execution)
+  }, [])
 
   const saveProjectToDisk = useCallback(async (saveAs: boolean) => {
     try {
-      const projectForSave = await captureExtractionSnapshots(projectRef.current, projectRef.current.activeWorkbookId, spreadsheet)
-      const result = await saveProjectDocument(getBridge(), projectForSave, parseResult, projectFilePath, saveAs)
+      const projectForSave = await builtInFeatureRegistry.captureForSave(projectRef.current, projectRef.current.activeWorkbookId, spreadsheet)
+      const result = await saveProjectDocument(
+        getBridge(), projectForSave, parseResult, projectFilePath, saveAs,
+        current => builtInFeatureRegistry.prepareForSave(current),
+      )
       if (result.status === 'ok') {
         setProject(result.project)
         setProjectFilePath(result.filePath)
@@ -626,14 +430,14 @@ export function WorkspaceApplication() {
   saveProjectRef.current = saveProjectToDisk
 
   const handleSaveProject = useCallback(async (saveAs = false) => {
-    const errors = validateBlocks(blocks)
+    const errors = builtInFeatureRegistry.validate(projectRef.current)
     if (errors.length > 0) {
       setPendingSaveAs(saveAs)
       setValidationErrors(errors)
       return
     }
     await saveProjectRef.current(saveAs)
-  }, [blocks])
+  }, [])
 
   const handleImportConfig = useCallback(async () => {
     setImportError(null)
@@ -675,16 +479,13 @@ export function WorkspaceApplication() {
   }, [pendingImportContent, pendingImportProjectName, pendingImportProjectPath])
 
   const resetProject = useCallback((openSettings = false) => {
-    setProject(createInitialProject(workbookId => createDefaultBlock(0, workbookId)))
+    setProject(builtInFeatureRegistry.initialize(createProject()))
     setProjectFilePath(null)
     updateWorkbookRuntime(resetWorkbookRuntime)
     setParseResult(null)
-    setPreviewModalOpen(false)
-    setPreviewModalData(new Map())
-    setPreviewRegionResults([])
-    setPreviewActiveBlockId('')
+    setPreviewExecution(null)
     setActiveColIndex(null)
-    setReconcilingBlockId(null)
+    setReconcilingItem(null)
     setReconcilingPreviewSheet(null)
     setReconcilingPreviewRange(null)
     setProjectSettingsOpen(openSettings)
@@ -714,35 +515,29 @@ export function WorkspaceApplication() {
   const { token } = theme.useToken()
 
   const lockedRanges = useMemo(() => {
-    const selectionLocked = blocks
-      .filter(b => b.selectionLocked && b.range)
-      .map(b => ({ blockId: b.id, range: b.range!, activeSheet: b.activeSheet, color: '#1677ff' }))
+    const configured = builtInFeatureRegistry.canvasRanges(project, activeWorkbookId)
 
-    const regionLocked = regions
-      .filter(r => r.selectionLocked && r.range)
-      .map(r => ({ blockId: r.id, range: r.range!, activeSheet: r.activeSheet, color: '#1677ff' }))
-
-    const reconciling = reconcilingBlockId
-      ? blocks
-          .filter(b => b.id === reconcilingBlockId && (reconcilingPreviewRange || b.range))
-          .map(b => ({ blockId: b.id, range: reconcilingPreviewRange || b.range!, activeSheet: reconcilingPreviewSheet || b.activeSheet, color: '#fa8c16' }))
+    const range = reconcilingPreviewRange ?? reconcilingItem?.range
+    const reconciling = reconcilingItem && range
+      ? [{ itemId: reconcilingItem.id, range, activeSheet: reconcilingPreviewSheet ?? reconcilingItem.activeSheet, color: '#fa8c16' }]
       : []
 
-    return [...selectionLocked, ...regionLocked, ...reconciling]
-  }, [blocks, regions, reconcilingBlockId, reconcilingPreviewSheet, reconcilingPreviewRange])
+    return [...configured, ...reconciling]
+  }, [activeWorkbookId, project, reconcilingItem, reconcilingPreviewSheet, reconcilingPreviewRange])
 
   useEffect(() => {
     if (!activeSheetName && sheetNames[0]) setProjectActiveSheet(sheetNames[0])
   }, [activeSheetName, sheetNames, setProjectActiveSheet])
 
-  const configurationDiagnostics = useMemo(() => validateBlocks(blocks), [blocks])
+  const configurationDiagnostics = useMemo(() => builtInFeatureRegistry.validate(project), [project])
+  const activeCanvasItemIds = useMemo(() => builtInFeatureRegistry.activeCanvasItems(project), [project])
+  const activeColumnItemId = useMemo(() => builtInFeatureRegistry.activeColumnItem(project), [project])
   const parseDiagnostics = useMemo(() => orderDiagnostics(parseResult?.diagnostics ?? []), [parseResult?.diagnostics])
   const diagnosticCount = configurationDiagnostics.length + parseDiagnostics.length
 
   const applyDiagnosticFocus = useCallback((target: DiagnosticFocusTarget) => {
     if (target.sheetName) spreadsheet.setActiveSheet(target.sheetName)
-    if (target.blockId) { setActiveBlockId(target.blockId); setActiveRegionId(null) }
-    if (target.regionId) { setActiveRegionId(target.regionId); setActiveBlockId('') }
+    setProject(current => builtInFeatureRegistry.applyDiagnosticFocus(current, target))
     if (target.range) spreadsheet.scrollTo(target.sheetName, target.range.startRow - 2, target.range.startCol - 1)
   }, [spreadsheet])
 
@@ -753,7 +548,7 @@ export function WorkspaceApplication() {
   }, [applyDiagnosticFocus, loadedWorkbookId, pendingDiagnosticFocus])
 
   const handleFocusDiagnostic = useCallback((diagnostic: NonNullable<ParseResult['diagnostics']>[number]) => {
-    const target = diagnosticFocusTarget(projectRef.current, diagnostic)
+    const target = builtInFeatureRegistry.diagnosticFocus(projectRef.current, diagnostic)
     if (target?.workbookId && target.workbookId !== loadedWorkbookId) {
       setPendingDiagnosticFocus(target)
       handleSelectWorkbook(target.workbookId, target.sheetName ?? undefined)
@@ -770,11 +565,52 @@ export function WorkspaceApplication() {
       if (event.key.toLowerCase() === 'y') { event.preventDefault(); handleRedo(); return }
       if (event.key.toLowerCase() === 'o') { event.preventDefault(); handleImportConfig(); return }
       if (event.key.toLowerCase() === 's') { event.preventDefault(); void handleSaveProject(event.shiftKey); return }
-      if (event.key === 'Enter' && blocksRef.current.some(block => block.range)) { event.preventDefault(); handleParse() }
+      if (event.key === 'Enter' && builtInFeatureRegistry.executionReady(projectRef.current)) { event.preventDefault(); handleParse() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleImportConfig, handleParse, handleRedo, handleSaveProject, handleUndo])
+
+  const requestedFeatureName = new URLSearchParams(featurePanelPrototypeSearch).get('feature-panel-prototype')
+  const requestedFeatureId = import.meta.env.DEV && requestedFeatureName ? `builtin.${requestedFeatureName}` : null
+  const featureContext: WorkspaceFeaturePanelContext = {
+    project,
+    loadedWorkbookId,
+    activeColIndex,
+    parseResult,
+    spreadsheet,
+    requestedFeatureId,
+    transactProject: update => {
+      rememberWorkspace()
+      setProject(update)
+      setParseResult(null)
+      setHasUnsavedChanges(true)
+    },
+    selectProject: update => setProject(update),
+    run: handleParse,
+    setActiveColumn: setActiveColIndex,
+    setReconciliationItem: item => {
+      setReconcilingItem(item)
+      setReconcilingPreviewRange(item?.range ?? null)
+      setReconcilingPreviewSheet(item?.activeSheet ?? null)
+      if (!item) {
+        setReconcilingPreviewSheet(null)
+        setReconcilingPreviewRange(null)
+        pendingReconcilingRangeRef.current = null
+      }
+    },
+    takeReselectedRange: handleReconcilingReselectRange,
+    setPreviewSheet: setReconcilingPreviewSheet,
+  }
+  const featurePanel = gateBPrototypePanel(featurePanelPrototypeSearch) ?? builtInFeaturePanelRegistry.select(featureContext)
+  const resultContributions = previewExecution
+    ? builtInFeaturePanelRegistry.results({
+        project: previewExecution.project,
+        result: previewExecution.result,
+        previews: previewExecution.previews,
+        close: () => setPreviewExecution(null),
+      })
+    : []
 
   const navigator = <WorkspaceNavigator
     projectName={project.name}
@@ -782,17 +618,10 @@ export function WorkspaceApplication() {
     workbooks={projectWorkbooks}
     activeWorkbookId={activeWorkbookId}
     activeSheet={activeSheetName}
-    blocks={activeBlocks}
-    regions={activeRegions}
-    activeBlockId={activeBlockId}
-    activeRegionId={activeRegionId}
+    featureSections={builtInFeaturePanelRegistry.navigation(featureContext)}
     onOpen={() => setProjectSettingsOpen(true)}
     onSelectWorkbook={handleSelectWorkbook}
     onSelectSheet={handleSelectSheet}
-    onSelectBlock={handleActivateBlock}
-    onSelectRegion={handleActivateRegion}
-    onMoveBlock={handleMoveBlock}
-    onMoveRegion={handleMoveRegion}
   />
 
   return (
@@ -901,8 +730,8 @@ export function WorkspaceApplication() {
                   <span>{currentFileName ?? 'Choose a file to begin'}</span>
                 </header>
                 <SpreadsheetPanel
-                  activeBlockId={activeBlockId}
-                  activeRegionId={activeRegionId}
+                  activeItemIds={activeCanvasItemIds}
+                  activeColumnItemId={activeColIndex === null ? null : activeColumnItemId}
                   activeColIndex={activeColIndex}
                   onSelectionChange={handleSelectionChange}
                   onActiveSheetChange={(workbookId, sheetName) => {
@@ -919,44 +748,7 @@ export function WorkspaceApplication() {
               </section>
             </Splitter.Panel>
             <Splitter.Panel defaultSize="30%" min="18%">
-              <aside className="inspector-panel" aria-label="Extraction inspector">
-                <header className="panel-heading inspector-heading">
-                  <div><strong>Extraction setup</strong></div>
-                  <span>{activeBlocks.filter(block => block.range).length} active</span>
-                </header>
-                <ConfigPanel
-                  spreadsheet={spreadsheet}
-                  blocks={activeBlocks}
-                  activeBlockId={activeBlockId}
-                  activeColIndex={activeColIndex}
-                  focusMode={focusMode}
-                  parseResult={parseResult}
-                  regions={activeRegions}
-                  activeRegionId={activeRegionId}
-                  onActivateBlock={handleActivateBlock}
-                  onBlockChange={handleBlockChange}
-                  onAddBlock={handleAddBlock}
-                  onDeleteBlock={handleDeleteBlock}
-                  onAddRegion={handleAddRegion}
-                  onDeleteRegion={handleDeleteRegion}
-                  onRegionChange={handleRegionChange}
-                  onActivateRegion={handleActivateRegion}
-                  onRegionRangeClick={handleRegionRangeClick}
-                  onFocusModeChange={handleFocusModeChange}
-                  onColumnFocus={setActiveColIndex}
-                  onParse={handleParse}
-                  onReconcilingChange={(id) => {
-                    setReconcilingBlockId(id)
-                    if (!id) {
-                      setReconcilingPreviewSheet(null)
-                      setReconcilingPreviewRange(null)
-                      pendingReconcilingRangeRef.current = null
-                    }
-                  }}
-                  onReselectRange={handleReconcilingReselectRange}
-                  onPreviewSheet={setReconcilingPreviewSheet}
-                />
-              </aside>
+              <FeaturePanelHost panel={featurePanel} />
             </Splitter.Panel>
           </Splitter>
         </div>
@@ -974,8 +766,8 @@ export function WorkspaceApplication() {
       <Modal
         className="preview-modal"
         title={null}
-        open={previewModalOpen}
-        onCancel={() => setPreviewModalOpen(false)}
+        open={previewExecution !== null}
+        onCancel={() => setPreviewExecution(null)}
         footer={null}
         width="calc(100vw - 60px)"
         style={{ top: 30, paddingBottom: 0 }}
@@ -984,84 +776,20 @@ export function WorkspaceApplication() {
         destroyOnClose
         maskClosable={false}
       >
-        {previewRegionResults.length > 0 ? (
+        {resultContributions.length > 1 ? (
           <Tabs
-            defaultActiveKey="blocks"
+            defaultActiveKey={resultContributions[0]?.id}
             size="small"
             tabBarStyle={{ padding: '0 12px', marginBottom: 0, background: '#fafafa' }}
             style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-            items={[
-              {
-                key: 'blocks',
-                label: `Blocks (${previewModalData.size})`,
-                children: (
-                  <div style={{ flex: 1, overflow: 'auto', height: 'calc(100vh - 170px)' }}>
-                    <PreviewWindow
-                      previewData={previewModalData.get(previewActiveBlockId) || null}
-                      allBlocks={Array.from(previewModalData.entries()).map(([id, data]) => ({
-                        blockId: id,
-                        label: data.label,
-                      }))}
-                      activeBlockId={previewActiveBlockId}
-                      onBlockChange={setPreviewActiveBlockId}
-                      onClose={() => setPreviewModalOpen(false)}
-                    />
-                  </div>
-                ),
-              },
-              {
-                key: 'regions',
-                label: `Regions (${previewRegionResults.length})`,
-                children: (
-                  <div style={{ flex: 1, overflow: 'auto', height: 'calc(100vh - 170px)', padding: 12 }}>
-                    {previewRegionResults.map(region => (
-                      <div key={region.regionId} style={{ marginBottom: 24 }}>
-                        <h4 style={{ margin: '0 0 8px', fontSize: 14, color: '#1677ff', fontWeight: 600 }}>
-                          {region.label || 'Region'}
-                        </h4>
-                        {region.blocks.length === 0 ? (
-                          <Empty description="No blocks detected" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                        ) : (
-                          region.blocks.map((block, bi) => (
-                            <div key={bi} style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, color: '#666', marginBottom: 4, fontWeight: 500 }}>
-                                {block.blockLabel} ({block.rows.length} rows × {block.rows[0]?.length ?? 0} cols)
-                              </div>
-                              <Table
-                                dataSource={block.rows.map((row, ri) => ({ key: ri, ...Object.fromEntries(row.map((cell, ci) => [`c${ci}`, cell])) }))}
-                                columns={Array.from({ length: Math.max(...block.rows.map(r => r.length), 0) }, (_, ci) => ({
-                                  title: String(ci),
-                                  dataIndex: `c${ci}`,
-                                  key: `c${ci}`,
-                                  width: 120,
-                                  ellipsis: true,
-                                }))}
-                                size="small"
-                                pagination={false}
-                                bordered
-                                scroll={{ x: 'max-content' }}
-                              />
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ),
-              },
-            ]}
+            items={resultContributions.map(contribution => ({
+              key: contribution.id,
+              label: `${contribution.label} (${contribution.count})`,
+              children: <div style={{ height: 'calc(100vh - 170px)' }}><Suspense fallback={<Spin />}>{contribution.render()}</Suspense></div>,
+            }))}
           />
         ) : (
-          <PreviewWindow
-            previewData={previewModalData.get(previewActiveBlockId) || null}
-            allBlocks={Array.from(previewModalData.entries()).map(([id, data]) => ({
-              blockId: id,
-              label: data.label,
-            }))}
-            activeBlockId={previewActiveBlockId}
-            onBlockChange={setPreviewActiveBlockId}
-            onClose={() => setPreviewModalOpen(false)}
-          />
+          resultContributions[0] ? <Suspense fallback={<Spin />}>{resultContributions[0].render()}</Suspense> : null
         )}
       </Modal>
       <Modal
@@ -1123,7 +851,7 @@ export function WorkspaceApplication() {
         okText="Remove source"
         okButtonProps={{ danger: true }}
       >
-        <p>This removes the workbook source and all blocks and regions mapped to it.</p>
+        <p>This removes the workbook source and all feature configuration mapped to it.</p>
       </Modal>
       <Modal
         title="Recover unsaved workspace?"

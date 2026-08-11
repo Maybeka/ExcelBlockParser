@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { loadExcelJsWorkbook } from '../services/exceljsWorkbook'
 import { parseWorkbook } from '../services/extraction'
 import { adaptPreviewData } from '../services/previewDataAdapter'
-import { deserializeSession, serializeSession } from '../services/serializer'
-import type { BlockConfig, CellRange } from '../types'
+import { loadProject, serializeProject } from '../services/serializer'
+import type { BlockConfig, CellRange, ProjectConfig } from '../types'
 
 const fixture = (name: string) => resolve(process.cwd(), 'examples', name)
 const workbookFixtures = ['empty.xlsx', 'm2_integration.xlsx', 'multi_sheet.xlsx', 'test_data.xlsx', 'test_data_v2.xlsx']
@@ -17,7 +17,7 @@ function range(a1Notation: string, startRow: number, startCol: number, endRow: n
 
 function recordsBlock(sourceRange: CellRange, columnCount: number): BlockConfig {
   return {
-    id: 'records', label: 'records', range: sourceRange, activeSheet: 'Records', headerRows: [0],
+    id: 'records', label: 'records', workbookId: 'records-workbook', range: sourceRange, activeSheet: 'Records', headerRows: [0],
     collapsed: false, selectionLocked: false, dataSnapshot: null, skipEmptyColumns: false,
     columns: Array.from({ length: columnCount }, (_, colIndex) => ({
       colIndex, colLetter: String.fromCharCode(65 + colIndex), suggestedKey: `column${colIndex + 1}`,
@@ -33,18 +33,24 @@ describe('stabilization release candidate', () => {
     expect(workbook.getActiveSheet()).not.toBeNull()
   })
 
-  it('preserves v2 template and parsed JSON output through an export/import round trip', () => {
+  it('preserves Project v3 configuration and parsed JSON through a round trip', () => {
     const block = recordsBlock(range('A1:B2', 0, 0, 1, 1), 2)
-    const exported = serializeSession([block], [], block.id, 'always-editable', {
+    const project: ProjectConfig = {
+      id: 'release-project', name: 'Release fixture',
+      workbooks: [{ id: 'records-workbook', name: 'records.xlsx', sheetNames: ['Records'], activeSheetName: 'Records' }],
+      activeWorkbookId: 'records-workbook', blocks: [block], regions: [], activeBlockId: block.id,
+      activeRegionId: null, focusMode: 'always-editable',
+    }
+    const exported = serializeProject(project, {
       success: true,
-      data: { records: [{ column1: 7, column2: 'stable' }] },
-      blocks: [{ blockId: block.id, label: block.label, data: [{ column1: 7, column2: 'stable' }], rowCount: 1 }],
+      data: { 'records-workbook': { records: [{ column1: 7, column2: 'stable' }] } },
+      blocks: [{ blockId: block.id, label: block.label, workbookId: 'records-workbook', data: [{ column1: 7, column2: 'stable' }], rowCount: 1 }],
     })
 
-    const restored = deserializeSession(JSON.parse(JSON.stringify(exported)))
-    expect(restored.blocks).toEqual([block])
-    expect(restored.parseResult).toMatchObject({
-      data: { records: [{ column1: 7, column2: 'stable' }] },
+    const restored = loadProject(JSON.parse(JSON.stringify(exported)))
+    expect(restored.project?.project.blocks).toEqual([block])
+    expect(restored.project?.parseResult).toMatchObject({
+      data: { 'records-workbook': { records: [{ column1: 7, column2: 'stable' }] } },
       blocks: [{ blockId: block.id, label: block.label, rowCount: 1 }],
     })
   })

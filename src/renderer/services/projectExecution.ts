@@ -1,8 +1,7 @@
 import type { BridgeResult } from '../../shared/bridgeResult'
 import type { ParseResult, PreviewData, ProjectConfig } from '../types'
-import { adaptPreviewData } from './previewDataAdapter'
-import { parseProjectWorkbooks } from './extraction'
 import type { WorkbookReader } from './workbook'
+import { builtInFeatureRegistry } from '../features/builtinRegistry'
 
 export type ProjectExecutionResult =
   | { status: 'stale' }
@@ -14,24 +13,21 @@ export async function executeProject(
   readFile: (path: string) => Promise<BridgeResult<ArrayBuffer>>,
   loadWorkbook: (buffer: ArrayBuffer) => Promise<WorkbookReader>,
   isCurrent: () => boolean = () => true,
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<ProjectExecutionResult> {
   const readers = new Map<string, WorkbookReader>()
   for (const workbook of project.workbooks) {
-    if (!isCurrent()) return { status: 'stale' }
+    if (!isCurrent() || signal.aborted) return { status: 'stale' }
     const path = paths[workbook.id]
     if (!path) continue
     const read = await readFile(path)
-    if (!isCurrent()) return { status: 'stale' }
+    if (!isCurrent() || signal.aborted) return { status: 'stale' }
     if (read.status === 'ok') readers.set(workbook.id, await loadWorkbook(read.value))
   }
-  if (!isCurrent()) return { status: 'stale' }
-  const execution = parseProjectWorkbooks(readers, project.blocks, project.regions)
-  const blocks = project.blocks.map(block => {
-    const snapshot = execution.snapshots.get(block.id)
-    return snapshot ? { ...block, dataSnapshot: snapshot } : block
-  })
-  const nextProject = { ...project, blocks }
-  const previews = new Map<string, PreviewData>()
-  for (const block of blocks) previews.set(block.id, adaptPreviewData(block, execution.result))
+  if (!isCurrent() || signal.aborted) return { status: 'stale' }
+  const execution = await builtInFeatureRegistry.execute(project, readers, signal)
+  if (!execution || !isCurrent() || signal.aborted) return { status: 'stale' }
+  const nextProject = builtInFeatureRegistry.applyExecution(project, execution)
+  const previews = builtInFeatureRegistry.previews(nextProject, execution.result)
   return { status: 'complete', result: execution.result, project: nextProject, previews }
 }

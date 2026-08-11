@@ -1,0 +1,66 @@
+{
+  "version": 3,
+  "exportedAt": "2026-08-09T00:00:00.000Z",
+  "project": {
+    "id": "project-1",
+    "name": "Adapter fixture",
+    "workbooks": [
+      {
+        "id": "book-1",
+        "name": "First.xlsx",
+        "sourcePath": "First.xlsx",
+        "sheetNames": ["Sheet1"],
+        "activeSheetName": "Sheet1"
+      }
+    ],
+    "activeWorkbookId": "book-1",
+    "blocks": [
+      {
+        "id": "block-1",
+        "label": "items",
+        "workbookId": "book-1",
+        "range": null,
+        "activeSheet": "Sheet1",
+        "headerRows": [0],
+        "collapsed": false,
+        "selectionLocked": false,
+        "columns": [],
+        "dataSnapshot": [[1]]
+      }
+    ],
+    "regions": [
+      {
+        "id": "region-1",
+        "label": "Region 1",
+        "workbookId": "book-1",
+        "range": null,
+        "activeSheet": "Sheet1",
+        "splitRules": [],
+        "blocks": [],
+        "collapsed": false,
+        "selectionLocked": false
+      }
+    ],
+    "activeBlockId": "block-1",
+    "activeRegionId": "region-1",
+    "focusMode": "activate-first"
+  },
+  "data": { "book-1": { "items": [{ "value": 1 }] } },
+  "blockResults": [
+    {
+      "blockId": "block-1",
+      "label": "items",
+      "workbookId": "book-1",
+      "data": [{ "value": 1 }],
+      "rowCount": 1
+    }
+  ],
+  "regionResults": [
+    {
+      "regionId": "region-1",
+      "label": "Region 1",
+      "workbookId": "book-1",
+      "blocks": []
+    }
+  ]
+}

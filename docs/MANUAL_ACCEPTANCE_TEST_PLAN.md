@@ -32,10 +32,10 @@ test folder outside the repository:
 - `multi_sheet.xlsx`
 - `m2_integration.xlsx`
 - `empty.xlsx`
-- `session.json`
+- `project.json`
 
-`session.json` is a legacy Session v1 fixture. It is deliberately used to
-verify the supported v1-to-Project-v3 import migration. Keep the original unchanged. Create a
+`project.json` is the strict Project v3 fixture used to verify the current
+project lifecycle and schema contract. Keep the original unchanged. Create a
 separate `output/` directory for generated JSON files and screenshots.
 
 ### Install The Artifact
@@ -53,7 +53,7 @@ separate `output/` directory for generated JSON files and screenshots.
 
 **Steps**
 
-1. Launch the installed app with no recovery session pending.
+1. Launch the installed app with no recovery project pending.
 2. Inspect the header and left workspace area.
 3. Resize the window to roughly 1024 x 700, then to a narrow width.
 
@@ -94,10 +94,10 @@ This is the required end-to-end acceptance case.
 
 **Steps**
 
-1. Select **Open Project** and choose the untouched `session.json` fixture.
-2. If warned that blocks will be replaced, select **Replace All**.
-3. Confirm the migration notice appears and the configured block is named
-   **Block 1** with range `Sheet1!A1:D9`.
+1. Select **Open Project** and choose the untouched `project.json` fixture.
+2. If warned that the current project will be replaced, select **Open Project**.
+3. Confirm the strict Project v3 fixture opens and the configured block is
+   named **Block 1** with range `Sheet1!A1:D9`.
 4. Select **Run & Preview** in the extraction panel.
 5. In the preview, inspect the parsed view and verify there are eight rows.
    The first row must contain `Alice`, `25`, `88.5`, and `New York`; the last
@@ -110,8 +110,8 @@ This is the required end-to-end acceptance case.
 
 **Expected result**
 
-- Import succeeds and reports the v1 migration; it does not silently discard
-  the configuration.
+- Import succeeds as Project v3 and does not silently discard or normalize the
+  configuration. Project versions 1 and 2 must instead be rejected.
 - Preview shows the expected parsed records with numeric age/score values.
 - The project is valid JSON with `"version": 3`, `project`, `data`, and
   `blockResults`.
@@ -171,7 +171,7 @@ the primary evidence for the stable contract described in
 **Steps**
 
 1. Open `test_data_v2.xlsx`.
-2. Import the original `session.json` fixture and choose **Replace All**.
+2. Import the original `project.json` fixture and choose **Replace All**.
 3. Read the reconciliation message or use the affected block's sync action to
    open its reconciliation flow.
 4. Inspect the reported changed, added, removed, or shifted columns.
@@ -247,7 +247,7 @@ data before testing the next artifact.
 
 - Empty or invalid selections produce actionable diagnostics rather than a
   crash or fabricated output.
-- Unsupported session versions and malformed JSON show an import error and do
+- Unsupported project versions and malformed JSON show an import error and do
   not replace the existing workspace.
 - Cancelling export leaves the workspace/recovery state available.
 

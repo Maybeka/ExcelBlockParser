@@ -1,6 +1,6 @@
 # Contract-Driving Scenario: External Structured Result Review
 
-**Status:** Concrete reference scenario; not approved for implementation
+**Status:** Bounded development fixture implemented; production workflow deferred
 **Purpose:** Shape the built-in feature-module contract before Gate B
 **Last assessed:** 2026-08-09
 
@@ -66,6 +66,10 @@ selection, or focus mode. A future dedicated result schema may replace this
 input shape through an explicit versioned migration.
 
 ## 4. Durable State
+
+The Phase B fixture does not persist review state because Project v3 has no
+feature-state envelope. The following remains a requirement for any future
+production promotion:
 
 The future module owns a serializable, versioned review state with these
 semantics:

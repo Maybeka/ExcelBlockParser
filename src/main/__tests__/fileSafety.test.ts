@@ -11,7 +11,7 @@ describe('main-process file safety policy', () => {
   it('constrains save names to a single JSON filename', () => {
     expect(sanitizeJsonFileName('../../unsafe name')).toBe('unsafe_name.json')
     expect(sanitizeJsonFileName('report.json')).toBe('report.json')
-    expect(sanitizeJsonFileName(null)).toBe('session.json')
+    expect(sanitizeJsonFileName(null)).toBe('project.json')
   })
 
   it('rejects timed-out operations', async () => {

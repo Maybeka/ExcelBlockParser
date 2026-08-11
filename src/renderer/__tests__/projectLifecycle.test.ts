@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { bridgeCancelled, bridgeError, bridgeOk } from '../../shared/bridgeResult'
 import type { ProjectConfig } from '../types'
-import { decodeProjectDocument, inspectProjectWorkbookSources, saveProjectDocument } from '../services/projectLifecycle'
+import { decodeProjectDocument, inspectProjectWorkbookSources, MAX_PROJECT_JSON_BYTES, saveProjectDocument } from '../services/projectLifecycle'
 import { serializeProject } from '../services/serializer'
 import type { WorkbookReader } from '../services/workbook'
+import { builtInFeatureRegistry } from '../features/builtinRegistry'
 
 const project: ProjectConfig = {
   id: 'project-1', name: 'Demo', workbooks: [
@@ -16,6 +17,10 @@ const reader: WorkbookReader = { sheetNames: () => ['Sheet1'], getActiveSheet: (
 describe('project lifecycle coordinator', () => {
   it('rejects malformed JSON without producing a document', () => {
     expect(decodeProjectDocument('{')).toEqual({ status: 'error', message: 'Invalid config file: failed to parse JSON' })
+  })
+  it('rejects oversized project JSON before parsing', () => {
+    const oversized = `{"padding":"${'x'.repeat(MAX_PROJECT_JSON_BYTES)}"}`
+    expect(decodeProjectDocument(oversized)).toEqual({ status: 'error', message: 'Invalid project file: exceeds the 25 MB limit.' })
   })
   it('uses the opened JSON filename as the project name', () => {
     const decoded = decodeProjectDocument(JSON.stringify(serializeProject(project, null)), '/tmp/Renamed.json')
@@ -35,16 +40,16 @@ describe('project lifecycle coordinator', () => {
     expect(result).toBeNull()
   })
   it('preserves state on cancelled and failed saves', async () => {
-    const cancelled = await saveProjectDocument({ saveJson: async () => bridgeCancelled(), saveJsonToPath: async () => bridgeCancelled() }, project, null, null, false)
+    const cancelled = await saveProjectDocument({ saveJson: async () => bridgeCancelled(), saveJsonToPath: async () => bridgeCancelled() }, project, null, null, false, current => builtInFeatureRegistry.prepareForSave(current))
     expect(cancelled.status).toBe('cancelled')
-    const failed = await saveProjectDocument({ saveJson: async () => bridgeError('disk full'), saveJsonToPath: async () => bridgeError('disk full') }, project, null, null, false)
+    const failed = await saveProjectDocument({ saveJson: async () => bridgeError('disk full'), saveJsonToPath: async () => bridgeError('disk full') }, project, null, null, false, current => builtInFeatureRegistry.prepareForSave(current))
     expect(failed).toEqual({ status: 'error', message: 'disk full' })
     expect(project.name).toBe('Demo')
   })
   it('renames and rewrites a Save As document to match its selected path', async () => {
     const writes: string[] = []
     const saveJsonToPath = vi.fn(async (_path: string, content: string) => { writes.push(content); return bridgeOk({ filePath: '/tmp/New Name.json' }) })
-    const result = await saveProjectDocument({ saveJson: async (_name, content) => { writes.push(content); return bridgeOk({ filePath: '/tmp/New Name.json' }) }, saveJsonToPath }, project, null, null, true)
+    const result = await saveProjectDocument({ saveJson: async (_name, content) => { writes.push(content); return bridgeOk({ filePath: '/tmp/New Name.json' }) }, saveJsonToPath }, project, null, null, true, current => builtInFeatureRegistry.prepareForSave(current))
     expect(result.status).toBe('ok')
     if (result.status === 'ok') expect(result.project.name).toBe('New Name')
     expect(saveJsonToPath).toHaveBeenCalledOnce()

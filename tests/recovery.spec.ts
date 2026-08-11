@@ -15,12 +15,12 @@ test.describe('M4 recovery controls', () => {
     await expect(page.getByRole('textbox', { name: 'block_2' })).toBeVisible()
   })
 
-  test('offers an explicit choice when a recovery session exists', async ({ page }) => {
+  test('offers an explicit choice when a recovery project exists', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('excel-block-parser.recovery', JSON.stringify({
-        version: 2,
+        version: 3,
         exportedAt: '2026-07-15T00:00:00.000Z',
-        config: { blocks: [{ id: 'recovered', label: 'recovered', range: null, activeSheet: null, headerRows: [0], collapsed: false, selectionLocked: false, columns: [], dataSnapshot: null }], activeBlockId: 'recovered', focusMode: 'always-editable', regions: [] },
+        project: { id: 'recovered-project', name: 'Recovered', workbooks: [], activeWorkbookId: null, blocks: [], regions: [], activeBlockId: '', activeRegionId: null, focusMode: 'always-editable' },
         data: {}, blockResults: [],
       }))
     })

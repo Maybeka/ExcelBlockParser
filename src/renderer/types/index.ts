@@ -73,24 +73,6 @@ export interface ParseDiagnostic {
   column?: string
 }
 
-export interface ExportedSession {
-  version: 3 | 2 | 1
-  exportedAt: string
-  sourceFileName?: string
-  config: SessionConfig
-  data: Record<string, unknown>
-  blockResults: BlockParseResult[]
-  regions?: RegionConfig[]
-  regionResults?: RegionParseResult[]
-}
-
-export interface SessionConfig {
-  blocks: BlockConfig[]
-  activeBlockId: string
-  focusMode: 'always-editable' | 'activate-first'
-  regions?: RegionConfig[]
-}
-
 export interface ProjectWorkbook {
   id: string
   name: string

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Button, Divider, Empty, Tooltip } from 'antd'
-import { ArrowDownOutlined, ArrowUpOutlined, CaretDownOutlined, CaretRightOutlined, FileExcelOutlined, FolderOpenOutlined, FolderOutlined, LockOutlined, TableOutlined, UnlockOutlined } from '@ant-design/icons'
-import type { BlockConfig, ProjectWorkbook, RegionConfig } from '../types'
+import { ArrowDownOutlined, ArrowUpOutlined, CaretDownOutlined, CaretRightOutlined, FileExcelOutlined, FolderOpenOutlined, FolderOutlined, LockOutlined, PlusOutlined, TableOutlined, UnlockOutlined } from '@ant-design/icons'
+import type { ProjectWorkbook } from '../types'
+import type { WorkspaceFeatureNavigationSection } from '../features/panel/workspacePanel'
 
 interface WorkspaceNavigatorProps {
   projectName: string
@@ -9,17 +10,10 @@ interface WorkspaceNavigatorProps {
   workbooks: ProjectWorkbook[]
   activeWorkbookId: string | null
   activeSheet: string | null
-  blocks: BlockConfig[]
-  regions: RegionConfig[]
-  activeBlockId: string
-  activeRegionId: string | null
+  featureSections: WorkspaceFeatureNavigationSection[]
   onOpen: () => void
   onSelectWorkbook: (id: string, sheetName?: string) => void
   onSelectSheet: (name: string) => void
-  onSelectBlock: (id: string) => void
-  onSelectRegion: (id: string) => void
-  onMoveBlock: (id: string, direction: -1 | 1) => void
-  onMoveRegion: (id: string, direction: -1 | 1) => void
 }
 
 function ListControls({ canUp, canDown, onMoveUp, onMoveDown }: { canUp: boolean; canDown: boolean; onMoveUp: () => void; onMoveDown: () => void }) {
@@ -29,10 +23,9 @@ function ListControls({ canUp, canDown, onMoveUp, onMoveDown }: { canUp: boolean
   </span>
 }
 
-export function WorkspaceNavigator({ projectName, fileName, workbooks, activeWorkbookId, activeSheet, blocks, regions, activeBlockId, activeRegionId, onOpen, onSelectWorkbook, onSelectSheet, onSelectBlock, onSelectRegion, onMoveBlock, onMoveRegion }: WorkspaceNavigatorProps) {
+export function WorkspaceNavigator({ projectName, fileName, workbooks, activeWorkbookId, activeSheet, featureSections, onOpen, onSelectWorkbook, onSelectSheet }: WorkspaceNavigatorProps) {
   const [workbooksExpanded, setWorkbooksExpanded] = useState(true)
-  const [extractorsExpanded, setExtractorsExpanded] = useState(true)
-  const [regionsExpanded, setRegionsExpanded] = useState(true)
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   const sectionTitle = (label: string, count: number, expanded: boolean, onToggle: () => void) => (
     <button type="button" className="workspace-section-title" aria-label={label} aria-expanded={expanded} onClick={onToggle}>
@@ -73,31 +66,28 @@ export function WorkspaceNavigator({ projectName, fileName, workbooks, activeWor
     })}
     {workbooksExpanded && workbooks.length === 0 && <div className="workspace-empty">Open workbooks whenever you need them.</div>}
 
-    <Divider style={{ margin: '14px 0 8px' }} />
-    {sectionTitle('Extractors', blocks.length, extractorsExpanded, () => setExtractorsExpanded(expanded => !expanded))}
-    {extractorsExpanded && blocks.map((block, index) => (
-      <div key={block.id} className={`workspace-row ${block.id === activeBlockId ? 'is-active' : ''}`} onClick={() => onSelectBlock(block.id)}>
-        <button type="button" className="workspace-item workspace-item-main" onClick={() => onSelectBlock(block.id)}>
-          <span className="workspace-avatar workspace-block-avatar">{block.selectionLocked ? <LockOutlined /> : <UnlockOutlined />}</span>
-          <span title={block.label}>{block.label || `block_${index + 1}`}</span>
-          {block.range && <small>{block.range.a1Notation}</small>}
-        </button>
-        <ListControls canUp={index > 0} canDown={index < blocks.length - 1} onMoveUp={() => onMoveBlock(block.id, -1)} onMoveDown={() => onMoveBlock(block.id, 1)} />
+    {featureSections.map(section => {
+      const expanded = expandedSections[section.id] ?? true
+      return <div key={section.id} className="workspace-feature-section">
+        <Divider style={{ margin: '14px 0 8px' }} />
+        {sectionTitle(section.label, section.items.length, expanded, () => setExpandedSections(current => ({ ...current, [section.id]: !expanded })))}
+        {expanded && (section.items.length === 0 ? <div className="workspace-empty">{section.emptyText}</div> : section.items.map((item, index) => (
+          <div key={item.id} className={`workspace-row ${item.active ? 'is-active' : ''}`} onClick={item.select}>
+            <button type="button" className="workspace-item workspace-item-main" onClick={item.select}>
+              <span className={`workspace-avatar ${item.avatarClassName ?? ''}`}>{item.locked ? <LockOutlined /> : <UnlockOutlined />}</span>
+              <span title={item.label}>{item.label}</span>
+              {item.detail && <small>{item.detail}</small>}
+            </button>
+            <ListControls canUp={index > 0} canDown={index < section.items.length - 1} onMoveUp={() => item.move(-1)} onMoveDown={() => item.move(1)} />
+          </div>
+        )))}
+        {expanded && section.addAction && (
+          <Button className="workspace-section-add" size="small" type="text" icon={<PlusOutlined />} onClick={section.addAction.run}>
+            {section.addAction.label}
+          </Button>
+        )}
       </div>
-    ))}
-
-    <Divider style={{ margin: '14px 0 8px' }} />
-    {sectionTitle('Regions', regions.length, regionsExpanded, () => setRegionsExpanded(expanded => !expanded))}
-    {regionsExpanded && (regions.length === 0 ? <div className="workspace-empty">No regions configured.</div> : regions.map((region, index) => (
-      <div key={region.id} className={`workspace-row ${region.id === activeRegionId ? 'is-active' : ''}`} onClick={() => onSelectRegion(region.id)}>
-        <button type="button" className="workspace-item workspace-item-main" onClick={() => onSelectRegion(region.id)}>
-          <span className="workspace-avatar workspace-region-avatar">{region.selectionLocked ? <LockOutlined /> : <UnlockOutlined />}</span>
-          <span title={region.label}>{region.label || `region_${index + 1}`}</span>
-          {region.range && <small>{region.range.a1Notation}</small>}
-        </button>
-        <ListControls canUp={index > 0} canDown={index < regions.length - 1} onMoveUp={() => onMoveRegion(region.id, -1)} onMoveDown={() => onMoveRegion(region.id, 1)} />
-      </div>
-    )))}
+    })}
     {!fileName && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} style={{ marginTop: 24 }} />}
   </nav>
 }

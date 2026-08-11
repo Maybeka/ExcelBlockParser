@@ -25,6 +25,29 @@ function validRange(range: CellRange): boolean { return Number.isInteger(range.s
 function failed(diagnostics: ParseDiagnostic[]): ParseResult { return { success: false, data: {}, blocks: [], diagnostics, error: diagnostics[0]?.message } }
 
 export interface ExtractionExecution { result: ParseResult; snapshots: Map<string, unknown[][]> }
+export interface RegionExecution { regionResults: RegionParseResult[]; diagnostics: ParseDiagnostic[] }
+
+export function parseWorkbookRegions(workbook: WorkbookReader, regions: RegionConfig[]): RegionExecution {
+  const diagnostics: ParseDiagnostic[] = []
+  const regionResults: RegionParseResult[] = []
+  for (const region of regions.filter(item => item.range)) {
+    const sheet = region.activeSheet ? workbook.getSheet(region.activeSheet) : workbook.getActiveSheet()
+    if (!sheet) {
+      diagnostics.push({ code: 'sheet-missing', severity: 'error', regionId: region.id, message: `Region "${region.label}" references an unavailable sheet.` })
+      continue
+    }
+    const values = sheet.getValues(region.range!)
+    const strings = values.map(row => row.map(value => value == null ? '' : String(value)))
+    const ranges = detectBlocks(region.range!, region.splitRules, (row, col) => strings[row - region.range!.startRow]?.[col - region.range!.startCol] ?? '')
+    const resultBlocks: RegionBlockResult[] = ranges.map((range, index) => ({
+      blockLabel: `block_${index + 1}`,
+      rows: strings.slice(range.startRow - region.range!.startRow, range.endRow - region.range!.startRow + 1),
+    }))
+    regionResults.push({ regionId: region.id, label: region.label, blocks: resultBlocks })
+  }
+  return { regionResults, diagnostics }
+}
+
 export function parseWorkbook(workbook: WorkbookReader, blocks: BlockConfig[], regions: RegionConfig[]): ExtractionExecution {
   const diagnostics: ParseDiagnostic[] = []; const activeBlocks = blocks.filter(block => block.range)
   if (!activeBlocks.length) return { result: failed([{ code: 'invalid-range', severity: 'error', message: 'No blocks with a selected range' }]), snapshots: new Map() }
@@ -43,9 +66,34 @@ export function parseWorkbook(workbook: WorkbookReader, blocks: BlockConfig[], r
     const parsed = rows.map((row, rowIndex) => { const entry: Record<string, unknown> = {}; columns.forEach((column, index) => { const raw = row[column.colIndex - block.range!.startCol] ?? null; const map = column.valueMap.find(item => item.from === String(raw).trim()); const converted = map ? { value: map.to, failed: false } : convertValue(raw, column.type === 'valueMapping' ? (column.valueMapFallbackType ?? 'auto') : column.type); if (converted.failed) diagnostics.push({ code: 'type-conversion', severity: 'warning', blockId: block.id, row: rowIndex, column: keys[index], message: `Block "${block.label}", row ${rowIndex + 1}, column "${keys[index]}" could not be converted to ${column.type}.` }); entry[keys[index]] = converted.value }); return entry })
     blockResults.push({ blockId: block.id, label: block.label, data: parsed, rowCount: parsed.length }); data[block.label] = parsed
   }
-  const regionResults: RegionParseResult[] = []
-  for (const region of regions.filter(item => item.range)) { const sheet = region.activeSheet ? workbook.getSheet(region.activeSheet) : workbook.getActiveSheet(); if (!sheet) { diagnostics.push({ code: 'sheet-missing', severity: 'error', regionId: region.id, message: `Region "${region.label}" references an unavailable sheet.` }); continue }; const values = sheet.getValues(region.range!); const strings = values.map(row => row.map(value => value == null ? '' : String(value))); const ranges = detectBlocks(region.range!, region.splitRules, (row, col) => strings[row - region.range!.startRow]?.[col - region.range!.startCol] ?? ''); const resultBlocks: RegionBlockResult[] = ranges.map((range, index) => ({ blockLabel: `block_${index + 1}`, rows: strings.slice(range.startRow - region.range!.startRow, range.endRow - region.range!.startRow + 1) })); regionResults.push({ regionId: region.id, label: region.label, blocks: resultBlocks }) }
+  const regionExecution = parseWorkbookRegions(workbook, regions)
+  diagnostics.push(...regionExecution.diagnostics)
+  const regionResults = regionExecution.regionResults
   const errors = diagnostics.filter(diagnostic => diagnostic.severity === 'error'); return { result: { success: errors.length === 0, data, blocks: blockResults, regionResults, diagnostics, error: errors[0]?.message }, snapshots }
+}
+
+export function parseProjectRegions(
+  workbooks: ReadonlyMap<string, WorkbookReader>,
+  regions: RegionConfig[],
+): RegionExecution {
+  const diagnostics: ParseDiagnostic[] = []
+  const regionResults: RegionParseResult[] = []
+  const referencedWorkbookIds = new Set(regions.filter(region => region.range).map(region => region.workbookId ?? ''))
+  for (const workbookId of referencedWorkbookIds) {
+    if (!workbookId) {
+      diagnostics.push({ code: 'invalid-range', severity: 'error', workbookId: null, message: 'A project item has no workbook mapping.' })
+      continue
+    }
+    const workbook = workbooks.get(workbookId)
+    if (!workbook) {
+      diagnostics.push({ code: 'sheet-missing', severity: 'error', workbookId, message: `Workbook "${workbookId}" is not attached to this project.` })
+      continue
+    }
+    const execution = parseWorkbookRegions(workbook, regions.filter(region => region.workbookId === workbookId))
+    execution.regionResults.forEach(result => regionResults.push({ ...result, workbookId }))
+    execution.diagnostics.forEach(diagnostic => diagnostics.push({ ...diagnostic, workbookId }))
+  }
+  return { regionResults, diagnostics }
 }
 
 /** Parses every workbook referenced by a project without allowing a block to

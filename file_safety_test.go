@@ -49,25 +49,25 @@ func TestFilePolicyRejectsUnsupportedOrOversizedWorkbook(t *testing.T) {
 }
 
 func TestSanitizeJSONFileName(t *testing.T) {
-	if actual := sanitizeJSONFileName("../../unsafe report", "session.json"); actual != "unsafe_report.json" {
+	if actual := sanitizeJSONFileName("../../unsafe report", "project.json"); actual != "unsafe_report.json" {
 		t.Fatalf("sanitize unsafe name = %q", actual)
 	}
-	if actual := sanitizeJSONFileName("report.JSON", "session.json"); actual != "report.JSON" {
+	if actual := sanitizeJSONFileName("report.JSON", "project.json"); actual != "report.JSON" {
 		t.Fatalf("sanitize JSON name = %q", actual)
 	}
-	if actual := sanitizeJSONFileName("", "session.json"); actual != "session.json" {
+	if actual := sanitizeJSONFileName("", "project.json"); actual != "project.json" {
 		t.Fatalf("sanitize empty name = %q", actual)
 	}
 }
 
 func TestJSONAndRecoveryValidation(t *testing.T) {
 	directory := t.TempDir()
-	valid := writeTestFile(t, directory, "session.json", `{"version":2}`)
+	valid := writeTestFile(t, directory, "project.json", `{"version":3}`)
 	invalid := writeTestFile(t, directory, "invalid.json", `{`)
-	if content, err := readJSONFile(valid, maxSessionBytes, "Session file"); err != nil || content != `{"version":2}` {
+	if content, err := readJSONFile(valid, maxProjectBytes, "Project file"); err != nil || content != `{"version":3}` {
 		t.Fatalf("read valid JSON = %q, %v", content, err)
 	}
-	if _, err := readJSONFile(invalid, maxSessionBytes, "Session file"); err == nil {
+	if _, err := readJSONFile(invalid, maxProjectBytes, "Project file"); err == nil {
 		t.Fatal("expected invalid JSON to be rejected")
 	}
 	if err := saveRecovery(directory, `{"blocks":[]}`); err != nil {
@@ -105,15 +105,15 @@ func TestRecoveryAndExportRejectCorruptOrOversizedData(t *testing.T) {
 		t.Fatal("expected invalid export JSON to be rejected")
 	}
 	oversized := writeTestFile(t, directory, "oversized.json", strings.Repeat("x", 6))
-	if _, err := readJSONFile(oversized, 5, "Session file"); err == nil {
-		t.Fatal("expected oversized session file to be rejected")
+	if _, err := readJSONFile(oversized, 5, "Project file"); err == nil {
+		t.Fatal("expected oversized project file to be rejected")
 	}
 }
 
 func TestWriteJSONFileUsesSafeRegularDestination(t *testing.T) {
 	directory := t.TempDir()
 	destination := filepath.Join(directory, "output.json")
-	if err := writeJSONFile(destination, `{"version":2}`); err != nil {
+	if err := writeJSONFile(destination, `{"version":3}`); err != nil {
 		t.Fatalf("write JSON file: %v", err)
 	}
 	if err := writeJSONFile(destination, `{"version":3}`); err != nil {
@@ -123,7 +123,7 @@ func TestWriteJSONFileUsesSafeRegularDestination(t *testing.T) {
 	if err != nil || string(content) != `{"version":3}` {
 		t.Fatalf("exported content = %q, %v", content, err)
 	}
-	if err := writeJSONFile(filepath.Join(directory, "output.txt"), `{"version":2}`); err == nil {
+	if err := writeJSONFile(filepath.Join(directory, "output.txt"), `{"version":3}`); err == nil {
 		t.Fatal("expected non-JSON destination to be rejected")
 	}
 
