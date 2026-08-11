@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Input, Button, Select } from 'antd'
+import { Input, InputNumber, Button, Select } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { RegionConfig, SplitRuleType } from '../types'
 import { BlockCard } from './BlockCard'
@@ -79,12 +79,18 @@ export function RegionPanel({ regions, activeRegionId, onActivateRegion, onRegio
                   {region.splitRules.map((rule, i) => (
                     <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
                       <Select size="small" value={rule.type} style={{ width: 110, height: 22, fontSize: 13 }}
-                        onChange={v => { const rules = [...region.splitRules]; rules[i] = { type: v as SplitRuleType, keyword: v === 'keyword' ? '' : undefined }; onRegionChange(region.id, { splitRules: rules }) }}
+                        onChange={v => { const rules = [...region.splitRules]; rules[i] = { type: v as SplitRuleType, keyword: v === 'keyword' ? '' : undefined, minGap: v === 'keyword' ? undefined : 1 }; onRegionChange(region.id, { splitRules: rules }) }}
                         options={[{ value: 'keyword', label: 'Keyword' }, { value: 'emptyRow', label: 'Empty Row' }, { value: 'emptyColumn', label: 'Empty Col' }]} />
                       {rule.type === 'keyword' && (
                         <Input size="small" value={rule.keyword || ''} placeholder="e.g. ---"
                           onChange={e => { const rules = [...region.splitRules]; rules[i] = { ...rules[i], keyword: e.target.value }; onRegionChange(region.id, { splitRules: rules }) }}
                           style={{ flex: 1, height: 22, fontSize: 13 }} />
+                      )}
+                      {rule.type !== 'keyword' && (
+                        <InputNumber size="small" min={1} precision={0} value={rule.minGap ?? 1}
+                          aria-label="Minimum consecutive gap"
+                          onChange={value => { const rules = [...region.splitRules]; rules[i] = { ...rules[i], minGap: value ?? 1 }; onRegionChange(region.id, { splitRules: rules }) }}
+                          style={{ width: 72 }} />
                       )}
                       <Button size="small" type="text" danger icon={<DeleteOutlined />}
                         onClick={() => { const rules = region.splitRules.filter((_, j) => j !== i); onRegionChange(region.id, { splitRules: rules }) }} />

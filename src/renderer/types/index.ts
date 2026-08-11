@@ -202,6 +202,7 @@ export interface RegionConfig {
 export interface RegionBlockResult {
   blockLabel: string
   rows: string[][]
+  range?: CellRange
 }
 
 export interface RegionParseResult {

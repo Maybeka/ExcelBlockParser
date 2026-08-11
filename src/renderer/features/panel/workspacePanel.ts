@@ -29,7 +29,6 @@ export interface WorkspaceFeatureResultContext {
   project: ProjectConfig
   result: ParseResult
   previews: ReadonlyMap<string, PreviewData>
-  close(): void
 }
 
 export interface WorkspaceFeatureResultContribution {

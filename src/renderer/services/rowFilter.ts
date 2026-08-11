@@ -52,6 +52,7 @@ export function applyRowIgnoreRules(
   rows: string[][],
   rules: RowIgnoreRule[],
   columnKeys: string[],
+  sourceColumnOffsets: number[] = columnKeys.map((_, index) => index),
 ): string[][] {
   if (!rules || rules.length === 0) {
     return rows
@@ -68,7 +69,7 @@ export function applyRowIgnoreRules(
         if (colIndex === -1) {
           return false
         }
-        cellValue = row[colIndex]
+        cellValue = row[sourceColumnOffsets[colIndex]]
       } else {
         continue
       }

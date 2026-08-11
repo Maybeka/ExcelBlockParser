@@ -101,7 +101,7 @@ function validateRegion(value: unknown, index: number): string | null {
     || Boolean(unknownKey(rule, new Set(['type', 'keyword', 'minGap'])))
     || !splitTypes.has(String(rule.type))
     || (rule.keyword !== undefined && typeof rule.keyword !== 'string')
-    || (rule.minGap !== undefined && (typeof rule.minGap !== 'number' || !Number.isFinite(rule.minGap) || rule.minGap < 0)))) return `Invalid region "${value.label}": splitRules are invalid.`
+    || (rule.minGap !== undefined && (!Number.isInteger(rule.minGap) || Number(rule.minGap) < 1)))) return `Invalid region "${value.label}": splitRules are invalid.`
   if (!Array.isArray(value.blocks)) return `Invalid region "${value.label}": blocks are invalid.`
   for (let blockIndex = 0; blockIndex < value.blocks.length; blockIndex++) {
     const error = validateProjectBlock(value.blocks[blockIndex], blockIndex, true)
@@ -135,8 +135,9 @@ function validateRegionResult(value: unknown, index: number): string | null {
   if (!isRecord(value) || unknownKey(value, new Set(['regionId', 'label', 'workbookId', 'blocks']))) return `Invalid region result at index ${index}.`
   if (typeof value.regionId !== 'string' || !value.regionId || typeof value.label !== 'string' || typeof value.workbookId !== 'string' || !value.workbookId || !Array.isArray(value.blocks)) return `Invalid region result at index ${index}: identity is invalid.`
   if (value.blocks.some(block => !isRecord(block)
-    || Boolean(unknownKey(block, new Set(['blockLabel', 'rows'])))
+    || Boolean(unknownKey(block, new Set(['blockLabel', 'rows', 'range'])))
     || typeof block.blockLabel !== 'string'
+    || (block.range !== undefined && !validateRange(block.range))
     || !Array.isArray(block.rows)
     || block.rows.some(row => !Array.isArray(row) || row.some(cell => typeof cell !== 'string')))) return `Invalid region result at index ${index}: blocks are invalid.`
   return null

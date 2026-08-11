@@ -131,7 +131,7 @@
       "properties": {
         "type": { "enum": ["keyword", "emptyRow", "emptyColumn"] },
         "keyword": { "type": "string" },
-        "minGap": { "type": "number", "minimum": 0 }
+        "minGap": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
     },
@@ -197,7 +197,8 @@
       "required": ["blockLabel", "rows"],
       "properties": {
         "blockLabel": { "type": "string" },
-        "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+        "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } },
+        "range": { "$ref": "#/$defs/cellRange" }
       },
       "additionalProperties": false
     },

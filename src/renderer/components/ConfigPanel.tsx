@@ -1458,7 +1458,7 @@ export function ConfigPanel({
                             setExpandedRowFilters(next)
                           }}>
                           {expandedRowFilters.has(block.id) ? <CaretDownOutlined /> : <CaretRightOutlined />}
-                          {' '}Row Filters {block.ignoreRules?.length ? `(${block.ignoreRules.length})` : ''}
+                          {' '}Keep Rows (AND) {block.ignoreRules?.length ? `(${block.ignoreRules.length})` : ''}
                         </span>
                         {expandedRowFilters.has(block.id) && (
                           <Button size="small" type="link" icon={<PlusOutlined />}
@@ -1523,18 +1523,18 @@ export function ConfigPanel({
                       )}
                     </div>
 
-                    {/* Computed Properties */}
+                    {/* Downstream metadata; expressions are intentionally not executed by this app. */}
                     <div style={{ marginTop: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, color: '#999', cursor: 'pointer', userSelect: 'none' }}
+                        <Tooltip title="Stored for downstream code generation; not executed during parsing."><span style={{ fontSize: 11, color: '#999', cursor: 'pointer', userSelect: 'none' }}
                           onClick={() => {
                             const next = new Set(expandedComputedProps)
                             expandedComputedProps.has(block.id) ? next.delete(block.id) : next.add(block.id)
                             setExpandedComputedProps(next)
                           }}>
                           {expandedComputedProps.has(block.id) ? <CaretDownOutlined /> : <CaretRightOutlined />}
-                          {' '}Computed Properties {block.computedProperties?.length ? `(${block.computedProperties.length})` : ''}
-                        </span>
+                          {' '}Downstream Properties {block.computedProperties?.length ? `(${block.computedProperties.length})` : ''}
+                        </span></Tooltip>
                         {expandedComputedProps.has(block.id) && (
                           <Button size="small" type="link" icon={<PlusOutlined />}
                             onClick={() => {

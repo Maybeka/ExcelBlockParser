@@ -116,6 +116,16 @@ html, body, #root {
 .workspace-item-actions .ant-btn { height: 22px; min-width: 22px; padding: 0; }
 
 .preview-modal .ant-modal-content { border-radius: 10px; overflow: hidden; }
+.preview-host-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 20;
+}
+.preview-modal .preview-header,
+.preview-modal .ant-tabs-nav {
+  padding-right: 58px !important;
+}
 .preview-shell { background: #fff; display: flex; flex-direction: column; }
 .preview-header { align-items: center; background: #fff; border-bottom: 1px solid #e4ecf2; display: flex; height: 56px; justify-content: space-between; line-height: normal; padding: 0 14px; }
 .preview-title-group { align-items: center; display: flex; gap: 9px; min-width: 0; }

@@ -79,6 +79,15 @@ describe('applyRowIgnoreRules', () => {
     expect(result.map(r => r[0])).toEqual(['alice', 'eve'])
   })
 
+  it('uses explicit source offsets when filtered columns are not contiguous', () => {
+    const rows = [
+      ['skip-a', 'keep', 'skip-b', 'active'],
+      ['skip-a', 'keep', 'skip-b', 'inactive'],
+    ]
+    const result = applyRowIgnoreRules(rows, [r('status', 'eq', 'active')], ['name', 'status'], [1, 3])
+    expect(result).toEqual([rows[0]])
+  })
+
   it('no matching rows returns an empty array', () => {
     const result = applyRowIgnoreRules(ROWS, [r('status', 'eq', 'nonexistent')], COLUMNS)
     expect(result).toEqual([])

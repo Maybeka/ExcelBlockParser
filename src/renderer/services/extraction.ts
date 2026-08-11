@@ -41,7 +41,13 @@ export function parseWorkbookRegions(workbook: WorkbookReader, regions: RegionCo
     const ranges = detectBlocks(region.range!, region.splitRules, (row, col) => strings[row - region.range!.startRow]?.[col - region.range!.startCol] ?? '')
     const resultBlocks: RegionBlockResult[] = ranges.map((range, index) => ({
       blockLabel: `block_${index + 1}`,
-      rows: strings.slice(range.startRow - region.range!.startRow, range.endRow - region.range!.startRow + 1),
+      range: {
+        ...range,
+        a1Notation: `${colIndexToLetter(range.startCol)}${range.startRow + 1}:${colIndexToLetter(range.endCol)}${range.endRow + 1}`,
+      },
+      rows: strings
+        .slice(range.startRow - region.range!.startRow, range.endRow - region.range!.startRow + 1)
+        .map(row => row.slice(range.startCol - region.range!.startCol, range.endCol - region.range!.startCol + 1)),
     }))
     regionResults.push({ regionId: region.id, label: region.label, blocks: resultBlocks })
   }
@@ -61,7 +67,9 @@ export function parseWorkbook(workbook: WorkbookReader, blocks: BlockConfig[], r
     const headerRows = new Set(block.headerRows); let rows = values.filter((_, index) => !headerRows.has(index)); let columns = block.columns.filter(column => !column.skip)
     if (block.skipEmptyColumns) { const empty = detectEmptyColumns(rows); columns = columns.filter(column => !empty.has(column.colIndex - block.range!.startCol)) }
     if (!columns.length) { blockResults.push({ blockId: block.id, label: block.label, data: [], rowCount: 0 }); data[block.label] = []; continue }
-    const keys = columns.map(column => column.key || column.suggestedKey); const filteredRows = applyRowIgnoreRules(rows.map(row => row.map(value => value == null ? '' : String(value))), block.ignoreRules ?? [], keys)
+    const keys = columns.map(column => column.key || column.suggestedKey)
+    const sourceColumnOffsets = columns.map(column => column.colIndex - block.range!.startCol)
+    const filteredRows = applyRowIgnoreRules(rows.map(row => row.map(value => value == null ? '' : String(value))), block.ignoreRules ?? [], keys, sourceColumnOffsets)
     rows = filteredRows
     const parsed = rows.map((row, rowIndex) => { const entry: Record<string, unknown> = {}; columns.forEach((column, index) => { const raw = row[column.colIndex - block.range!.startCol] ?? null; const map = column.valueMap.find(item => item.from === String(raw).trim()); const converted = map ? { value: map.to, failed: false } : convertValue(raw, column.type === 'valueMapping' ? (column.valueMapFallbackType ?? 'auto') : column.type); if (converted.failed) diagnostics.push({ code: 'type-conversion', severity: 'warning', blockId: block.id, row: rowIndex, column: keys[index], message: `Block "${block.label}", row ${rowIndex + 1}, column "${keys[index]}" could not be converted to ${column.type}.` }); entry[keys[index]] = converted.value }); return entry })
     blockResults.push({ blockId: block.id, label: block.label, data: parsed, rowCount: parsed.length }); data[block.label] = parsed

@@ -70,16 +70,14 @@ The implemented application supports this general workflow:
 ### 3.3 Regions and structural detection
 
 - Regions that contain a source range and child blocks.
-- Automatic sub-block detection using exact keyword boundaries and blank-row
-  boundaries.
-- An empty-column split rule is represented in the domain model; the detector
-  currently treats it as a separate pre-filter rather than a row boundary.
+- Automatic rectangular sub-block detection using exact keyword, blank-row,
+  and blank-column boundaries with configurable consecutive-gap thresholds.
 - Region-level parsing results that preserve the detected block label and rows.
 
 ### 3.4 Data transformation
 
-- Row-ignore rules using equality, inequality, substring, empty-value, and
-  regular-expression operators.
+- Keep-row filters using AND semantics with equality, inequality, substring,
+  empty-value, and regular-expression operators.
 - Empty-column detection and removal.
 - Label and key/value tags on blocks and regions.
 - Tag utilities for adding, removing, filtering, and enumerating tags.

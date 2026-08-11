@@ -21,7 +21,8 @@ each release. Authenticode signing remains deferred distribution hardening.
 
 - `.xlsx` and `.xls` selection, up to 100 MB per workbook.
 - Worksheet navigation, selected ranges, merged values, headers, mappings,
-  row filters, regions, previews, projects, and reconciliation.
+  AND-based keep-row filters, two-dimensional Region detection, previews,
+  projects, and reconciliation.
 - Project/recovery JSON up to 25 MB. Unsaved workspace configuration is
   recovered after an interrupted session when the production host supports it.
 

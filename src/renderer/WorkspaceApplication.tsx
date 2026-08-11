@@ -398,10 +398,14 @@ export function WorkspaceApplication() {
       return
     }
 
+    if (execution.project !== projectRef.current) {
+      rememberWorkspace()
+      setHasUnsavedChanges(true)
+    }
     setProject(execution.project)
     setParseResult(result)
     setPreviewExecution(execution)
-  }, [])
+  }, [rememberWorkspace])
 
   const saveProjectToDisk = useCallback(async (saveAs: boolean) => {
     try {
@@ -608,7 +612,6 @@ export function WorkspaceApplication() {
         project: previewExecution.project,
         result: previewExecution.result,
         previews: previewExecution.previews,
-        close: () => setPreviewExecution(null),
       })
     : []
 
@@ -776,6 +779,16 @@ export function WorkspaceApplication() {
         destroyOnClose
         maskClosable={false}
       >
+        {previewExecution && (
+          <Tooltip title="Close preview">
+            <Button
+              className="preview-host-close"
+              aria-label="Close preview"
+              icon={<CloseOutlined />}
+              onClick={() => setPreviewExecution(null)}
+            />
+          </Tooltip>
+        )}
         {resultContributions.length > 1 ? (
           <Tabs
             defaultActiveKey={resultContributions[0]?.id}

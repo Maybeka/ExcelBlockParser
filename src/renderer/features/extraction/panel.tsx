@@ -64,7 +64,7 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
       id: this.featureId,
       label: 'Blocks',
       count: previews.size,
-      render: () => <ExtractionResultView project={context.project} previews={previews} close={context.close} />,
+      render: () => <ExtractionResultView project={context.project} previews={previews} />,
     }
   },
   navigation(context) {

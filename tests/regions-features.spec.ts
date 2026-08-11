@@ -155,16 +155,16 @@ test.describe('Tag Management', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Computed Properties
+// Downstream Properties
 // ---------------------------------------------------------------------------
-test.describe('Computed Properties', () => {
+test.describe('Downstream Properties', () => {
   test.beforeEach(async ({ page }) => {
     await loadWorkbookFixture(page)
   })
 
   test('Expand computed properties section and add a property', async ({ page }) => {
-    // The "Computed Properties" heading acts as a toggle.
-    await page.locator('text=Computed Properties').click()
+    // The downstream metadata heading acts as a toggle.
+    await page.locator('text=Downstream Properties').click()
 
     // The "Add" button should appear inside the expanded section.
     // (The main "Add" button at the top is for blocks; we want the one scoped
@@ -175,7 +175,7 @@ test.describe('Computed Properties', () => {
   })
 
   test('Valid expression shows green check', async ({ page }) => {
-    await page.locator('text=Computed Properties').click()
+    await page.locator('text=Downstream Properties').click()
 
     // Click "Add" to insert a new computed-property row.
     // Count "Add" buttons first so we click the right one.
@@ -191,7 +191,7 @@ test.describe('Computed Properties', () => {
   })
 
   test('Invalid expression shows error', async ({ page }) => {
-    await page.locator('text=Computed Properties').click()
+    await page.locator('text=Downstream Properties').click()
 
     // Add a new computed property.
     const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
@@ -207,7 +207,7 @@ test.describe('Computed Properties', () => {
   })
 
   test('Invalid syntax shows error', async ({ page }) => {
-    await page.locator('text=Computed Properties').click()
+    await page.locator('text=Downstream Properties').click()
 
     const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
     await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
@@ -221,7 +221,7 @@ test.describe('Computed Properties', () => {
   })
 
   test('Delete computed property removes the row', async ({ page }) => {
-    await page.locator('text=Computed Properties').click()
+    await page.locator('text=Downstream Properties').click()
 
     // Add one property.
     const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()

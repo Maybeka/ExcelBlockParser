@@ -39,7 +39,11 @@ function projectFixture() {
         block('sales-records', 'sales', 'Sheet1', [mapping(0, 'A', 'name', 'string'), mapping(1, 'B', 'age', 'integer')]),
         block('catalog-records', 'catalog', 'Products', [mapping(0, 'A', 'id', 'string'), mapping(1, 'B', 'name', 'string'), mapping(2, 'C', 'price', 'float')]),
       ],
-      regions: [],
+      regions: [{
+        id: 'catalog-region', label: 'catalog_region', workbookId: 'catalog',
+        range: { startRow: 0, startCol: 0, endRow: 2, endCol: 2, a1Notation: 'A1:C3' },
+        activeSheet: 'Products', splitRules: [], blocks: [], collapsed: false, selectionLocked: true,
+      }],
       activeBlockId: 'sales-records',
       activeRegionId: null,
       focusMode: 'always-editable',
@@ -102,6 +106,9 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
 
     await page.getByRole('button', { name: 'Run & Preview' }).click()
     await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /Regions/ })).toBeVisible()
+    await page.getByRole('tab', { name: /Regions/ }).click()
+    await expect(page.getByText('catalog_region', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Close preview' }).click()
     await page.getByRole('button', { name: 'Project actions' }).click()
     await page.getByRole('menuitem', { name: /Save Project As/ }).click()
@@ -117,6 +124,16 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
       expect.objectContaining({ id: 'sales-records', workbookId: 'sales', range: expect.objectContaining({ a1Notation: 'A1:B3' }) }),
       expect.objectContaining({ id: 'catalog-records', workbookId: 'catalog', range: expect.objectContaining({ a1Notation: 'A1:C3' }) }),
     ]))
+    expect(exported.project.regions[0]).toMatchObject({
+      id: 'catalog-region', workbookId: 'catalog',
+      blocks: [{
+        id: 'catalog-region:detected:1', workbookId: 'catalog', activeSheet: 'Products',
+        range: { a1Notation: 'A1:C3' },
+      }],
+    })
+    expect(exported.regionResults[0].blocks[0]).toMatchObject({
+      blockLabel: 'block_1', range: { a1Notation: 'A1:C3' },
+    })
   } finally {
     await app.close()
     await rm(directory, { recursive: true, force: true })

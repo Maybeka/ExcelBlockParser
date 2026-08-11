@@ -1,5 +1,7 @@
 import type { ProjectFeatureModule } from '../core/projectFeature'
-import { parseProjectRegions } from '../../services/extraction'
+import type { RegionParseResult } from '../../types'
+import { generateColumnMappings, parseProjectRegions } from '../../services/extraction'
+import { regionValidationIssues, validateRegions } from './validation'
 
 export const regionFeatureModule: ProjectFeatureModule = {
   id: 'builtin.regions',
@@ -15,7 +17,7 @@ export const regionFeatureModule: ProjectFeatureModule = {
     const regions = project.regions.filter(region => Boolean(region.workbookId))
     return { ...project, regions, activeRegionId: regions.some(region => region.id === project.activeRegionId) ? project.activeRegionId : null }
   },
-  validate: () => [],
+  validate: validateRegions,
   diagnosticFocus(project, diagnostic) {
     if (!diagnostic.regionId) return null
     const region = project.regions.find(item => item.id === diagnostic.regionId)
@@ -43,7 +45,38 @@ export const regionFeatureModule: ProjectFeatureModule = {
   },
   executionReady: project => project.regions.some(region => Boolean(region.range)),
   execute(project, workbooks) {
+    const validationIssues = regionValidationIssues(project)
+    if (validationIssues.length) {
+      return { diagnostics: validationIssues.map(issue => ({ code: 'invalid-range' as const, severity: 'error' as const, ...issue })) }
+    }
     const execution = parseProjectRegions(workbooks, project.regions)
     return { resultFields: { regionResults: execution.regionResults }, diagnostics: execution.diagnostics }
+  },
+  applyExecution(project, execution) {
+    const regionResults = execution.resultFields?.regionResults as RegionParseResult[] | undefined
+    if (!regionResults) return project
+    const byId = new Map(regionResults.map(result => [result.regionId, result]))
+    return {
+      ...project,
+      regions: project.regions.map(region => {
+        const result = byId.get(region.id)
+        if (!result) return region
+        return {
+          ...region,
+          blocks: result.blocks.filter(block => block.range).map((block, index) => ({
+            id: `${region.id}:detected:${index + 1}`,
+            label: block.blockLabel,
+            workbookId: region.workbookId,
+            range: block.range!,
+            activeSheet: region.activeSheet,
+            headerRows: [],
+            collapsed: false,
+            selectionLocked: true,
+            columns: generateColumnMappings(block.range!),
+            dataSnapshot: block.rows,
+          })),
+        }
+      }),
+    }
   },
 }

@@ -229,18 +229,25 @@ describe('detectBlocks', () => {
     expect(blocks).toEqual([makeBlock(0, 9, 0, 2)])
   })
 
-  // 12. Only emptyColumn rules
-  it('ignores emptyColumn rules and returns one block', () => {
-    const grid = fillerGrid({
-      3: ['', '', ''],
-      7: ['', '', ''],
-    })
+  // 12. Empty-column rules create vertical blocks.
+  it('splits into rectangular blocks at qualified empty columns', () => {
+    const rows = Array.from({ length: 4 }, () => ['left', '', '', 'right'])
+    const grid = { rows, cols: 4 }
     const range = makeRange(grid)
     const rules: SplitRule[] = [{ type: 'emptyColumn', minGap: 2 }]
     const getCell = makeGetCell(grid)
 
     const blocks = detectBlocks(range, rules, getCell)
 
+    expect(blocks).toEqual([
+      makeBlock(0, 3, 0, 0),
+      makeBlock(0, 3, 3, 3),
+    ])
+  })
+
+  it('does not split when an empty-row run is shorter than minGap', () => {
+    const grid = fillerGrid({ 4: ['', '', ''] })
+    const blocks = detectBlocks(makeRange(grid), [{ type: 'emptyRow', minGap: 2 }], makeGetCell(grid))
     expect(blocks).toEqual([makeBlock(0, 9, 0, 2)])
   })
 

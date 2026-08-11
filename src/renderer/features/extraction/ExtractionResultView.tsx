@@ -5,11 +5,9 @@ import type { PreviewData, ProjectConfig } from '../../types'
 export function ExtractionResultView({
   project,
   previews,
-  close,
 }: {
   project: ProjectConfig
   previews: ReadonlyMap<string, PreviewData>
-  close(): void
 }) {
   const blocks = project.blocks.filter(block => previews.has(block.id))
   const [activeBlockId, setActiveBlockId] = useState(() => {
@@ -22,7 +20,6 @@ export function ExtractionResultView({
       allBlocks={blocks.map(block => ({ blockId: block.id, label: block.label }))}
       activeBlockId={activeBlockId}
       onBlockChange={setActiveBlockId}
-      onClose={close}
     />
   )
 }

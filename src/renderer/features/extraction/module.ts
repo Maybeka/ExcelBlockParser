@@ -93,6 +93,10 @@ export const extractionFeatureModule: ProjectFeatureModule = {
   },
   executionReady: project => project.blocks.some(block => Boolean(block.range)),
   execute(project, workbooks) {
+    const validationErrors = validateBlocks(project.blocks)
+    if (validationErrors.length) {
+      return { diagnostics: validationErrors.map(message => ({ code: 'invalid-range' as const, severity: 'error' as const, message })) }
+    }
     const execution = parseProjectWorkbooks(new Map(workbooks), project.blocks, [])
     return {
       data: execution.result.data,

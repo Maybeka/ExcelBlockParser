@@ -83,6 +83,15 @@ describe('real Excel workbook extraction', () => {
     expect(missing.result).toMatchObject({ success: false, diagnostics: [{ code: 'sheet-missing', severity: 'error' }] })
   })
 
+  it('filters by the correct source column when earlier columns are skipped', async () => {
+    const configured = block({
+      ignoreRules: [{ column: 'count', operator: 'eq', value: '3' }],
+      columns: block().columns.map(column => column.key === 'status' ? { ...column, skip: true } : column),
+    })
+    const execution = parseWorkbook(await workbook('m2_integration.xlsx'), [configured], [])
+    expect(execution.result.data.records).toEqual([{ name: 'Bob', count: 3 }])
+  })
+
   it('keeps multi-error diagnostic codes and block ordering stable', async () => {
     const input = await workbook('m2_integration.xlsx')
     const invalidRange = block({

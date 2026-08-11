@@ -153,16 +153,24 @@ the primary evidence for the stable contract described in
 3. In the Blocks panel, use the Add menu and select **Add Region**.
 4. Activate the new region, drag a multi-cell range in the spreadsheet, and
    confirm the region shows the selected sheet and A1 range.
-5. Add an `emptyRow` split rule, then select **Run & Preview**.
-6. Repeat with `m2_integration.xlsx` if more than one split result is not
+5. Add an **Empty Row** split rule with minimum gap `1`, then select **Run & Preview**.
+6. On a range containing a fully blank column, add **Empty Col** with minimum
+   gap `1`; run again and verify horizontal and vertical boundaries combine.
+7. Save the project, close it, reopen it, and inspect the Region's detected
+   block list and ranges.
+8. Repeat with `m2_integration.xlsx` if more than one split result is not
    evident in the first workbook.
 
 **Expected result**
 
 - Sheet navigation is stable and does not lose the selected workspace item.
 - A region records its range and sheet.
-- The preview presents detected region blocks when the selected data contains
-  blank-row boundaries. No crash or silent parse failure occurs.
+- The preview presents rectangular detected blocks for qualified blank-row and
+  blank-column boundaries.
+- Detected block ranges remain attached to their owning Region after save and
+  reopen. They do not appear as independent top-level Extractors.
+- Increasing a minimum gap above the available consecutive blank rows or
+  columns prevents that boundary from splitting. No silent no-op occurs.
 
 **Evidence:** screenshot of selected region/range and preview results.
 

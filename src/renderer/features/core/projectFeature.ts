@@ -255,7 +255,7 @@ export class BuiltInFeatureRegistry {
 
   applyExecution(project: ProjectConfig, execution: ProjectExecutionSummary): ProjectConfig {
     return this.modules.reduce((current, module) => {
-      try { return module.applyExecution?.(current, { ...execution.result, snapshots: execution.snapshots }) ?? current } catch { return current }
+      try { return module.applyExecution?.(current, { resultFields: execution.result as unknown as Record<string, unknown>, snapshots: execution.snapshots }) ?? current } catch { return current }
     }, project)
   }
 
