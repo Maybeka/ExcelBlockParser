@@ -48,6 +48,12 @@ describe('Project v3 strict conformance', () => {
     ['missing block columns', value => { delete value.project.blocks[0].columns }],
     ['invalid column type', value => { value.project.blocks[0].columns[0].type = 'currency' }],
     ['invalid value mapping', value => { value.project.blocks[0].columns[0].valueMap[0].from = false }],
+    ['conflicting row filter fields', value => { value.project.blocks[0].ignoreRules = [] }],
+    ['empty row filter group', value => { value.project.blocks[0].rowFilter.condition = { type: 'all', conditions: [] } }],
+    ['invalid not-in values', value => { value.project.blocks[0].rowFilter.condition = { type: 'rule', column: 'status', operator: 'notIn', value: 'deleted' } }],
+    ['empty row filter column', value => { value.project.blocks[0].rowFilter.condition = { type: 'rule', column: '', operator: 'eq', value: 'active' } }],
+    ['empty row filter value', value => { value.project.blocks[0].rowFilter.condition = { type: 'rule', column: 'status', operator: 'eq', value: '' } }],
+    ['empty value in row filter list', value => { value.project.blocks[0].rowFilter.condition = { type: 'rule', column: 'status', operator: 'in', values: [''] } }],
     ['invalid region split rule', value => { value.project.regions[0].splitRules[0].type = 'regex' }],
     ['wrong data primitive', value => { value.data = [] }],
     ['wrong block results type', value => { value.blockResults = {} }],
@@ -68,6 +74,14 @@ describe('Project v3 strict conformance', () => {
     expect(loadProject(invalid).errors).toContain('Invalid project file: unsupported project version.')
   })
 
+  it('rejects condition trees deeper than the runtime safety limit', () => {
+    const invalid = clone(completeFixture)
+    let condition: any = { type: 'rule', column: 'status', operator: 'eq', value: 'active' }
+    for (let depth = 0; depth < 11; depth += 1) condition = { type: 'all', conditions: [condition] }
+    invalid.project.blocks[0].rowFilter!.condition = condition
+    expect(loadProject(invalid).project).toBeUndefined()
+  })
+
   it('enforces semantic ownership beyond structural schema checks', () => {
     const duplicate = clone(completeFixture)
     duplicate.project.workbooks[1].id = duplicate.project.workbooks[0].id
@@ -85,5 +99,29 @@ describe('Project v3 strict conformance', () => {
   it('allows equal labels in different workbooks', () => {
     expect(completeFixture.project.blocks[0].label).toBe(completeFixture.project.blocks[1].label)
     expect(loadProject(completeFixture).errors).toEqual([])
+  })
+
+  it('normalizes the released v3 row-rule array into the canonical condition tree', () => {
+    const releasedV3 = clone(completeFixture)
+    delete releasedV3.project.blocks[0].rowFilter
+    ;(releasedV3.project.blocks[0] as any).ignoreRules = [
+      { column: 'status', operator: 'neq', value: 'deleted' },
+      { column: 'amount', operator: 'regex', value: '^\\d+$' },
+    ]
+    expect(validateSchema(releasedV3), JSON.stringify(validateSchema.errors)).toBe(true)
+    const loaded = loadProject(releasedV3)
+    expect(loaded.errors).toEqual([])
+    expect(loaded.project!.project.blocks[0].rowFilter).toEqual({
+      removeEmptyRows: true,
+      emptyCellConditions: { fullyStruck: true },
+      condition: {
+        type: 'all',
+        conditions: [
+          { type: 'rule', column: 'status', operator: 'neq', value: 'deleted' },
+          { type: 'rule', column: 'amount', operator: 'regex', value: '^\\d+$' },
+        ],
+      },
+    })
+    expect((loaded.project!.project.blocks[0] as any).ignoreRules).toBeUndefined()
   })
 })

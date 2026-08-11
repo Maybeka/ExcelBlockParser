@@ -54,7 +54,11 @@
         ],
         "dataSnapshot": [["Status", "Amount"], ["Y", 12.5], ["N", 7]],
         "headerSnapshot": [["Status", "Amount"]],
-        "ignoreRules": [{ "column": "status", "operator": "eq", "value": "ignored" }],
+        "rowFilter": {
+          "removeEmptyRows": true,
+          "emptyCellConditions": { "fullyStruck": true },
+          "condition": { "type": "rule", "column": "status", "operator": "eq", "value": "ignored" }
+        },
         "skipEmptyColumns": true,
         "tags": [{ "type": "label", "key": "primary" }, { "type": "kv", "key": "owner", "value": "finance" }],
         "computedProperties": [{ "id": "computed-1", "label": "total", "expression": "amount * 2" }]

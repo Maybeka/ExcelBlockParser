@@ -17,19 +17,26 @@ describe('SplitRule', () => {
   })
 })
 
-describe('RowIgnoreRule', () => {
+describe('RowFilterRule', () => {
   it('creates equality rule', () => {
-    const rule: import('../types').RowIgnoreRule = { column: 'status', operator: 'eq' as const, value: 'active' }
+    const rule: import('../types').RowFilterRule = { type: 'rule', column: 'status', operator: 'eq', value: 'active' }
     expect(rule.operator).toBe('eq')
   })
   it('creates empty rule', () => {
-    const rule: import('../types').RowIgnoreRule = { operator: 'empty' as const }
+    const rule: import('../types').RowFilterRule = { type: 'rule', column: 'status', operator: 'empty' }
     expect(rule.operator).toBe('empty')
     expect(rule.value).toBeUndefined()
   })
   it('creates regex rule', () => {
-    const rule: import('../types').RowIgnoreRule = { operator: 'regex' as const, value: '^\\d+' }
+    const rule: import('../types').RowFilterRule = { type: 'rule', column: 'status', operator: 'regex', value: '^\\d+' }
     expect(rule.operator).toBe('regex')
+  })
+  it('creates nested all/any groups', () => {
+    const condition: import('../types').RowFilterCondition = {
+      type: 'all',
+      conditions: [{ type: 'rule', column: 'status', operator: 'notIn', values: ['deleted'] }],
+    }
+    expect(condition.conditions).toHaveLength(1)
   })
 })
 
@@ -89,14 +96,18 @@ describe('BlockConfig extensions', () => {
       selectionLocked: false,
       columns: [],
       dataSnapshot: null,
-      ignoreRules: [{ operator: 'empty' as const }],
+      rowFilter: {
+        removeEmptyRows: true,
+        emptyCellConditions: { fullyStruck: true },
+        condition: { type: 'rule', column: 'status', operator: 'empty' },
+      },
       skipEmptyColumns: true,
       tags: [{ type: 'label' as const, key: 'invoice' }],
       computedProperties: [{ id: 'cp1', label: 'Total', expression: 'sum' }],
     }
     expect(config.skipEmptyColumns).toBe(true)
     expect(config.tags).toHaveLength(1)
-    expect(config.ignoreRules![0].operator).toBe('empty')
+    expect(config.rowFilter!.condition).toMatchObject({ operator: 'empty' })
   })
 })
 

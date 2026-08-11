@@ -11,7 +11,7 @@
     "blocks": [
       {
         "id": "example-block",
-        "label": "Block 1",
+        "label": "block_1",
         "workbookId": "example-workbook",
         "range": { "startRow": 0, "startCol": 0, "endRow": 8, "endCol": 3, "a1Notation": "A1:D9" },
         "activeSheet": "Sheet1",

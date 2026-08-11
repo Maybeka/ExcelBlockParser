@@ -8,6 +8,7 @@ import { addTag, removeTag, filterBlocksByTag, getAllTags } from '../services/ta
 import { validateExpression } from '../services/pythonValidator'
 import type { SpreadsheetCapability } from '../services/spreadsheetCapability'
 import { BlockCard } from './BlockCard'
+import { countRowFilterRules, RowFilterEditor } from './RowFilterEditor'
 import { isValidVariableName } from '../features/extraction/validation'
 
 const TYPE_OPTIONS: { value: ColumnType; label: string }[] = [
@@ -1458,68 +1459,13 @@ export function ConfigPanel({
                             setExpandedRowFilters(next)
                           }}>
                           {expandedRowFilters.has(block.id) ? <CaretDownOutlined /> : <CaretRightOutlined />}
-                          {' '}Keep Rows (AND) {block.ignoreRules?.length ? `(${block.ignoreRules.length})` : ''}
+                          {' '}Row Filter {countRowFilterRules(block.rowFilter?.condition) ? `(${countRowFilterRules(block.rowFilter?.condition)})` : ''}
                         </span>
-                        {expandedRowFilters.has(block.id) && (
-                          <Button size="small" type="link" icon={<PlusOutlined />}
-                            onClick={() => {
-                              const rules = [...(block.ignoreRules || []), { operator: 'eq' as const, column: '', value: '' }]
-                              onBlockChange(block.id, { ignoreRules: rules })
-                            }}>
-                            Add Rule
-                          </Button>
-                        )}
                       </div>
-                      {expandedRowFilters.has(block.id) && (block.ignoreRules || []).map((rule, i) => {
-                        const columnKeys = block.columns.filter(c => !c.skip).map(c => c.key || c.suggestedKey)
-                        return (
-                          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
-                            <Select size="small" value={rule.column || ''} style={{ width: 100, height: 22, fontSize: 13 }}
-                              onChange={v => {
-                                const rules = [...(block.ignoreRules || [])]
-                                rules[i] = { ...rules[i], column: v || undefined }
-                                onBlockChange(block.id, { ignoreRules: rules })
-                              }}
-                              options={[
-                                { value: '$row', label: '$row (index)' },
-                                ...columnKeys.map(k => ({ value: k, label: k })),
-                              ]}
-                            />
-                            <Select size="small" value={rule.operator} style={{ width: 90, height: 22, fontSize: 13 }}
-                              onChange={v => {
-                                const rules = [...(block.ignoreRules || [])]
-                                rules[i] = { ...rules[i], operator: v }
-                                onBlockChange(block.id, { ignoreRules: rules })
-                              }}
-                              options={[
-                                { value: 'eq', label: 'equals' },
-                                { value: 'neq', label: 'not equals' },
-                                { value: 'contains', label: 'contains' },
-                                { value: 'empty', label: 'empty' },
-                                { value: 'regex', label: 'regex' },
-                              ]}
-                            />
-                            {rule.operator !== 'empty' && (
-                              <Input size="small" value={rule.value || ''} placeholder="value"
-                                onChange={e => {
-                                  const rules = [...(block.ignoreRules || [])]
-                                  rules[i] = { ...rules[i], value: e.target.value }
-                                  onBlockChange(block.id, { ignoreRules: rules })
-                                }}
-                                style={{ flex: 1, height: 22, fontSize: 13 }}
-                              />
-                            )}
-                            <Button size="small" type="text" danger icon={<DeleteOutlined />}
-                              onClick={() => {
-                                const rules = (block.ignoreRules || []).filter((_, j) => j !== i)
-                                onBlockChange(block.id, { ignoreRules: rules })
-                              }}
-                            />
-                          </div>
-                        )
-                      })}
-                      {expandedRowFilters.has(block.id) && (!block.ignoreRules || block.ignoreRules.length === 0) && (
-                        <div style={{ fontSize: 11, color: '#bbb' }}>No row filters</div>
+                      {expandedRowFilters.has(block.id) && (
+                        <RowFilterEditor config={block.rowFilter}
+                          columnKeys={block.columns.filter(column => !column.skip).map(column => column.key || column.suggestedKey)}
+                          onChange={rowFilter => onBlockChange(block.id, { rowFilter })} />
                       )}
                     </div>
 

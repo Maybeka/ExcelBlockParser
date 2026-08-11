@@ -1,166 +1,116 @@
-import { describe, it, expect } from 'vitest'
-import { applyRowIgnoreRules } from '../services/rowFilter'
-import type { RowIgnoreRule } from '../types'
+import { describe, expect, it } from 'vitest'
+import { applyRowFilter, isCellConsideredEmpty } from '../services/rowFilter'
+import type { RowFilterCondition, RowFilterConfig } from '../types'
+import type { WorkbookCell } from '../services/workbook'
 
 const COLUMNS = ['name', 'status', 'amount']
-const ROWS = [
+const cells = (rows: unknown[][], struck: Array<[number, number]> = []): WorkbookCell[][] => rows.map((row, rowIndex) => row.map((value, colIndex) => ({
+  value,
+  fullyStruck: struck.some(([r, c]) => r === rowIndex && c === colIndex),
+})))
+const ROWS = cells([
   ['alice', 'active', '100'],
-  ['bob',   'cancelled', '200'],
+  ['bob', 'cancelled', '200'],
   ['CAROL', 'active', '300'],
-  ['dave',  'pending', ''],
-  ['eve',   'active', '500'],
-]
+  ['dave', 'pending', ''],
+  ['eve', 'active', '500'],
+])
 
-function r(column: string | undefined, operator: string, value?: string): RowIgnoreRule {
-  return { column, operator, value } as RowIgnoreRule
+function config(condition: RowFilterCondition | null = null, overrides: Partial<RowFilterConfig> = {}): RowFilterConfig {
+  return {
+    removeEmptyRows: true,
+    emptyCellConditions: { fullyStruck: true },
+    condition,
+    ...overrides,
+  }
 }
 
-describe('applyRowIgnoreRules', () => {
-  it('returns all rows unchanged when rules array is empty', () => {
-    const result = applyRowIgnoreRules(ROWS, [], COLUMNS)
-    expect(result).toEqual(ROWS)
+const rule = (column: string, operator: 'eq' | 'neq' | 'contains' | 'notContains' | 'empty' | 'notEmpty' | 'regex' | 'notRegex', value?: string): RowFilterCondition => ({
+  type: 'rule', column, operator, ...(value === undefined ? {} : { value }),
+})
+
+describe('applyRowFilter', () => {
+  it('keeps non-empty rows when no custom condition exists', () => {
+    expect(applyRowFilter(ROWS, config(), COLUMNS)).toEqual(ROWS)
   })
 
-  it('eq: keeps rows where the column matches the value', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('status', 'eq', 'active')], COLUMNS)
-    expect(result).toHaveLength(3)
-    expect(result.map(r => r[0])).toEqual(['alice', 'CAROL', 'eve'])
+  it('removes rows empty across enabled source offsets only', () => {
+    const rows = cells([['', '', 'ignored content'], ['value', '', 'ignored content']])
+    expect(applyRowFilter(rows, config(), ['name', 'status'], [0, 1])).toEqual([rows[1]])
   })
 
-  it('neq: skips rows where the column matches the value', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('status', 'neq', 'cancelled')], COLUMNS)
-    expect(result).toHaveLength(4)
-    expect(result.map(r => r[0])).toEqual(['alice', 'CAROL', 'dave', 'eve'])
+  it('preserves empty rows when removal is disabled', () => {
+    const rows = cells([['', '']])
+    expect(applyRowFilter(rows, config(null, { removeEmptyRows: false }), ['a', 'b'])).toEqual(rows)
   })
 
-  it('contains: keeps rows where the column value contains the substring', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('name', 'contains', 'li')], COLUMNS)
-    expect(result).toHaveLength(1)
-    expect(result[0][0]).toBe('alice')
+  it('treats fully struck cells as empty only when enabled', () => {
+    const rows = cells([['deleted', '']], [[0, 0]])
+    expect(applyRowFilter(rows, config(), ['a', 'b'])).toEqual([])
+    expect(applyRowFilter(rows, config(null, { emptyCellConditions: { fullyStruck: false } }), ['a', 'b'])).toEqual(rows)
   })
 
-  it('empty: skips rows where the column is non-empty (keeps only empty)', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('amount', 'empty')], COLUMNS)
-    expect(result).toHaveLength(1)
-    expect(result[0][0]).toBe('dave')
+  it('does not treat a non-struck value as empty', () => {
+    expect(isCellConsideredEmpty({ value: 0, fullyStruck: false }, config())).toBe(false)
+    expect(isCellConsideredEmpty({ value: false, fullyStruck: false }, config())).toBe(false)
   })
 
-  it('empty: rejects rows where the column IS empty when operator is empty and value is non-empty', () => {
-    const rules: RowIgnoreRule[] = [{ column: 'amount', operator: 'empty' }]
-    const result = applyRowIgnoreRules(ROWS, rules, COLUMNS)
-    expect(result).toHaveLength(1)
+  it('supports equals, not equals, and case-insensitive matching', () => {
+    expect(applyRowFilter(ROWS, config(rule('status', 'eq', 'ACTIVE')), COLUMNS).map(row => row[0].value)).toEqual(['alice', 'CAROL', 'eve'])
+    expect(applyRowFilter(ROWS, config(rule('name', 'neq', 'ALICE')), COLUMNS)).toHaveLength(4)
   })
 
-  it('regex: keeps only rows matching the pattern', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('name', 'regex', '^[a-z]+$')], COLUMNS)
-    expect(result).toHaveLength(4)
-    expect(result.map(r => r[0])).toEqual(['alice', 'bob', 'dave', 'eve'])
+  it('supports in and not in value lists', () => {
+    const inRule: RowFilterCondition = { type: 'rule', column: 'status', operator: 'in', values: ['ACTIVE', 'pending'] }
+    const notInRule: RowFilterCondition = { type: 'rule', column: 'status', operator: 'notIn', values: ['cancelled', 'pending'] }
+    expect(applyRowFilter(ROWS, config(inRule), COLUMNS)).toHaveLength(4)
+    expect(applyRowFilter(ROWS, config(notInRule), COLUMNS).map(row => row[0].value)).toEqual(['alice', 'CAROL', 'eve'])
   })
 
-  it('$row eq: keeps only the specified row index', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('$row', 'eq', '2')], COLUMNS)
-    expect(result).toHaveLength(1)
-    expect(result[0][0]).toBe('CAROL')
+  it('supports positive and negative string predicates', () => {
+    expect(applyRowFilter(ROWS, config(rule('name', 'contains', 'ARO')), COLUMNS).map(row => row[0].value)).toEqual(['CAROL'])
+    expect(applyRowFilter(ROWS, config(rule('name', 'notContains', 'a')), COLUMNS).map(row => row[0].value)).toEqual(['bob', 'eve'])
+    expect(applyRowFilter(ROWS, config(rule('amount', 'empty')), COLUMNS).map(row => row[0].value)).toEqual(['dave'])
+    expect(applyRowFilter(ROWS, config(rule('amount', 'notEmpty')), COLUMNS)).toHaveLength(4)
   })
 
-  it('$row neq: skips the specified row index', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('$row', 'neq', '3')], COLUMNS)
-    expect(result).toHaveLength(4)
-    expect(result.map(r => r[0])).toEqual(['alice', 'bob', 'CAROL', 'eve'])
+  it('supports regex and not regex and rejects invalid patterns', () => {
+    expect(applyRowFilter(ROWS, config(rule('name', 'regex', '^[a-z]+$')), COLUMNS)).toHaveLength(4)
+    expect(applyRowFilter(ROWS, config(rule('name', 'notRegex', '^[a-z]+$')), COLUMNS).map(row => row[0].value)).toEqual(['CAROL'])
+    expect(applyRowFilter(ROWS, config(rule('name', 'regex', '[')), COLUMNS)).toEqual([])
   })
 
-  it('multiple rules: AND logic — both must pass', () => {
-    const rules: RowIgnoreRule[] = [
-      { column: 'status', operator: 'eq', value: 'active' },
-      { column: 'amount', operator: 'neq', value: '300' },
-    ]
-    const result = applyRowIgnoreRules(ROWS, rules, COLUMNS)
-    expect(result).toHaveLength(2)
-    expect(result.map(r => r[0])).toEqual(['alice', 'eve'])
+  it('evaluates nested all and any condition groups', () => {
+    const condition: RowFilterCondition = {
+      type: 'all', conditions: [
+        rule('status', 'neq', 'cancelled'),
+        { type: 'any', conditions: [rule('amount', 'eq', '300'), rule('name', 'eq', 'eve')] },
+      ],
+    }
+    expect(applyRowFilter(ROWS, config(condition), COLUMNS).map(row => row[0].value)).toEqual(['CAROL', 'eve'])
   })
 
-  it('uses explicit source offsets when filtered columns are not contiguous', () => {
-    const rows = [
-      ['skip-a', 'keep', 'skip-b', 'active'],
-      ['skip-a', 'keep', 'skip-b', 'inactive'],
-    ]
-    const result = applyRowIgnoreRules(rows, [r('status', 'eq', 'active')], ['name', 'status'], [1, 3])
-    expect(result).toEqual([rows[0]])
+  it('uses explicit source offsets when enabled columns are not contiguous', () => {
+    const rows = cells([['skip', 'alice', 'skip', 'active'], ['skip', 'bob', 'skip', 'inactive']])
+    expect(applyRowFilter(rows, config(rule('status', 'eq', 'active')), ['name', 'status'], [1, 3])).toEqual([rows[0]])
   })
 
-  it('no matching rows returns an empty array', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('status', 'eq', 'nonexistent')], COLUMNS)
-    expect(result).toEqual([])
+  it('supports the data-row index and rejects unavailable columns', () => {
+    expect(applyRowFilter(ROWS, config(rule('$row', 'eq', '2')), COLUMNS).map(row => row[0].value)).toEqual(['CAROL'])
+    expect(applyRowFilter(ROWS, config(rule('missing', 'eq', 'x')), COLUMNS)).toEqual([])
   })
 
-  it('all rows match returns all rows', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('status', 'neq', 'nonexistent')], COLUMNS)
-    expect(result).toHaveLength(5)
+  it('uses struck-through emptiness in custom empty predicates', () => {
+    const rows = cells([['deleted'], ['active']], [[0, 0]])
+    expect(applyRowFilter(rows, config(rule('name', 'empty')), ['name'])).toEqual([])
+    expect(applyRowFilter(rows, config(rule('name', 'empty'), { removeEmptyRows: false }), ['name'])).toEqual([rows[0]])
   })
 
-  it('unknown column name rejects the row', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('unknown', 'eq', 'x')], COLUMNS)
-    expect(result).toEqual([])
-  })
-
-  it('case-insensitive matching for eq', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('name', 'eq', 'CAROL')], COLUMNS)
-    expect(result).toHaveLength(1)
-    expect(result[0][0]).toBe('CAROL')
-  })
-
-  it('case-insensitive matching for neq', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('name', 'neq', 'ALICE')], COLUMNS)
-    expect(result).toHaveLength(4)
-  })
-
-  it('case-insensitive matching for contains', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('name', 'contains', 'ARO')], COLUMNS)
-    expect(result).toHaveLength(1)
-    expect(result[0][0]).toBe('CAROL')
-  })
-
-  it('whitespace-only cells are treated as empty for the empty operator', () => {
-    const rows = [
-      ['x', '   ', 'y'],
-      ['a', 'b',    'c'],
-    ]
-    const result = applyRowIgnoreRules(rows, [r('status', 'empty')], COLUMNS)
-    expect(result).toHaveLength(1)
-    expect(result[0][0]).toBe('x')
-  })
-
-  it('empty columnKeys array with a column rule rejects all rows', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('status', 'eq', 'active')], [])
-    expect(result).toEqual([])
-  })
-
-  it('empty columnKeys array with $row rule still works', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('$row', 'eq', '0')], [])
-    expect(result).toHaveLength(1)
-    expect(result[0][0]).toBe('alice')
-  })
-
-  it('regex with invalid pattern rejects the row', () => {
-    const result = applyRowIgnoreRules(ROWS, [r('name', 'regex', '[invalid')], COLUMNS)
-    expect(result).toEqual([])
-  })
-
-  it('rule with no column and not $row is skipped (does not reject)', () => {
-    const rule: RowIgnoreRule = { operator: 'eq', value: 'x' } as RowIgnoreRule
-    const result = applyRowIgnoreRules(ROWS, [rule], COLUMNS)
-    expect(result).toHaveLength(5)
-  })
-
-  it('does not mutate the input rows array', () => {
-    const copy = ROWS.map(r => [...r])
-    applyRowIgnoreRules(ROWS, [r('status', 'eq', 'active')], COLUMNS)
-    expect(ROWS).toEqual(copy)
-  })
-
-  it('does not mutate the input columnKeys array', () => {
+  it('does not mutate inputs', () => {
+    const copy = structuredClone(ROWS)
     const keys = [...COLUMNS]
-    applyRowIgnoreRules(ROWS, [r('status', 'eq', 'active')], keys)
+    applyRowFilter(ROWS, config(rule('status', 'eq', 'active')), keys)
+    expect(ROWS).toEqual(copy)
     expect(keys).toEqual(COLUMNS)
   })
 })

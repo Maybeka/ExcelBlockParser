@@ -44,7 +44,6 @@ describe('real Excel workbook extraction', () => {
     expect(execution.result.data.records).toEqual([
       { name: 'Alice', status: true, count: 2 },
       { name: 'Bob', status: false, count: 3 },
-      { name: '', status: '', count: null },
     ])
     const title = block({ range: range('A1:D2', 0, 0, 1, 3), headerRows: [1] })
     const titleExecution = parseWorkbook(await workbook('m2_integration.xlsx'), [title], [])
@@ -85,7 +84,11 @@ describe('real Excel workbook extraction', () => {
 
   it('filters by the correct source column when earlier columns are skipped', async () => {
     const configured = block({
-      ignoreRules: [{ column: 'count', operator: 'eq', value: '3' }],
+      rowFilter: {
+        removeEmptyRows: true,
+        emptyCellConditions: { fullyStruck: true },
+        condition: { type: 'rule', column: 'count', operator: 'eq', value: '3' },
+      },
       columns: block().columns.map(column => column.key === 'status' ? { ...column, skip: true } : column),
     })
     const execution = parseWorkbook(await workbook('m2_integration.xlsx'), [configured], [])

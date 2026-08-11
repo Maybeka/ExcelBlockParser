@@ -1,6 +1,6 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** v1.1.0 released
+**Status:** v1.2.0 released
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
 **Last assessed:** 2026-08-11
@@ -76,8 +76,10 @@ The implemented application supports this general workflow:
 
 ### 3.4 Data transformation
 
-- Keep-row filters using AND semantics with equality, inequality, substring,
-  empty-value, and regular-expression operators.
+- Nested all/any keep-row filters with equality, inequality, membership,
+  substring, empty-value, and regular-expression operators.
+- Optional empty-row removal across non-skipped columns, with an independent
+  option to treat fully struck-through cell contents as empty.
 - Empty-column detection and removal.
 - Label and key/value tags on blocks and regions.
 - Tag utilities for adding, removing, filtering, and enumerating tags.
@@ -209,9 +211,9 @@ generators require an explicit user trust decision.
 
 ## 8. Current Refinement Priorities
 
-Version 1.0.0 is released, Phase A is complete, and Gate B admitted the
+Version 1.2.0 is released, Phase A is complete, and Phase B established the
 compile-time built-in module architecture. Current work should preserve Project
-v3 and the supported extraction workflow while Phase B operationalizes it.
+v3 and refine the supported Block and Region extraction workflow.
 
 ### Baseline maintenance
 

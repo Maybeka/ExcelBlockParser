@@ -98,6 +98,32 @@ test.describe('Region Creation', () => {
   })
 })
 
+test.describe('Row filtering', () => {
+  test('configures empty-row handling and nested membership conditions', async ({ page }) => {
+    await loadWorkbookFixture(page)
+    await page.getByText('Row Filter', { exact: true }).click()
+
+    const removeEmptyRows = page.getByRole('checkbox', { name: 'Remove empty rows' })
+    const struckEmpty = page.getByRole('checkbox', { name: 'Treat fully struck-through cells as empty' })
+    await expect(removeEmptyRows).toBeChecked()
+    await expect(struckEmpty).toBeChecked()
+
+    await removeEmptyRows.uncheck()
+    await expect(struckEmpty).toBeDisabled()
+    await removeEmptyRows.check()
+    await expect(struckEmpty).toBeEnabled()
+    await expect(struckEmpty).toBeChecked()
+
+    await page.getByRole('button', { name: /Add condition/ }).click()
+    await expect(page.getByText('All', { exact: true })).toBeVisible()
+    await page.locator('.row-filter-operator').click()
+    await page.getByText('not in', { exact: true }).last().click()
+    await expect(page.locator('.row-filter-value')).toBeVisible()
+    await page.getByRole('button', { name: 'Add row condition group' }).click()
+    await expect(page.getByRole('button', { name: 'Delete row condition group' })).toHaveCount(1)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Tag Management
 // ---------------------------------------------------------------------------

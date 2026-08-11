@@ -108,7 +108,11 @@ describe('project workspace', () => {
 
   it('validates row filters and downstream output metadata before save or run', () => {
     const configured = block('configured', 'sales')
-    configured.ignoreRules = [{ column: 'missing', operator: 'regex', value: '[' }]
+    configured.rowFilter = {
+      removeEmptyRows: true,
+      emptyCellConditions: { fullyStruck: true },
+      condition: { type: 'rule', column: 'missing', operator: 'regex', value: '[' },
+    }
     configured.computedProperties = [{ id: 'computed', label: 'name', expression: "row['missing']" }]
     const errors = validateBlocks([configured]).join(' ')
     expect(errors).toContain('references unavailable column "missing"')

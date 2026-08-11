@@ -1,8 +1,8 @@
 import type { BlockConfig, BlockParseResult, CellRange, ColumnMapping, ColumnType, ParseDiagnostic, ParseResult, RegionBlockResult, RegionConfig, RegionParseResult } from '../types'
 import { detectBlocks } from './regionDetector'
-import { applyRowIgnoreRules } from './rowFilter'
+import { applyRowFilter } from './rowFilter'
 import { detectEmptyColumns } from './columnFilter'
-import { fillMergedCells, type WorkbookReader } from './workbook'
+import { fillMergedCellData, fillMergedCells, type WorkbookReader } from './workbook'
 
 export function colIndexToLetter(index: number): string { let letter = ''; let n = index; while (n >= 0) { letter = String.fromCharCode((n % 26) + 65) + letter; n = Math.floor(n / 26) - 1 } return letter }
 export function sanitizeToCamelCase(value: string): string { return value.trim().replace(/[^\p{L}\p{N}\s_-]/gu, '').split(/[\s_-]+/).map((word, index) => { const lower = word.toLowerCase(); return index === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1) }).join('').replace(/^(\d)/, '_$1') || 'column' }
@@ -63,15 +63,18 @@ export function parseWorkbook(workbook: WorkbookReader, blocks: BlockConfig[], r
   for (const block of activeBlocks) {
     const sheet = block.activeSheet ? workbook.getSheet(block.activeSheet) : workbook.getActiveSheet()
     if (!sheet) { diagnostics.push({ code: 'sheet-missing', severity: 'error', blockId: block.id, message: `Block "${block.label}" references unavailable sheet "${block.activeSheet ?? '(active)'}".` }); continue }
-    const values = fillMergedCells(sheet.getValues(block.range!), block.range!, sheet.getMergedRanges()); snapshots.set(block.id, values)
-    const headerRows = new Set(block.headerRows); let rows = values.filter((_, index) => !headerRows.has(index)); let columns = block.columns.filter(column => !column.skip)
-    if (block.skipEmptyColumns) { const empty = detectEmptyColumns(rows); columns = columns.filter(column => !empty.has(column.colIndex - block.range!.startCol)) }
+    const sourceCells = sheet.getCells
+      ? sheet.getCells(block.range!)
+      : sheet.getValues(block.range!).map(row => row.map(value => ({ value, fullyStruck: false })))
+    const cells = fillMergedCellData(sourceCells, block.range!, sheet.getMergedRanges())
+    const values = cells.map(row => row.map(cell => cell.value)); snapshots.set(block.id, values)
+    const headerRows = new Set(block.headerRows); let rows = cells.filter((_, index) => !headerRows.has(index)); let columns = block.columns.filter(column => !column.skip)
+    if (block.skipEmptyColumns) { const empty = detectEmptyColumns(rows.map(row => row.map(cell => cell.value))); columns = columns.filter(column => !empty.has(column.colIndex - block.range!.startCol)) }
     if (!columns.length) { blockResults.push({ blockId: block.id, label: block.label, data: [], rowCount: 0 }); data[block.label] = []; continue }
     const keys = columns.map(column => column.key || column.suggestedKey)
     const sourceColumnOffsets = columns.map(column => column.colIndex - block.range!.startCol)
-    const filteredRows = applyRowIgnoreRules(rows.map(row => row.map(value => value == null ? '' : String(value))), block.ignoreRules ?? [], keys, sourceColumnOffsets)
-    rows = filteredRows
-    const parsed = rows.map((row, rowIndex) => { const entry: Record<string, unknown> = {}; columns.forEach((column, index) => { const raw = row[column.colIndex - block.range!.startCol] ?? null; const map = column.valueMap.find(item => item.from === String(raw).trim()); const converted = map ? { value: map.to, failed: false } : convertValue(raw, column.type === 'valueMapping' ? (column.valueMapFallbackType ?? 'auto') : column.type); if (converted.failed) diagnostics.push({ code: 'type-conversion', severity: 'warning', blockId: block.id, row: rowIndex, column: keys[index], message: `Block "${block.label}", row ${rowIndex + 1}, column "${keys[index]}" could not be converted to ${column.type}.` }); entry[keys[index]] = converted.value }); return entry })
+    rows = applyRowFilter(rows, block.rowFilter, keys, sourceColumnOffsets)
+    const parsed = rows.map((row, rowIndex) => { const entry: Record<string, unknown> = {}; columns.forEach((column, index) => { const raw = row[column.colIndex - block.range!.startCol]?.value ?? null; const map = column.valueMap.find(item => item.from === String(raw).trim()); const converted = map ? { value: map.to, failed: false } : convertValue(raw, column.type === 'valueMapping' ? (column.valueMapFallbackType ?? 'auto') : column.type); if (converted.failed) diagnostics.push({ code: 'type-conversion', severity: 'warning', blockId: block.id, row: rowIndex, column: keys[index], message: `Block "${block.label}", row ${rowIndex + 1}, column "${keys[index]}" could not be converted to ${column.type}.` }); entry[keys[index]] = converted.value }); return entry })
     blockResults.push({ blockId: block.id, label: block.label, data: parsed, rowCount: parsed.length }); data[block.label] = parsed
   }
   const regionExecution = parseWorkbookRegions(workbook, regions)

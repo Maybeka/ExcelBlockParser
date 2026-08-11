@@ -39,7 +39,7 @@ export interface BlockConfig {
   columns: ColumnMapping[]
   dataSnapshot: unknown[][] | null
   headerSnapshot?: string[][] | string[]
-  ignoreRules?: RowIgnoreRule[]
+  rowFilter?: RowFilterConfig
   skipEmptyColumns?: boolean
   tags?: Tag[]
   computedProperties?: ComputedProperty[]
@@ -163,12 +163,39 @@ export interface SplitRule {
   minGap?: number
 }
 
-export type RowIgnoreOperator = 'eq' | 'neq' | 'contains' | 'empty' | 'regex'
+export type RowFilterOperator =
+  | 'eq'
+  | 'neq'
+  | 'in'
+  | 'notIn'
+  | 'contains'
+  | 'notContains'
+  | 'empty'
+  | 'notEmpty'
+  | 'regex'
+  | 'notRegex'
 
-export interface RowIgnoreRule {
-  column?: string
-  operator: RowIgnoreOperator
+export interface RowFilterRule {
+  type: 'rule'
+  column: string
+  operator: RowFilterOperator
   value?: string
+  values?: string[]
+}
+
+export interface RowFilterGroup {
+  type: 'all' | 'any'
+  conditions: RowFilterCondition[]
+}
+
+export type RowFilterCondition = RowFilterRule | RowFilterGroup
+
+export interface RowFilterConfig {
+  removeEmptyRows: boolean
+  emptyCellConditions: {
+    fullyStruck: boolean
+  }
+  condition: RowFilterCondition | null
 }
 
 export type TagType = 'label' | 'kv'

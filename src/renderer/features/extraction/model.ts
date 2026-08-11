@@ -15,6 +15,11 @@ export function createDefaultBlock(lastNum: number, workbookId: string | null = 
     selectionLocked: false,
     columns: [],
     dataSnapshot: null,
+    rowFilter: {
+      removeEmptyRows: true,
+      emptyCellConditions: { fullyStruck: true },
+      condition: null,
+    },
   }
 }
 

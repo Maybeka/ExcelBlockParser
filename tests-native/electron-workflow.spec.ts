@@ -33,7 +33,7 @@ async function importIntoOpenWorkbook(page: Page): Promise<void> {
   await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
   await page.getByRole('button', { name: 'Open Project' }).click()
   const replaceDialog = page.getByRole('dialog', { name: 'Open another project?' })
-  const importedBlock = page.getByRole('textbox', { name: 'Block 1' })
+  const importedBlock = page.getByRole('textbox', { name: 'block_1' })
   const settings = page.getByRole('dialog', { name: 'Project settings' })
   await expect.poll(async () => {
     if (await replaceDialog.isVisible().catch(() => false)) return 'replace'
@@ -129,7 +129,7 @@ test.describe('Electron native workflow', () => {
       await settings.getByRole('button', { name: 'Done' }).click()
 
       await ensurePreviewOpen(page)
-      await expect(page.getByText('Block 1', { exact: true })).toBeVisible()
+      await expect(page.getByText('block_1', { exact: true })).toBeVisible()
 
       await closePreview(page)
       await expect(page.getByText('PARSE REVIEW', { exact: true })).not.toBeVisible()
@@ -215,7 +215,6 @@ test.describe('Electron native workflow', () => {
       await settings.getByRole('button', { name: 'Done' }).click()
       await page.getByRole('button', { name: 'Project actions' }).click()
       await page.getByRole('menuitem', { name: /Save Project As/ }).click()
-      await page.getByRole('button', { name: 'Save anyway' }).click()
       await expect.poll(async () => { try { await access(output); return true } catch { return false } }).toBe(true)
       expect(JSON.parse(await readFile(output, 'utf8')).version).toBe(3)
     } finally {
@@ -395,7 +394,7 @@ test.describe('Electron native workflow', () => {
       await expect(settings.getByText('Unavailable', { exact: true })).toBeVisible()
       await settings.getByRole('button', { name: 'Reassign' }).click()
       await settings.getByRole('button', { name: 'Done' }).click()
-      await expect(second.page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
+      await expect(second.page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
       await second.page.evaluate(async () => (window as any).electronAPI.clearRecovery())
     } finally {
       await second.app.close()

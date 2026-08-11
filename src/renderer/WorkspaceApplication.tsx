@@ -733,6 +733,7 @@ export function WorkspaceApplication() {
                   <span>{currentFileName ?? 'Choose a file to begin'}</span>
                 </header>
                 <SpreadsheetPanel
+                  activeSheet={activeSheetName}
                   activeItemIds={activeCanvasItemIds}
                   activeColumnItemId={activeColIndex === null ? null : activeColumnItemId}
                   activeColIndex={activeColIndex}

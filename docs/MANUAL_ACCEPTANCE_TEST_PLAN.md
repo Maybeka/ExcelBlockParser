@@ -97,7 +97,7 @@ This is the required end-to-end acceptance case.
 1. Select **Open Project** and choose the untouched `project.json` fixture.
 2. If warned that the current project will be replaced, select **Open Project**.
 3. Confirm the strict Project v3 fixture opens and the configured block is
-   named **Block 1** with range `Sheet1!A1:D9`.
+   named **block_1** with range `Sheet1!A1:D9`.
 4. Select **Run & Preview** in the extraction panel.
 5. In the preview, inspect the parsed view and verify there are eight rows.
    The first row must contain `Alice`, `25`, `88.5`, and `New York`; the last

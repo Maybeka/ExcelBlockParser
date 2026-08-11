@@ -1,5 +1,6 @@
-import type { BlockConfig } from '../../types'
+import type { BlockConfig, RowFilterCondition } from '../../types'
 import { validateExpression } from '../../services/pythonValidator'
+import { MAX_ROW_FILTER_DEPTH } from '../../services/rowFilter'
 
 export function isValidVariableName(name: string): boolean {
   if (!name.trim()) return true
@@ -43,14 +44,24 @@ export function validateBlocks(blocks: BlockConfig[]): string[] {
     }
     keys.forEach((count, key) => { if (count > 1) errors.push(`Duplicate output key in "${block.label || 'block'}": "${key}"`) })
     const availableKeys = new Set(block.columns.filter(column => !column.skip).map(column => column.key || column.suggestedKey))
-    for (const [index, rule] of (block.ignoreRules ?? []).entries()) {
-      if (!rule.column) errors.push(`Block "${block.label || 'block'}" row filter ${index + 1} requires a column.`)
-      else if (rule.column !== '$row' && !availableKeys.has(rule.column)) errors.push(`Block "${block.label || 'block'}" row filter ${index + 1} references unavailable column "${rule.column}".`)
-      if (rule.operator !== 'empty' && !rule.value) errors.push(`Block "${block.label || 'block'}" row filter ${index + 1} requires a value.`)
-      if (rule.operator === 'regex') {
-        try { new RegExp(rule.value ?? '') } catch { errors.push(`Block "${block.label || 'block'}" row filter ${index + 1} has an invalid regular expression.`) }
+    const validateCondition = (condition: RowFilterCondition, path: string, depth = 0) => {
+      if (depth > MAX_ROW_FILTER_DEPTH) {
+        errors.push(`Block "${block.label || 'block'}" row filter ${path} exceeds the maximum nesting depth of ${MAX_ROW_FILTER_DEPTH}.`)
+        return
+      }
+      if (condition.type !== 'rule') {
+        if (!condition.conditions.length) errors.push(`Block "${block.label || 'block'}" row filter group ${path} is empty.`)
+        condition.conditions.forEach((child, index) => validateCondition(child, `${path}.${index + 1}`, depth + 1))
+        return
+      }
+      if (condition.column !== '$row' && !availableKeys.has(condition.column)) errors.push(`Block "${block.label || 'block'}" row filter ${path} references unavailable column "${condition.column}".`)
+      if ((condition.operator === 'in' || condition.operator === 'notIn') && (!condition.values?.length || condition.values.some(value => !value))) errors.push(`Block "${block.label || 'block'}" row filter ${path} requires one or more non-empty values.`)
+      if (!['in', 'notIn', 'empty', 'notEmpty'].includes(condition.operator) && !condition.value) errors.push(`Block "${block.label || 'block'}" row filter ${path} requires a value.`)
+      if ((condition.operator === 'regex' || condition.operator === 'notRegex')) {
+        try { new RegExp(condition.value ?? '') } catch { errors.push(`Block "${block.label || 'block'}" row filter ${path} has an invalid regular expression.`) }
       }
     }
+    if (block.rowFilter?.condition) validateCondition(block.rowFilter.condition, '1')
   }
   return errors
 }

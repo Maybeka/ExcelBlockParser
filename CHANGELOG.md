@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0 - 2026-08-11
+
+- Scoped locked Block, Region, and column highlights to their source sheet so
+  annotations no longer remain visible after sheet navigation.
+- Expanded Block row filtering with nested `all`/`any` groups, list,
+  containment, emptiness, and regular-expression operators.
+- Added optional empty-row removal over non-skipped columns and optional
+  treatment of fully struck-through cells as empty.
+- Preserved released Project v3 `ignoreRules` files through deterministic
+  normalization to the canonical row-filter condition tree.
+- Added workbook style metadata coverage, strict Project v3 filter validation,
+  and renderer regression tests for the new behavior.
+
 ## 1.1.0 - 2026-08-11
 
 - Added Project v3 as the current persistence contract, with stable workbook

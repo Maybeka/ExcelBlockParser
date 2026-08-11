@@ -5,6 +5,7 @@ import { useUniver } from '../context/UniverContext'
 import type { CellRange } from '../types'
 import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
 import { getBridge } from '../services/bridge'
+import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 
 interface LockedRangeInfo {
   itemId: string
@@ -14,6 +15,7 @@ interface LockedRangeInfo {
 }
 
 interface SpreadsheetPanelProps {
+  activeSheet: string | null
   activeItemIds: string[]
   activeColumnItemId: string | null
   activeColIndex: number | null
@@ -28,7 +30,7 @@ interface SpreadsheetPanelProps {
   onOpenWorkbook: () => void
 }
 
-export function SpreadsheetPanel({ activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook }: SpreadsheetPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { univerAPI, setUniverAPI, setSheetNames } = useUniver()
   const univerAPIRef = useRef(univerAPI)
@@ -78,10 +80,8 @@ export function SpreadsheetPanel({ activeItemIds, activeColumnItemId, activeColI
     const workbook = api.getActiveWorkbook()
     if (!workbook) return
 
-    for (const lr of lockedRanges) {
-      if (!activeItemIds.includes(lr.itemId)) continue
-
-      const sheet = lr.activeSheet ? workbook.getSheetByName(lr.activeSheet) : workbook.getActiveSheet()
+    for (const lr of visibleCanvasRanges(lockedRanges, activeItemIds, activeSheet)) {
+      const sheet = activeSheet ? workbook.getSheetByName(activeSheet) : workbook.getActiveSheet()
       if (!sheet) continue
 
       try {
@@ -99,7 +99,7 @@ export function SpreadsheetPanel({ activeItemIds, activeColumnItemId, activeColI
       highlightDisposablesRef.current.forEach(d => { try { d.dispose() } catch { /* ignore */ } })
       highlightDisposablesRef.current = []
     }
-  }, [lockedRanges, activeItemIds, hasFile])
+  }, [activeSheet, lockedRanges, activeItemIds, hasFile])
 
   const colHighlightRef = useRef<{ dispose: () => void } | null>(null)
 
@@ -116,8 +116,9 @@ export function SpreadsheetPanel({ activeItemIds, activeColumnItemId, activeColI
 
     const item = [...lockedRanges].reverse().find(range => range.itemId === activeColumnItemId)
     if (!item) return
+    if (item.activeSheet && item.activeSheet !== activeSheet) return
 
-    const sheet = item.activeSheet ? workbook.getSheetByName(item.activeSheet) : workbook.getActiveSheet()
+    const sheet = activeSheet ? workbook.getSheetByName(activeSheet) : workbook.getActiveSheet()
     if (!sheet) return
 
     try {
@@ -137,7 +138,7 @@ export function SpreadsheetPanel({ activeItemIds, activeColumnItemId, activeColI
       colHighlightRef.current?.dispose()
       colHighlightRef.current = null
     }
-  }, [activeColIndex, activeColumnItemId, hasFile, lockedRanges])
+  }, [activeColIndex, activeColumnItemId, activeSheet, hasFile, lockedRanges])
 
   const tryAttachListener = (targetWorkbook: any, sourceWorkbookId: string) => {
     try {

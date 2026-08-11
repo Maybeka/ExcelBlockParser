@@ -1,84 +1,85 @@
-import type { RowIgnoreRule } from '../types'
+import type { RowFilterCondition, RowFilterConfig, RowFilterRule } from '../types'
+import type { WorkbookCell } from './workbook'
 
-function isEmpty(value: string | null | undefined): boolean {
-  return value == null || value.trim() === ''
+export const MAX_ROW_FILTER_DEPTH = 10
+
+export const DEFAULT_ROW_FILTER: RowFilterConfig = {
+  removeEmptyRows: true,
+  emptyCellConditions: { fullyStruck: true },
+  condition: null,
 }
 
-function evaluateRule(
-  cellValue: string | null | undefined,
-  rule: RowIgnoreRule,
-): boolean {
-  const operator = rule.operator
-  const raw = cellValue ?? ''
+function isBlank(value: unknown): boolean {
+  return value == null || (typeof value === 'string' && value.trim() === '')
+}
+
+export function isCellConsideredEmpty(cell: WorkbookCell, config: RowFilterConfig): boolean {
+  return isBlank(cell.value) || (config.emptyCellConditions.fullyStruck && cell.fullyStruck)
+}
+
+function ruleMatches(rawValue: unknown, rule: RowFilterRule, empty: boolean): boolean {
+  const raw = rawValue == null ? '' : String(rawValue)
   const expected = rule.value ?? ''
   const lowerRaw = raw.toLowerCase()
   const lowerExpected = expected.toLowerCase()
+  const values = (rule.values ?? []).map(value => value.toLowerCase())
 
-  switch (operator) {
-    case 'eq':
-      return lowerRaw === lowerExpected
-
-    case 'neq':
-      return lowerRaw !== lowerExpected
-
-    case 'contains':
-      return lowerRaw.includes(lowerExpected)
-
-    case 'empty':
-      return isEmpty(cellValue)
-
+  switch (rule.operator) {
+    case 'eq': return lowerRaw === lowerExpected
+    case 'neq': return lowerRaw !== lowerExpected
+    case 'in': return values.includes(lowerRaw)
+    case 'notIn': return !values.includes(lowerRaw)
+    case 'contains': return lowerRaw.includes(lowerExpected)
+    case 'notContains': return !lowerRaw.includes(lowerExpected)
+    case 'empty': return empty
+    case 'notEmpty': return !empty
     case 'regex':
+    case 'notRegex': {
       if (!expected) return false
       try {
-        return new RegExp(expected).test(raw)
+        const matches = new RegExp(expected).test(raw)
+        return rule.operator === 'regex' ? matches : !matches
       } catch {
         return false
       }
-
-    default:
-      return true
+    }
   }
 }
 
-/**
- * Filter rows by ignore rules. ALL rules must pass (AND logic) for a row to be kept.
- *
- * When `rule.column === '$row'` the 0-based row index is compared instead of a cell value.
- * If `columnKeys` does not contain a rule's column name the row is rejected.
- *
- * Pure function — never mutates `rows`.
- */
-export function applyRowIgnoreRules(
-  rows: string[][],
-  rules: RowIgnoreRule[],
+function conditionMatches(
+  condition: RowFilterCondition,
+  row: WorkbookCell[],
+  rowIndex: number,
+  columnKeys: string[],
+  sourceColumnOffsets: number[],
+  config: RowFilterConfig,
+): boolean {
+  if (condition.type !== 'rule') {
+    return condition.type === 'all'
+      ? condition.conditions.every(child => conditionMatches(child, row, rowIndex, columnKeys, sourceColumnOffsets, config))
+      : condition.conditions.some(child => conditionMatches(child, row, rowIndex, columnKeys, sourceColumnOffsets, config))
+  }
+  if (condition.column === '$row') return ruleMatches(rowIndex, condition, false)
+  const columnIndex = columnKeys.indexOf(condition.column)
+  if (columnIndex < 0) return false
+  const cell = row[sourceColumnOffsets[columnIndex]] ?? { value: null, fullyStruck: false }
+  return ruleMatches(cell.value, condition, isCellConsideredEmpty(cell, config))
+}
+
+export function applyRowFilter(
+  rows: WorkbookCell[][],
+  configured: RowFilterConfig | undefined,
   columnKeys: string[],
   sourceColumnOffsets: number[] = columnKeys.map((_, index) => index),
-): string[][] {
-  if (!rules || rules.length === 0) {
-    return rows
-  }
-
+): WorkbookCell[][] {
+  const config = configured ?? DEFAULT_ROW_FILTER
   return rows.filter((row, rowIndex) => {
-    for (const rule of rules) {
-      let cellValue: string | null | undefined
-
-      if (rule.column === '$row') {
-        cellValue = String(rowIndex)
-      } else if (rule.column) {
-        const colIndex = columnKeys.indexOf(rule.column)
-        if (colIndex === -1) {
-          return false
-        }
-        cellValue = row[sourceColumnOffsets[colIndex]]
-      } else {
-        continue
-      }
-
-      if (!evaluateRule(cellValue, rule)) {
-        return false
-      }
+    if (config.removeEmptyRows) {
+      const empty = sourceColumnOffsets.every(offset => isCellConsideredEmpty(row[offset] ?? { value: null, fullyStruck: false }, config))
+      if (empty) return false
     }
-
-    return true
+    return config.condition
+      ? conditionMatches(config.condition, row, rowIndex, columnKeys, sourceColumnOffsets, config)
+      : true
   })
 }

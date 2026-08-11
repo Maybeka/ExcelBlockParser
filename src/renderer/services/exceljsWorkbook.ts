@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { CellRange } from '../types'
-import type { WorkbookReader, WorkbookSheet } from './workbook'
+import type { WorkbookCell, WorkbookReader, WorkbookSheet } from './workbook'
 
 function columnLetter(index: number): string {
   let result = ''; let n = index + 1
@@ -9,23 +9,44 @@ function columnLetter(index: number): string {
 }
 
 function makeSheet(sheet: ExcelJS.Worksheet): WorkbookSheet {
-  const valuesByCoordinates = (startRow: number, startCol: number, endRow: number, endCol: number): unknown[][] => {
-    const values: unknown[][] = []
-    for (let row = startRow; row <= endRow; row++) {
-      const result: unknown[] = []
-      for (let col = startCol; col <= endCol; col++) result.push(sheet.getCell(row + 1, col + 1).value ?? null)
-      values.push(result)
+  const cellValue = (cell: ExcelJS.Cell): unknown => {
+    if (cell.type === ExcelJS.ValueType.Formula && cell.result != null) return cell.result
+    if (typeof cell.value === 'object' && cell.value && 'richText' in cell.value) {
+      return cell.value.richText.map(part => part.text).join('')
     }
-    return values
+    return cell.value ?? null
+  }
+  const fullyStruck = (cell: ExcelJS.Cell): boolean => {
+    if (typeof cell.value === 'object' && cell.value && 'richText' in cell.value) {
+      const visible = cell.value.richText.filter(part => part.text.trim() !== '')
+      return visible.length > 0 && visible.every(part => part.font?.strike ?? cell.font?.strike ?? false)
+    }
+    return cellValue(cell) != null && cell.font?.strike === true
+  }
+  const cellsByCoordinates = (startRow: number, startCol: number, endRow: number, endCol: number): WorkbookCell[][] => {
+    const cells: WorkbookCell[][] = []
+    for (let row = startRow; row <= endRow; row++) {
+      const result: WorkbookCell[] = []
+      for (let col = startCol; col <= endCol; col++) {
+        const cell = sheet.getCell(row + 1, col + 1)
+        result.push({ value: cellValue(cell), fullyStruck: fullyStruck(cell) })
+      }
+      cells.push(result)
+    }
+    return cells
+  }
+  const valuesByCoordinates = (startRow: number, startCol: number, endRow: number, endCol: number): unknown[][] => {
+    return cellsByCoordinates(startRow, startCol, endRow, endCol).map(row => row.map(cell => cell.value))
   }
   return {
     name: sheet.name,
+    getCells: (range: CellRange) => cellsByCoordinates(range.startRow, range.startCol, range.endRow, range.endCol),
     getValues: (range: CellRange) => valuesByCoordinates(range.startRow, range.startCol, range.endRow, range.endCol),
     getValuesByA1: (a1Notation: string) => {
       const [start, end = start] = a1Notation.split(':')
       const startCell = sheet.getCell(start)
       const endCell = sheet.getCell(end)
-      return valuesByCoordinates(startCell.row - 1, startCell.col - 1, endCell.row - 1, endCell.col - 1)
+      return valuesByCoordinates(Number(startCell.row) - 1, Number(startCell.col) - 1, Number(endCell.row) - 1, Number(endCell.col) - 1)
     },
     getMergedRanges: () => Object.keys((sheet as any)._merges ?? {}).map(a1 => {
       const match = a1.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/)
