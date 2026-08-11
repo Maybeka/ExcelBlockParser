@@ -18,8 +18,9 @@ unsigned ZIP workflow.
 ## Release Checklist
 
 1. Run `npm run test:main`, `npm run test:unit`, `npm test`, and `npm run test:native`.
-2. Tag the approved version as `vX.Y.Z` and start the Windows Wails candidate
-   workflow.
+2. Tag the approved version as `vX.Y.Z`. The Windows workflow builds the Wails
+   ZIP and checksum, uploads the Actions artifact, and creates the matching
+   GitHub Release.
 3. Install the generated artifact in a clean Windows VM and run the example
    workflow.
 4. Record manual acceptance from the Windows 11 test machine, including the

@@ -1,9 +1,9 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** v1.0.0 released; `main` is the unreleased v1.1.0 development baseline
+**Status:** v1.1.0 released
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
-**Last assessed:** 2026-08-10
+**Last assessed:** 2026-08-11
 
 ## 1. Product Intent
 
@@ -130,7 +130,7 @@ ExcelJS
 Wails is the production desktop host. Electron remains a
 development-only shell for rapid renderer work and diagnostic E2E coverage.
 The renderer must use the narrow bridge contract so both hosts retain behavioral
-parity during v1.1 development.
+parity during ongoing development.
 
 ## 5. Quality and Verification Status
 
@@ -240,9 +240,9 @@ boundary and focused tests.
 
 ## 9. Delivery Boundary
 
-The v1.1 development line is limited to preserving the extraction product while
-operationalizing compile-time built-in feature modules. Runtime extensions and
-generators remain outside the current delivery boundary.
+The v1.1 release preserves the extraction product while operationalizing
+compile-time built-in feature modules. Runtime extensions and generators remain
+outside the current delivery boundary.
 
 ## 10. Definition of a Production-Ready First Release
 

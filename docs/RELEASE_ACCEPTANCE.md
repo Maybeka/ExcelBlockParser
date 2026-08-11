@@ -1,6 +1,7 @@
 # Release Acceptance
 
-Version 1.0.0 was accepted and tagged on 2026-08-09. The gates below are the
+Version 1.1.0 is the current release. Version 1.0.0 was accepted and tagged on
+2026-08-09. The gates below are the
 baseline for subsequent release candidates unless a version-specific release
 plan explicitly strengthens them. Wails is the production runtime. Electron
 checks protect the shared renderer and bridge contract during development; they
@@ -70,6 +71,6 @@ processed.
 ## Architecture Boundary
 
 Runtime plugins, Python code-generation execution, and in-app LLM integration
-are not part of the 1.1.0 development baseline. Built-in feature-module work is
+are not part of the 1.1.0 release. Built-in feature-module work is
 governed by `FEATURE_MODULE_ARCHITECTURE.md`; Gate B and its Phase B
 implementation have preserved the release gates above.

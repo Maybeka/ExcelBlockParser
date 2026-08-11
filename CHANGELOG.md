@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 - Unreleased
+## 1.1.0 - 2026-08-11
 
 - Added Project v3 as the current persistence contract, with stable workbook
   identity and workbook-owned Block and Region configuration.
@@ -14,6 +14,8 @@
   diagnostics, save preparation, panels, and navigation contributions.
 - Removed legacy Session v1/v2 import and migration; Project v3 is now the only
   supported persisted format.
+- Refined Block validation and row filtering, completed two-dimensional Region
+  detection and persistence, and added Region-aware preview and Electron tests.
 
 ## 1.0.0 - 2026-08-09
 
