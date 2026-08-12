@@ -8,7 +8,9 @@ import {
   isCurrentWorkbookLoad,
   replaceAvailableWorkbooks,
   requestWorkbookLoad,
+  requestWorkbookRefresh,
   setLoadedWorkbook,
+  shouldRequestWorkbookLoad,
 } from '../services/workbookRuntime'
 
 describe('workbook runtime state', () => {
@@ -29,6 +31,26 @@ describe('workbook runtime state', () => {
     const second = beginWorkbookProjectLoad(first)
     expect(isCurrentWorkbookLoad(second, generation)).toBe(false)
     expect(isCurrentWorkbookLoad(second, second.loadGeneration)).toBe(true)
+  })
+
+  it('does not request an already loaded or in-flight active workbook again', () => {
+    let state = requestWorkbookLoad(createWorkbookRuntimeState(), 'sales', '/sales.xlsx')
+    expect(shouldRequestWorkbookLoad(state, 'sales', 'sales')).toBe(false)
+    state = setLoadedWorkbook(state, 'sales')
+    expect(shouldRequestWorkbookLoad(state, 'sales', 'sales')).toBe(false)
+    expect(shouldRequestWorkbookLoad(state, 'sales', 'costs')).toBe(true)
+  })
+
+  it('marks an explicit refresh as a new forced request', () => {
+    const loaded = setLoadedWorkbook(createWorkbookRuntimeState(), 'sales')
+    const refreshed = requestWorkbookRefresh(loaded, 'sales', '/sales.xlsx', 'Orders')
+    expect(refreshed.requestedWorkbook).toMatchObject({
+      workbookId: 'sales',
+      path: '/sales.xlsx',
+      sheetName: 'Orders',
+      refresh: true,
+      requestId: 1,
+    })
   })
 
   it('replaces project availability and requests the preferred attached workbook', () => {

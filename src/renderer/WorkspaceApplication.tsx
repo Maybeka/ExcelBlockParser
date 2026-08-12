@@ -1,6 +1,6 @@
 import { Suspense, useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Badge, Button, Drawer, Dropdown, Layout, Modal, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ReloadOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
 import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
@@ -33,8 +33,10 @@ import {
   isCurrentWorkbookLoad,
   replaceAvailableWorkbooks,
   requestWorkbookLoad,
+  requestWorkbookRefresh,
   resetWorkbookRuntime,
   setLoadedWorkbook,
+  shouldRequestWorkbookLoad,
   type WorkbookRuntimeState,
 } from './services/workbookRuntime'
 import { decodeProjectDocument, inspectProjectWorkbookSources, projectRecoveryContent, saveProjectDocument } from './services/projectLifecycle'
@@ -326,8 +328,23 @@ export function WorkspaceApplication() {
       message.warning(`Open ${workbook?.name ?? 'this workbook'} to attach it to the project.`)
       return
     }
+    if (!shouldRequestWorkbookLoad(workbookRuntimeRef.current, projectRef.current.activeWorkbookId, workbookId)) {
+      if (sheetName && workbookRuntimeRef.current.loadedWorkbookId === workbookId && spreadsheet.setActiveSheet(sheetName)) {
+        setProjectActiveSheet(sheetName)
+      }
+      return
+    }
     setProject(current => activateProjectWorkbook(current, workbookId, builtInFeatureRegistry, sheetName))
     updateWorkbookRuntime(current => requestWorkbookLoad(current, workbookId, path, sheetName ?? workbook.activeSheetName))
+  }, [spreadsheet, updateWorkbookRuntime])
+
+  const handleRefreshWorkbook = useCallback(() => {
+    const workbookId = projectRef.current.activeWorkbookId
+    if (!workbookId) return
+    const path = workbookRuntimeRef.current.paths[workbookId]
+    const workbook = projectRef.current.workbooks.find(item => item.id === workbookId)
+    if (!path || !workbook) return
+    updateWorkbookRuntime(current => requestWorkbookRefresh(current, workbookId, path, workbook.activeSheetName))
   }, [updateWorkbookRuntime])
 
   const handleSelectionChange = useCallback(async (sourceWorkbookId: string, range: CellRange | null, activeSheet: string | null) => {
@@ -591,6 +608,7 @@ export function WorkspaceApplication() {
       setHasUnsavedChanges(true)
     },
     selectProject: update => setProject(update),
+    activateWorkbook: handleSelectWorkbook,
     run: handleParse,
     setActiveColumn: setActiveColIndex,
     setReconciliationItem: item => {
@@ -730,7 +748,13 @@ export function WorkspaceApplication() {
               <section className="workspace-canvas" aria-label="Workbook canvas">
                 <header className="panel-heading canvas-heading">
                   <div><strong>Excel Workbook</strong></div>
-                  <span>{currentFileName ?? 'Choose a file to begin'}</span>
+                  <div className="canvas-heading-actions">
+                    <span>{currentFileName ?? 'Choose a file to begin'}</span>
+                    <Tooltip title="Refresh workbook from source">
+                      <Button aria-label="Refresh current workbook" size="small" type="text" icon={<ReloadOutlined />}
+                        disabled={!activeWorkbookId || !workbookRuntime.paths[activeWorkbookId]} onClick={handleRefreshWorkbook} />
+                    </Tooltip>
+                  </div>
                 </header>
                 <SpreadsheetPanel
                   activeSheet={activeSheetName}
@@ -743,6 +767,7 @@ export function WorkspaceApplication() {
                   }}
                   loadSignal={loadSignal}
                   requestedWorkbook={requestedWorkbook}
+                  openWorkbookIds={openWorkbookIds}
                   onFileLoaded={handleFileLoaded}
                   onLoadedWorkbookChange={workbookId => updateWorkbookRuntime(current => setLoadedWorkbook(current, workbookId))}
                   lockedRanges={lockedRanges}

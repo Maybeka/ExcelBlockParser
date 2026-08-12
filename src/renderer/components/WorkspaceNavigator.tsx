@@ -25,6 +25,7 @@ function ListControls({ canUp, canDown, onMoveUp, onMoveDown }: { canUp: boolean
 
 export function WorkspaceNavigator({ projectName, fileName, workbooks, activeWorkbookId, activeSheet, featureSections, onOpen, onSelectWorkbook, onSelectSheet }: WorkspaceNavigatorProps) {
   const [workbooksExpanded, setWorkbooksExpanded] = useState(true)
+  const [expandedWorkbookSheets, setExpandedWorkbookSheets] = useState<Record<string, boolean>>({})
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   const sectionTitle = (label: string, count: number, expanded: boolean, onToggle: () => void) => (
@@ -48,11 +49,20 @@ export function WorkspaceNavigator({ projectName, fileName, workbooks, activeWor
     {workbooksExpanded && workbooks.map(workbook => {
       const isActive = workbook.id === activeWorkbookId
       const workbookSheets = workbook.sheetNames ?? []
+      const sheetsExpanded = expandedWorkbookSheets[workbook.id] ?? true
       return <div key={workbook.id} className="workspace-workbook-node">
-        <button type="button" className={`workspace-item ${isActive ? 'is-active' : ''}`} onClick={() => onSelectWorkbook(workbook.id)}>
-          <span className="workspace-avatar workspace-file-avatar"><FileExcelOutlined /></span><span title={workbook.name}>{workbook.name}</span>
-        </button>
-        {workbookSheets.length > 0 && <div className="workspace-workbook-sheets" aria-label={`${workbook.name} sheets`}>
+        <div className={`workspace-workbook-heading ${isActive ? 'is-active' : ''}`}>
+          <button type="button" className={`workspace-item ${isActive ? 'is-active' : ''}`} onClick={() => onSelectWorkbook(workbook.id)}>
+            <span className="workspace-avatar workspace-file-avatar"><FileExcelOutlined /></span><span title={workbook.name}>{workbook.name}</span>
+          </button>
+          {workbookSheets.length > 0 && <Tooltip title={sheetsExpanded ? 'Collapse sheets' : 'Expand sheets'}>
+            <Button size="small" type="text" className="workspace-workbook-toggle"
+              aria-label={`${sheetsExpanded ? 'Collapse' : 'Expand'} ${workbook.name} sheets`} aria-expanded={sheetsExpanded}
+              icon={sheetsExpanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
+              onClick={() => setExpandedWorkbookSheets(current => ({ ...current, [workbook.id]: !sheetsExpanded }))} />
+          </Tooltip>}
+        </div>
+        {sheetsExpanded && workbookSheets.length > 0 && <div className="workspace-workbook-sheets" aria-label={`${workbook.name} sheets`}>
           {workbookSheets.map(sheet => (
             <button key={sheet} type="button" className={`workspace-item workspace-sheet-item ${isActive && sheet === activeSheet ? 'is-active' : ''}`} onClick={() => {
               if (isActive) onSelectSheet(sheet)
@@ -72,7 +82,7 @@ export function WorkspaceNavigator({ projectName, fileName, workbooks, activeWor
         <Divider style={{ margin: '14px 0 8px' }} />
         {sectionTitle(section.label, section.items.length, expanded, () => setExpandedSections(current => ({ ...current, [section.id]: !expanded })))}
         {expanded && (section.items.length === 0 ? <div className="workspace-empty">{section.emptyText}</div> : section.items.map((item, index) => (
-          <div key={item.id} className={`workspace-row ${item.active ? 'is-active' : ''}`} onClick={item.select}>
+          <div key={item.id} className={`workspace-row ${item.active ? 'is-active' : ''}`}>
             <button type="button" className="workspace-item workspace-item-main" onClick={item.select}>
               <span className={`workspace-avatar ${item.avatarClassName ?? ''}`}>{item.locked ? <LockOutlined /> : <UnlockOutlined />}</span>
               <span title={item.label}>{item.label}</span>

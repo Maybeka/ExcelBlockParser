@@ -3,6 +3,7 @@ export interface WorkbookLoadRequest {
   path: string
   requestId: number
   sheetName?: string | null
+  refresh?: boolean
 }
 
 export interface WorkbookRuntimeState {
@@ -62,6 +63,31 @@ export function requestWorkbookLoad(
     requestSequence,
     requestedWorkbook: { workbookId, path, requestId: requestSequence, sheetName },
   }
+}
+
+export function requestWorkbookRefresh(
+  state: WorkbookRuntimeState,
+  workbookId: string,
+  path: string,
+  sheetName?: string | null,
+): WorkbookRuntimeState {
+  const requested = requestWorkbookLoad(state, workbookId, path, sheetName)
+  return {
+    ...requested,
+    requestedWorkbook: requested.requestedWorkbook
+      ? { ...requested.requestedWorkbook, refresh: true }
+      : null,
+  }
+}
+
+export function shouldRequestWorkbookLoad(
+  state: WorkbookRuntimeState,
+  activeWorkbookId: string | null,
+  targetWorkbookId: string,
+): boolean {
+  if (targetWorkbookId !== activeWorkbookId) return true
+  return state.loadedWorkbookId !== targetWorkbookId
+    && state.requestedWorkbook?.workbookId !== targetWorkbookId
 }
 
 export function completeWorkbookLoad(state: WorkbookRuntimeState, workbookId: string, path: string): WorkbookRuntimeState {

@@ -12,6 +12,7 @@ export interface WorkspaceFeaturePanelContext {
   requestedFeatureId: string | null
   transactProject(update: (project: ProjectConfig) => ProjectConfig): void
   selectProject(update: (project: ProjectConfig) => ProjectConfig): void
+  activateWorkbook(workbookId: string, sheetName?: string): void
   run(): void
   setActiveColumn(colIndex: number | null): void
   setReconciliationItem(item: WorkspaceReconciliationItem | null): void

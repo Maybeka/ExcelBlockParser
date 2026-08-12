@@ -68,7 +68,7 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
     }
   },
   navigation(context) {
-    const blocks = blocksForWorkbook(context.project, context.project.activeWorkbookId)
+    const blocks = context.project.blocks
     return {
       id: this.featureId,
       label: 'Extractors',
@@ -76,11 +76,17 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
       items: blocks.map((block, index) => ({
         id: block.id,
         label: block.label || `block_${index + 1}`,
-        detail: block.range?.a1Notation,
+        detail: [
+          context.project.workbooks.find(workbook => workbook.id === block.workbookId)?.name,
+          block.range ? `${block.activeSheet ? `${block.activeSheet}!` : ''}${block.range.a1Notation}` : null,
+        ].filter(Boolean).join(' · '),
         active: block.id === context.project.activeBlockId,
         locked: block.selectionLocked,
         avatarClassName: 'workspace-extractor-avatar',
-        select: () => context.selectProject(project => ({ ...project, activeBlockId: block.id, activeRegionId: null })),
+        select: () => {
+          if (block.workbookId) context.activateWorkbook(block.workbookId, block.activeSheet ?? undefined)
+          context.selectProject(project => ({ ...project, activeBlockId: block.id, activeRegionId: null }))
+        },
         move: direction => context.transactProject(project => moveBlock(project, block.id, direction)),
       })),
     }

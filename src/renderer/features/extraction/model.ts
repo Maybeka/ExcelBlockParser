@@ -28,14 +28,11 @@ export function blocksForWorkbook(project: ProjectConfig, workbookId: string | n
 }
 
 export function moveBlock(project: ProjectConfig, blockId: string, direction: -1 | 1): ProjectConfig {
-  const item = project.blocks.find(block => block.id === blockId)
-  if (!item) return project
-  const scopedIndices = project.blocks.map((block, index) => block.workbookId === item.workbookId ? index : -1).filter(index => index >= 0)
-  const scopedIndex = scopedIndices.findIndex(index => project.blocks[index].id === blockId)
-  const target = scopedIndex + direction
-  if (scopedIndex < 0 || target < 0 || target >= scopedIndices.length) return project
+  const index = project.blocks.findIndex(block => block.id === blockId)
+  const target = index + direction
+  if (index < 0 || target < 0 || target >= project.blocks.length) return project
   const blocks = [...project.blocks]
-  ;[blocks[scopedIndices[scopedIndex]], blocks[scopedIndices[target]]] = [blocks[scopedIndices[target]], blocks[scopedIndices[scopedIndex]]]
+  ;[blocks[index], blocks[target]] = [blocks[target], blocks[index]]
   return { ...project, blocks }
 }
 

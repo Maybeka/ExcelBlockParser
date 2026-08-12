@@ -50,7 +50,7 @@ async function loadWorkbookFixture(page: import('@playwright/test').Page): Promi
   await settings.getByRole('button', { name: 'Reassign' }).click()
   await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
   await settings.getByRole('button', { name: 'Done' }).click()
-  await expect(page.getByRole('textbox', { name: 'Block 1' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
   await page.waitForTimeout(500)
   const closePreview = page.getByRole('button', { name: 'Close preview' })
   if (await closePreview.isVisible().catch(() => false)) await closePreview.click()

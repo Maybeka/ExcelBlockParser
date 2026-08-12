@@ -262,14 +262,14 @@ describe('project workspace', () => {
     expect(prepared.activeRegionId).toBeNull()
   })
 
-  it('reorders blocks only within their workbook', () => {
+  it('reorders blocks in project-wide navigation order', () => {
     const salesA = block('sales-a', 'sales')
     const costsA = block('costs-a', 'costs')
     const salesB = block('sales-b', 'sales')
     const costsB = block('costs-b', 'costs')
     const project = { ...createProject(), blocks: [salesA, costsA, salesB, costsB] }
     expect(moveBlock(project, salesB.id, -1).blocks.map(item => item.id))
-      .toEqual(['sales-b', 'costs-a', 'sales-a', 'costs-b'])
+      .toEqual(['sales-a', 'sales-b', 'costs-a', 'costs-b'])
     expect(moveBlock(project, salesA.id, -1)).toBe(project)
   })
 
