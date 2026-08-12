@@ -1,7 +1,8 @@
 import { Suspense, useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Badge, Button, Drawer, Dropdown, Layout, Modal, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ReloadOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ReloadOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
+import { PythonDebugDialog } from './components/PythonDebugDialog'
 import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
 import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
 import { gateBPrototypePanel } from './features/panel/gateBPrototypePanels'
@@ -81,6 +82,7 @@ export function WorkspaceApplication() {
   const { requestedWorkbook, loadedWorkbookId, openWorkbookIds, closeSignal } = workbookRuntime
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null)
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false)
+  const [pythonDebugOpen, setPythonDebugOpen] = useState(false)
   const [pendingProjectRemoval, setPendingProjectRemoval] = useState<string | null>(null)
   const [hasUnsavedChanges, setDirtyState] = useState(false)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
@@ -706,11 +708,13 @@ export function WorkspaceApplication() {
                   { key: 'save', icon: <SaveOutlined />, label: 'Save Project', extra: <span aria-hidden="true">Ctrl+S</span> },
                   { key: 'save-as', icon: <SaveOutlined />, label: 'Save Project As...', extra: <span aria-hidden="true">Ctrl+Shift+S</span> },
                   { key: 'settings', icon: <SettingOutlined />, label: 'Project settings' },
+                  { key: 'python-debug', icon: <CodeOutlined />, label: 'Python Debug' },
                   { type: 'divider' },
                   { key: 'close', icon: <CloseOutlined />, label: 'Close Project', danger: true, disabled: !projectFilePath && projectWorkbooks.length === 0 && !hasUnsavedChanges },
                 ],
                 onClick: ({ key }) => {
                   if (key === 'settings') setProjectSettingsOpen(true)
+                  else if (key === 'python-debug') setPythonDebugOpen(true)
                   else if (key === 'save') void handleSaveProject(false)
                   else if (key === 'save-as') void handleSaveProject(true)
                   else requestProjectReset(key as 'new' | 'close')
@@ -924,6 +928,7 @@ export function WorkspaceApplication() {
           {(validationErrors || []).length > 10 && <div style={{ color: '#999' }}>...and {(validationErrors || []).length - 10} more</div>}
         </div>
       </Modal>
+      <PythonDebugDialog open={pythonDebugOpen} onClose={() => setPythonDebugOpen(false)} />
     </Layout>
   )
 }

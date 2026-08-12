@@ -265,6 +265,16 @@ html, body, #root {
 .preview-shell .ant-select-selector { border-color: #dbe6ed !important; box-shadow: none !important; }
 .preview-shell .ant-input:focus { border-color: #75bdf3 !important; box-shadow: 0 0 0 2px rgba(51, 144, 236, .1) !important; }
 
+.python-debug-editor {
+  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 4;
+}
+.python-debug-output { margin-top: 12px; min-height: 120px; }
+.python-debug-result { display: flex; flex-direction: column; gap: 8px; }
+.python-debug-result pre { background: #f4f8fb; border: 1px solid #dce7ee; border-radius: 6px; margin: 0; max-height: 260px; overflow: auto; padding: 10px; white-space: pre-wrap; }
+
 @media (max-width: 900px) {
   .workspace-desktop-nav, .workspace-sidebar-toggle { display: none; }
   .workspace-mobile-nav { display: inline-flex; }

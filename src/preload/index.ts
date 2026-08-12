@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../shared/bridgeResult'
+import type { PythonDebugResult } from '../shared/pythonDebug'
 
 export interface ElectronAPI {
   openXlsx: () => Promise<BridgeResult<string>>
@@ -16,6 +17,8 @@ export interface ElectronAPI {
   getPreviewData: (blockId: string) => Promise<unknown>
   closePreviewWindow: () => Promise<void>
   onPreviewReload: (callback: (blockId: string) => void) => () => void
+  runPythonDebug: (source: string) => Promise<BridgeResult<PythonDebugResult>>
+  cancelPythonDebug: () => Promise<BridgeResult<boolean>>
 }
 
 const api: ElectronAPI = {
@@ -67,6 +70,8 @@ const api: ElectronAPI = {
     ipcRenderer.on('preview:reload', handler)
     return () => { ipcRenderer.removeListener('preview:reload', handler) }
   },
+  runPythonDebug: async () => bridgeError('Embedded Python debug requires the Wails runtime.'),
+  cancelPythonDebug: async () => bridgeOk(false),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

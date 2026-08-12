@@ -6,6 +6,9 @@
  * Browser:  throws descriptive errors (used for dev/testing)
  */
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../../shared/bridgeResult'
+import type { PythonDebugResult } from '../../shared/pythonDebug'
+
+export type { PythonDebugResult } from '../../shared/pythonDebug'
 
 export interface BridgeAPI {
   openXlsx: () => Promise<BridgeResult<string>>
@@ -22,6 +25,8 @@ export interface BridgeAPI {
   getPreviewData: (blockId: string) => Promise<unknown>
   closePreviewWindow: () => Promise<void>
   onPreviewReload: (callback: (blockId: string) => void) => () => void
+  runPythonDebug: (source: string) => Promise<BridgeResult<PythonDebugResult>>
+  cancelPythonDebug: () => Promise<BridgeResult<boolean>>
 }
 
 // ── Wails bridge ────────────────────────────────────────────────────────────
@@ -41,6 +46,8 @@ export interface WailsGoAPI {
       SetPreviewData: (blockId: string, data: unknown) => Promise<void>
       GetPreviewData: (blockId: string) => Promise<unknown>
       ClosePreviewWindow: () => Promise<void>
+      RunPythonDebug: (source: string) => Promise<PythonDebugResult>
+      CancelPythonDebug: () => Promise<boolean>
     }
   }
 }
@@ -59,6 +66,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     'OpenXlsx', 'ReadFile', 'SaveJson', 'SaveJsonToPath', 'OpenJson',
     'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
     'OpenPreviewWindow', 'SetPreviewData', 'GetPreviewData', 'ClosePreviewWindow',
+    'RunPythonDebug', 'CancelPythonDebug',
   ] as const
   if (requiredMethods.some(method => typeof App[method] !== 'function')) {
     throw new Error('Wails runtime is missing a required desktop capability')
@@ -130,6 +138,12 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
       console.warn('onPreviewReload not available in Wails')
       return () => {}
     },
+    runPythonDebug: async source => {
+      try { return bridgeOk(await App.RunPythonDebug(source)) } catch (error) { return bridgeError(error) }
+    },
+    cancelPythonDebug: async () => {
+      try { return bridgeOk(await App.CancelPythonDebug()) } catch (error) { return bridgeError(error) }
+    },
   }
 }
 
@@ -154,6 +168,8 @@ function createBrowserBridge(): BridgeAPI {
       console.warn('onPreviewReload requires Electron or Wails')
       return () => {}
     },
+    runPythonDebug: async () => bridgeError('Embedded Python debug requires the Wails runtime.'),
+    cancelPythonDebug: async () => bridgeOk(false),
   }
 }
 
