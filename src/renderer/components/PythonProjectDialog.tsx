@@ -98,43 +98,25 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
       key: 'script',
       label: 'Script',
       children: (
-        <div>
-          <div className="python-project-editor-toolbar">
-            <Select
-              aria-label="Python symbols"
-              className="python-project-symbols"
-              placeholder="Symbols"
-              suffixIcon={<FunctionOutlined />}
-              options={symbols.map(symbol => ({
-                value: String(symbol.from),
-                label: `${symbol.qualifiedName} · line ${draftSource.slice(0, symbol.from).split('\n').length}`,
-              }))}
-              onSelect={value => {
-                if (editorRef.current) jumpToPythonOffset(editorRef.current, Number(value))
-              }}
-              value={null}
-            />
-          </div>
-          <div className="python-project-editor" aria-label="Project Python source">
-            <CodeMirror
-              value={draftSource}
-              height="390px"
-              extensions={PYTHON_EDITOR_EXTENSIONS}
-              onCreateEditor={view => { editorRef.current = view }}
-              onChange={setDraftSource}
-              editable={!running}
-              basicSetup={{
-                autocompletion: false,
-                bracketMatching: true,
-                closeBrackets: true,
-                foldGutter: true,
-                highlightActiveLine: true,
-                highlightSelectionMatches: true,
-                lineNumbers: true,
-                syntaxHighlighting: false,
-              }}
-            />
-          </div>
+        <div className="python-project-editor" aria-label="Project Python source">
+          <CodeMirror
+            value={draftSource}
+            height="390px"
+            extensions={PYTHON_EDITOR_EXTENSIONS}
+            onCreateEditor={view => { editorRef.current = view }}
+            onChange={setDraftSource}
+            editable={!running}
+            basicSetup={{
+              autocompletion: false,
+              bracketMatching: true,
+              closeBrackets: true,
+              foldGutter: true,
+              highlightActiveLine: true,
+              highlightSelectionMatches: true,
+              lineNumbers: true,
+              syntaxHighlighting: false,
+            }}
+          />
         </div>
       ),
     },
@@ -177,7 +159,27 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
       {!context && <Alert type="info" showIcon message="No current parse result" description="Run & Preview before executing the project script." style={{ marginBottom: 10 }} />}
       {bridgeError && <Alert type="error" showIcon message={bridgeError} closable onClose={() => setBridgeError('')} style={{ marginBottom: 10 }} />}
       {runtimeError && <Alert type="error" showIcon message="Python execution failed" description={<pre className="python-project-error">{runtimeError}</pre>} style={{ marginBottom: 10 }} />}
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} />
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={items}
+        tabBarExtraContent={activeTab === 'script' ? (
+          <Select
+            aria-label="Python symbols"
+            className="python-project-symbols"
+            placeholder="Symbols"
+            suffixIcon={<FunctionOutlined />}
+            options={symbols.map(symbol => ({
+              value: String(symbol.from),
+              label: `${symbol.qualifiedName} · line ${draftSource.slice(0, symbol.from).split('\n').length}`,
+            }))}
+            onSelect={value => {
+              if (editorRef.current) jumpToPythonOffset(editorRef.current, Number(value))
+            }}
+            value={null}
+          />
+        ) : null}
+      />
     </Modal>
   )
 }

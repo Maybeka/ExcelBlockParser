@@ -8,8 +8,17 @@ test('opens the project Python editor with syntax highlighting', async ({ page }
   const dialog = page.getByRole('dialog', { name: 'Project Python' })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('.cm-editor')).toContainText('def process(context):')
-  await expect(dialog.getByRole('combobox', { name: 'Python symbols' })).toBeVisible()
-  await dialog.getByRole('combobox', { name: 'Python symbols' }).click()
+  const symbolSelect = dialog.getByRole('combobox', { name: 'Python symbols' })
+  await expect(symbolSelect).toBeVisible()
+  const [symbolBox, tabBarBox] = await Promise.all([
+    symbolSelect.boundingBox(),
+    dialog.locator('.ant-tabs-nav').boundingBox(),
+  ])
+  expect(symbolBox).not.toBeNull()
+  expect(tabBarBox).not.toBeNull()
+  expect(symbolBox!.y).toBeGreaterThanOrEqual(tabBarBox!.y)
+  expect(symbolBox!.y + symbolBox!.height).toBeLessThanOrEqual(tabBarBox!.y + tabBarBox!.height + 1)
+  await symbolSelect.click()
   await expect(page.getByText('process · line 1')).toBeVisible()
   await page.keyboard.press('Escape')
   const highlightedDef = dialog.locator('.cm-line span').filter({ hasText: /^def$/ }).first()
