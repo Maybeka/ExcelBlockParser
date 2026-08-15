@@ -10,12 +10,20 @@ Project Python > Run**.
 The script is not assigned to individual blocks or regions and is not run when
 a project is opened, saved, recovered, or parsed.
 
-The editor provides syntax highlighting, search, bracket matching, code
-folding, a hierarchical local symbol tree with class/function/method icons,
-`F12` go-to-definition, and `Cmd/Ctrl + click` go-to-definition. A local symbol
-is underlined while the navigation modifier is held. Navigation is limited to
-symbols declared in the single project script; it does not resolve imported
-modules, installed packages, or inferred runtime types.
+The editor provides semantic syntax highlighting, search, bracket matching,
+code folding, syntax diagnostics, local and member completion, definition
+hover details, and a hierarchical class/function/method symbol tree. `F12` and
+`Cmd/Ctrl + click` go to definitions; a resolvable symbol is underlined while
+the navigation modifier is held.
+
+The local semantic model distinguishes class construction from function calls
+and resolves instance methods from constructor assignments, type annotations,
+`self` attributes, return annotations, and class inheritance. This support is
+intentionally scoped to the single project script. It does not resolve imported
+modules, installed packages, dynamically assigned members, decorators that
+replace types, or other runtime-only Python behavior. Full cross-module Python
+semantics would require a separate language server and are outside the embedded
+editor boundary.
 
 ## Entry Point
 

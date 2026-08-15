@@ -82,3 +82,29 @@ test('shows hierarchical symbols and modifier-hover definition links', async ({ 
   await page.keyboard.up(modifier)
   await expect(definitionLink).toHaveCount(0)
 })
+
+test('distinguishes constructors and navigates through an inferred instance type', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Project actions' }).click()
+  await page.getByRole('menuitem', { name: /Project Python/ }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Project Python' })
+  const editor = dialog.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A')
+  await page.keyboard.insertText('class Builder:\n    def render(self, value: int):\n        return value\n\ndef process(context):\n    builder = Builder()\n    return builder.render(1)')
+
+  const constructor = dialog.locator('.cm-python-constructor').filter({ hasText: 'Builder' })
+  const method = dialog.locator('.cm-python-method').filter({ hasText: 'render' }).last()
+  await expect(constructor).toHaveCSS('color', 'rgb(23, 146, 153)')
+  await expect(method).toHaveCSS('color', 'rgb(114, 135, 253)')
+
+  await method.click()
+  await page.keyboard.press('F12')
+  await expect(dialog.locator('.cm-activeLine')).toContainText('def render(self, value: int):')
+
+  await editor.fill('class Base:\n    def render(self, value: int):\n        return value\n\nclass Builder(Base):\n    pass\n\ndef process(context):\n    builder = Builder()\n    return builder')
+  await editor.press('.')
+  const completion = dialog.locator('.cm-tooltip-autocomplete').getByText(/render.*inherited from Base/)
+  await expect(completion).toBeVisible()
+})

@@ -278,6 +278,16 @@ html, body, #root {
 .python-project-symbol-icon { align-items: center; color: #1e66f5; display: inline-flex; flex: 0 0 auto; }
 .python-project-symbol-icon.is-class { color: #179299; }
 .python-project-editor .cm-python-definition-link { cursor: pointer; text-decoration: underline; text-decoration-color: #1e66f5; text-underline-offset: 2px; }
+.python-project-editor .cm-python-class { color: #179299 !important; font-weight: 600; }
+.python-project-editor .cm-python-constructor { color: #179299 !important; font-weight: 700; }
+.python-project-editor .cm-python-function { color: #1e66f5 !important; }
+.python-project-editor .cm-python-method { color: #7287fd !important; }
+.python-project-editor .cm-python-attribute { color: #7287fd !important; }
+.python-project-editor .cm-python-instance { color: #4c4f69 !important; font-style: italic; }
+.cm-tooltip .cm-python-semantic-tooltip { background: #e6e9ef; color: #4c4f69; display: grid; gap: 2px; padding: 6px 8px; }
+.cm-python-semantic-tooltip small { color: #7c7f93; }
+.python-project-editor .cm-diagnostic-error { border-left-color: #d20f39; }
+.python-project-editor .cm-lintRange-error { background-image: none; text-decoration: underline wavy #d20f39; text-underline-offset: 3px; }
 .python-project-editor .cm-editor { background: #eff1f5; font-family: var(--font-code); font-size: 13px; }
 .python-project-editor .cm-editor.cm-focused { outline: 2px solid rgba(30, 102, 245, .22); outline-offset: -1px; }
 .python-project-editor .cm-scroller { line-height: 1.58; }
