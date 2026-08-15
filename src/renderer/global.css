@@ -271,7 +271,7 @@ html, body, #root {
 .preview-shell .ant-input:focus { border-color: #75bdf3 !important; box-shadow: 0 0 0 2px rgba(51, 144, 236, .1) !important; }
 
 .python-debug-editor {
-  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  font-family: var(--font-code);
   font-size: 13px;
   line-height: 1.5;
   tab-size: 4;
