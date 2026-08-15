@@ -64,7 +64,7 @@ export function BlockCard({
           <Tooltip title={`${rangeText} — click to go`}>
             <span onClick={e => { e.stopPropagation(); onRangeClick?.() }}
               onMouseDown={e => e.stopPropagation()}
-              style={{ fontSize: 12, color: '#1677ff', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+              style={{ fontSize: 12, color: '#1677ff', fontFamily: 'var(--font-code)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
               {rangeText}
             </span>
           </Tooltip>

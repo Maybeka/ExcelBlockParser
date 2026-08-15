@@ -197,7 +197,7 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
               displayObjectSize={true}
               enableClipboard={false}
               collapsed={1}
-              style={{ padding: 14, fontFamily: 'Menlo, Monaco, "Courier New", monospace', fontSize: 13, lineHeight: 1.45 }}
+              style={{ padding: 14, fontFamily: 'var(--font-code)', fontSize: 13, lineHeight: 1.45 }}
               name={false}
               quotesOnKeys={false}
             />
