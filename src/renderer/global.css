@@ -270,12 +270,12 @@ html, body, #root {
 .preview-shell .ant-select-selector { border-color: #dbe6ed !important; box-shadow: none !important; }
 .preview-shell .ant-input:focus { border-color: #75bdf3 !important; box-shadow: 0 0 0 2px rgba(51, 144, 236, .1) !important; }
 
-.python-project-editor { border: 1px solid #dce7ee; border-radius: 6px; overflow: hidden; }
+.python-project-editor { border: 1px solid #d7e3eb; border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8); overflow: hidden; }
 .python-project-editor-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
 .python-project-symbols { width: min(280px, 100%); }
-.python-project-editor .cm-editor { font-family: var(--font-code); font-size: 13px; }
-.python-project-editor .cm-editor.cm-focused { outline: 2px solid rgba(51, 144, 236, .18); }
-.python-project-editor .cm-scroller { line-height: 1.5; }
+.python-project-editor .cm-editor { background: #fbfcfe; font-family: var(--font-code); font-size: 13px; }
+.python-project-editor .cm-editor.cm-focused { outline: 2px solid rgba(51, 144, 236, .2); outline-offset: -1px; }
+.python-project-editor .cm-scroller { line-height: 1.58; }
 .python-project-code-block {
   background: #f4f8fb; border: 1px solid #dce7ee; border-radius: 6px; font-family: var(--font-code);
   margin: 0; max-height: 390px; min-height: 120px; overflow: auto; padding: 10px; white-space: pre-wrap;

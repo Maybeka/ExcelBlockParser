@@ -7,6 +7,7 @@ import type { EditorView } from '@codemirror/view'
 import type { PythonProjectResult } from '../../shared/pythonRuntime'
 import type { ParseResult, ProjectConfig } from '../types'
 import { getBridge } from '../services/bridge'
+import { projectPythonEditorTheme } from '../services/pythonEditorTheme'
 import { buildPythonProjectContext } from '../services/pythonProject'
 import { jumpToPythonOffset, listPythonSymbols, pythonNavigation } from '../services/pythonNavigation'
 
@@ -23,7 +24,7 @@ function jsonDisplay(value: string): string {
 }
 
 const MAX_DISPLAY_CHARS = 1_000_000
-const PYTHON_EDITOR_EXTENSIONS = [python(), pythonNavigation()]
+const PYTHON_EDITOR_EXTENSIONS = [python(), projectPythonEditorTheme, pythonNavigation()]
 
 function boundedDisplay(value: string): string {
   return value.length <= MAX_DISPLAY_CHARS
@@ -130,6 +131,7 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
                 highlightActiveLine: true,
                 highlightSelectionMatches: true,
                 lineNumbers: true,
+                syntaxHighlighting: false,
               }}
             />
           </div>

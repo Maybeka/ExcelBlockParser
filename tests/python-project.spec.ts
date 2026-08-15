@@ -15,6 +15,8 @@ test('opens the project Python editor with syntax highlighting', async ({ page }
   const highlightedDef = dialog.locator('.cm-line span').filter({ hasText: /^def$/ }).first()
   await expect(highlightedDef).toBeVisible()
   await expect(highlightedDef).not.toHaveAttribute('class', '')
+  await expect(highlightedDef).toHaveCSS('color', 'rgb(155, 47, 105)')
+  await expect(dialog.locator('.cm-editor')).toHaveCSS('background-color', 'rgb(251, 252, 254)')
   await expect(dialog.getByText('No current parse result')).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Run' })).toBeDisabled()
 
