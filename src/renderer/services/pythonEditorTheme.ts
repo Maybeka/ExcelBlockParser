@@ -4,69 +4,69 @@ import { EditorView } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 
 const projectPythonHighlightStyle = HighlightStyle.define([
-  { tag: [tags.keyword, tags.controlKeyword, tags.definitionKeyword, tags.moduleKeyword], color: '#9b2f69', fontWeight: '600' },
-  { tag: [tags.function(tags.variableName), tags.definition(tags.variableName)], color: '#146da0', fontWeight: '600' },
-  { tag: [tags.className, tags.typeName], color: '#087d83', fontWeight: '600' },
-  { tag: [tags.propertyName, tags.attributeName], color: '#7651a3' },
-  { tag: [tags.string, tags.docString, tags.character], color: '#2d7a4d' },
-  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: '#ad5b12' },
-  { tag: [tags.self, tags.standard(tags.variableName)], color: '#2675a8', fontStyle: 'italic' },
-  { tag: tags.comment, color: '#778793', fontStyle: 'italic' },
-  { tag: [tags.operator, tags.operatorKeyword], color: '#536a7a' },
-  { tag: [tags.punctuation, tags.bracket], color: '#71808d' },
-  { tag: tags.escape, color: '#b54c32', fontWeight: '600' },
-  { tag: tags.invalid, color: '#c33f4a', textDecoration: 'underline wavy' },
+  { tag: [tags.keyword, tags.controlKeyword, tags.definitionKeyword, tags.moduleKeyword], color: '#8839ef', fontWeight: '600' },
+  { tag: [tags.function(tags.variableName), tags.definition(tags.variableName)], color: '#1e66f5', fontWeight: '600' },
+  { tag: [tags.className, tags.typeName], color: '#179299', fontWeight: '600' },
+  { tag: [tags.propertyName, tags.attributeName], color: '#7287fd' },
+  { tag: [tags.string, tags.docString, tags.character], color: '#40a02b' },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: '#fe640b' },
+  { tag: [tags.self, tags.standard(tags.variableName)], color: '#209fb5', fontStyle: 'italic' },
+  { tag: tags.comment, color: '#9ca0b0', fontStyle: 'italic' },
+  { tag: [tags.operator, tags.operatorKeyword], color: '#179299' },
+  { tag: [tags.punctuation, tags.bracket], color: '#6c6f85' },
+  { tag: tags.escape, color: '#e64553', fontWeight: '600' },
+  { tag: tags.invalid, color: '#d20f39', textDecoration: 'underline wavy' },
 ])
 
 export const projectPythonEditorTheme: Extension = [
   EditorView.theme({
     '&': {
-      backgroundColor: '#fbfcfe',
-      color: '#26394a',
+      backgroundColor: '#eff1f5',
+      color: '#4c4f69',
     },
     '.cm-content': {
-      caretColor: '#2385d5',
+      caretColor: '#1e66f5',
       padding: '10px 0 14px',
     },
     '.cm-line': {
       padding: '0 10px',
     },
     '.cm-cursor, .cm-dropCursor': {
-      borderLeftColor: '#2385d5',
+      borderLeftColor: '#1e66f5',
       borderLeftWidth: '2px',
     },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-      backgroundColor: '#cfe9fb !important',
+      backgroundColor: '#bcc0cc !important',
     },
     '.cm-activeLine': {
-      backgroundColor: '#eef7fd',
+      backgroundColor: '#e6e9ef',
     },
     '.cm-gutters': {
-      backgroundColor: '#f3f7fa',
-      borderRight: '1px solid #e1e9ef',
-      color: '#92a0ac',
+      backgroundColor: '#e6e9ef',
+      borderRight: '1px solid #ccd0da',
+      color: '#8c8fa1',
     },
     '.cm-activeLineGutter': {
-      backgroundColor: '#e3f1fb',
-      color: '#247fc4',
+      backgroundColor: '#dce0e8',
+      color: '#1e66f5',
       fontWeight: '600',
     },
     '.cm-foldGutter span': {
-      color: '#8193a1',
+      color: '#7c7f93',
     },
     '.cm-matchingBracket': {
-      backgroundColor: '#d9f0e6',
-      color: '#176e4a !important',
-      outline: '1px solid #9fd3bb',
+      backgroundColor: '#ccd0da',
+      color: '#179299 !important',
+      outline: '1px solid #8c8fa1',
     },
     '.cm-nonmatchingBracket': {
-      backgroundColor: '#fde6e8',
-      color: '#b73744 !important',
+      backgroundColor: '#ccd0da',
+      color: '#d20f39 !important',
     },
     '.cm-foldPlaceholder': {
-      backgroundColor: '#e8f0f5',
+      backgroundColor: '#ccd0da',
       border: '0',
-      color: '#647786',
+      color: '#5c5f77',
       padding: '0 5px',
     },
   }),
