@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Modal, Space, Spin, Tabs, Typography } from 'antd'
 import { CaretRightOutlined, StopOutlined } from '@ant-design/icons'
 import CodeMirror from '@uiw/react-codemirror'
@@ -38,20 +38,41 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
   const [running, setRunning] = useState(false)
   const [activeTab, setActiveTab] = useState('script')
   const source = project.pythonScript?.source ?? ''
+  const [draftSource, setDraftSource] = useState(source)
   const context = useMemo(
     () => parseResult?.success ? buildPythonProjectContext(project, parseResult) : null,
     [parseResult, project.id, project.name, project.workbooks],
   )
   const contextJson = useMemo(() => context ? JSON.stringify(context) : '', [context])
 
-  useEffect(() => { setResult(null) }, [contextJson, source])
+  useEffect(() => {
+    if (open) setDraftSource(source)
+  }, [open, source])
+
+  useEffect(() => {
+    if (!open || draftSource === source) return
+    const timer = window.setTimeout(() => onSourceChange(draftSource), 400)
+    return () => window.clearTimeout(timer)
+  }, [draftSource, onSourceChange, open, source])
+
+  useEffect(() => { setResult(null) }, [contextJson, draftSource])
+
+  const commitSource = useCallback(() => {
+    if (draftSource !== source) onSourceChange(draftSource)
+  }, [draftSource, onSourceChange, source])
+
+  const close = () => {
+    commitSource()
+    onClose()
+  }
 
   const run = async () => {
     if (!context) return
+    commitSource()
     setRunning(true)
     setBridgeError('')
     setResult(null)
-    const response = await getBridge().runProjectPython(source, contextJson)
+    const response = await getBridge().runProjectPython(draftSource, contextJson)
     setRunning(false)
     if (response.status === 'ok') {
       setResult(response.value)
@@ -73,10 +94,10 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
       children: (
         <div className="python-project-editor" aria-label="Project Python source">
           <CodeMirror
-            value={source}
+            value={draftSource}
             height="390px"
             extensions={[python()]}
-            onChange={onSourceChange}
+            onChange={setDraftSource}
             editable={!running}
             basicSetup={{
               autocompletion: false,
@@ -117,13 +138,13 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
       title="Project Python"
       open={open}
       width={980}
-      onCancel={() => { if (!running) onClose() }}
+      onCancel={() => { if (!running) close() }}
       footer={<Space>
         {result && <Typography.Text type={result.ok ? 'success' : 'danger'}>{result.durationMs} ms</Typography.Text>}
-        <Button onClick={onClose} disabled={running}>Close</Button>
+        <Button onClick={close} disabled={running}>Close</Button>
         {running
           ? <Button danger icon={<StopOutlined />} onClick={cancel}>Cancel run</Button>
-          : <Button type="primary" icon={<CaretRightOutlined />} onClick={() => void run()} disabled={!source.trim() || !context}>Run</Button>}
+          : <Button type="primary" icon={<CaretRightOutlined />} onClick={() => void run()} disabled={!draftSource.trim() || !context}>Run</Button>}
       </Space>}
       destroyOnHidden={false}
     >

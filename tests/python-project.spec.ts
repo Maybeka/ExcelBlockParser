@@ -13,4 +13,12 @@ test('opens the project Python editor with syntax highlighting', async ({ page }
   await expect(highlightedDef).not.toHaveAttribute('class', '')
   await expect(dialog.getByText('No current parse result')).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Run' })).toBeDisabled()
+
+  const editor = dialog.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+End' : 'Control+End')
+  await page.keyboard.down('x')
+  for (let index = 1; index < 12; index += 1) await page.keyboard.down('x')
+  await page.keyboard.up('x')
+  await expect(editor).toContainText('xxxxxxxxxxxx')
 })
