@@ -50,7 +50,7 @@ export function DownstreamPropertiesEditor({ block, expanded, duplicateKeys, onT
               <Input
                 size="small" value={property.expression} placeholder="key1 * key2"
                 onChange={event => update({ expression: event.target.value })}
-                style={{ flex: 1, fontFamily: 'monospace', height: 22, fontSize: 13 }}
+                style={{ flex: 1, fontFamily: 'var(--font-code)', height: 22, fontSize: 13 }}
                 status={property.expression && !validation.valid ? 'error' : undefined}
               />
               <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => onChange({ computedProperties: properties.filter((_, itemIndex) => itemIndex !== index) })} />

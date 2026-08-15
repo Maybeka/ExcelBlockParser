@@ -88,7 +88,7 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
                     const mappedEntry = column.valueMap.find(entry => entry.from === item.value)
                     return (
                       <tr key={item.value} style={{ background: index % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        <td style={{ padding: '2px 8px', borderBottom: '1px solid #f5f5f5', fontFamily: 'monospace' }}>{item.value || <span style={{ color: '#ccc' }}>(empty)</span>}</td>
+                        <td style={{ padding: '2px 8px', borderBottom: '1px solid #f5f5f5', fontFamily: 'var(--font-code)' }}>{item.value || <span style={{ color: '#ccc' }}>(empty)</span>}</td>
                         <td style={{ padding: '2px 8px', textAlign: 'center', borderBottom: '1px solid #f5f5f5', color: '#999' }}>{item.count}</td>
                         <td style={{ padding: '2px 8px', borderBottom: '1px solid #f5f5f5' }}>
                           {mappedEntry ? (

@@ -1,9 +1,14 @@
+:root {
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-code: "Cascadia Mono", "Cascadia Code", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", SFMono-Regular, Menlo, "Courier New", monospace;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
   background: #dce8f0;
   color: #182533;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-ui);
   height: 100%;
   overflow: hidden;
   width: 100%;
@@ -113,7 +118,7 @@ html, body, #root {
 .workspace-item.workspace-sheet-item { min-height: 32px; padding-block: 3px; }
 .workspace-item-main { min-width: 0; }
 .workspace-item-main > span:not(.workspace-avatar), .workspace-item > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workspace-item small { color: #94a2ae; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; margin-left: auto; }
+.workspace-item small { color: #94a2ae; font-family: var(--font-code); font-size: 10px; margin-left: auto; }
 .workspace-avatar { border-radius: 50%; font-size: 13px; height: 28px; width: 28px; }
 .workspace-sheet-avatar { background: #e8f5ff; color: #2c91e7; }
 .workspace-block-avatar { background: #e9f7f2; color: #28a377; }
@@ -237,8 +242,8 @@ html, body, #root {
   border: 1px solid #deebf3;
   color: #446071;
 }
-.extractor-card [style*="font-family: monospace"],
-.telegram-card [style*="font-family: monospace"] { color: #267ec5 !important; }
+.extractor-card [style*="font-family: var(--font-code)"],
+.telegram-card [style*="font-family: var(--font-code)"] { color: #267ec5 !important; }
 .row-filter-editor { display: flex; flex-direction: column; gap: 5px; padding: 3px 0; }
 .row-filter-editor .ant-checkbox-wrapper { font-size: 11px; }
 .row-filter-group { border-left: 2px solid #d8e5ef; padding-left: 6px; }

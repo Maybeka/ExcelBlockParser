@@ -128,7 +128,7 @@ export function ReconciliationTabs({
         {step === 1 && (
           <div style={{ padding: '8px 12px' }}>
             <Typography.Text style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
-              Current range: <span style={{ fontFamily: 'monospace', color: '#1677ff' }}>
+              Current range: <span style={{ fontFamily: 'var(--font-code)', color: '#1677ff' }}>
                 {selectedRange?.a1Notation || block.range?.a1Notation}
               </span>
             </Typography.Text>
@@ -169,7 +169,7 @@ export function ReconciliationTabs({
                 onMouseEnter={() => { setHoveredColIndex(column.colIndex); onColumnFocus?.(column.colIndex) }}
                 onMouseLeave={() => { setHoveredColIndex(null); onColumnFocus?.(null) }}
               >
-                <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: '#666', cursor: 'pointer' }} onClick={() => {
+                <span style={{ fontSize: 12, fontFamily: 'var(--font-code)', fontWeight: 600, color: '#666', cursor: 'pointer' }} onClick={() => {
                   const range = selectedRange || block.range
                   if (!range) return
                   const activeSheet = selectedSheet || block.activeSheet

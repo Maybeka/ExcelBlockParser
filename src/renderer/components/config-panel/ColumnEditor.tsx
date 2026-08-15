@@ -71,7 +71,7 @@ export function ColumnEditor({
             opacity: column.skip || controlsLocked ? 0.35 : 1,
             background: activeColIndex === column.colIndex ? 'rgba(250, 140, 22, 0.06)' : 'transparent',
           }}>
-            <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: '#666', cursor: 'pointer' }} onClick={() => {
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-code)', fontWeight: 600, color: '#666', cursor: 'pointer' }} onClick={() => {
               if (!block.range) return
               if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
               spreadsheet.scrollTo(block.activeSheet, block.range.startRow - 1, column.colIndex - 3)

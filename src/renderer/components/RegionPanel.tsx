@@ -56,7 +56,7 @@ export function RegionPanel({ regions, activeRegionId, onActivateRegion, onRegio
               <>
                 <div style={{
                   background: '#f5f5f5', padding: '6px 10px', borderRadius: 4,
-                  fontSize: 12, fontFamily: 'monospace', marginBottom: 8,
+                  fontSize: 12, fontFamily: 'var(--font-code)', marginBottom: 8,
                 }}>
                   {range.endRow - range.startRow + 1} rows
                   {' × '}
@@ -108,7 +108,7 @@ export function RegionPanel({ regions, activeRegionId, onActivateRegion, onRegio
                       {region.blocks.map((block, i) => (
                         <div key={block.id || i} style={{ padding: '2px 6px', color: '#999', fontSize: 11 }}>
                           {block.label || `Block ${i + 1}`}
-                          {block.range && <span style={{ marginLeft: 8, fontFamily: 'monospace' }}>{block.range.a1Notation}</span>}
+                          {block.range && <span style={{ marginLeft: 8, fontFamily: 'var(--font-code)' }}>{block.range.a1Notation}</span>}
                         </div>
                       ))}
                     </div>

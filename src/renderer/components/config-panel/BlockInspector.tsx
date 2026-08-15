@@ -127,7 +127,7 @@ export function BlockInspector(props: BlockInspectorProps) {
                 spreadsheet.scrollTo(block.activeSheet, block.range!.startRow - 3, block.range!.startCol - 1)
               }}
               onMouseDown={event => event.stopPropagation()}
-              style={{ fontSize: 12, color: '#1677ff', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+              style={{ fontSize: 12, color: '#1677ff', fontFamily: 'var(--font-code)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
             >{block.activeSheet ? `${block.activeSheet}!` : ''}{block.range.a1Notation}</span>
           </Tooltip>
         )}
@@ -212,7 +212,7 @@ export function BlockInspector(props: BlockInspectorProps) {
         <div className="extractor-card-body" ref={normalContentRef} style={{ padding: '8px 12px', opacity: controlsLocked ? 0.5 : 1 }}>
           {!block.range ? <div style={{ color: '#999', fontSize: 13, padding: '8px 0' }}>Click and drag in the spreadsheet to select a data range.</div> : (
             <>
-              <div style={{ background: '#f5f5f5', padding: '6px 10px', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', marginBottom: 8 }}>
+              <div style={{ background: '#f5f5f5', padding: '6px 10px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-code)', marginBottom: 8 }}>
                 {block.range.endRow - block.range.startRow + 1} rows × {block.range.endCol - block.range.startCol + 1} cols
                 {!!block.headerRows.length && <span style={{ fontSize: 12, color: '#999' }}> → {Math.max(0, block.range.endRow - block.range.startRow + 1 - block.headerRows.length)} data rows</span>}
               </div>
