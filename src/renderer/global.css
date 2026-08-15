@@ -272,6 +272,12 @@ html, body, #root {
 
 .python-project-editor { border: 1px solid #ccd0da; border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65); overflow: hidden; }
 .python-project-symbols { width: 240px; }
+.python-project-symbol-title { align-items: center; display: inline-flex; gap: 6px; min-width: 0; width: 100%; }
+.python-project-symbol-title > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
+.python-project-symbol-title small { color: #8c8fa1; font-size: 10px; margin-left: auto; }
+.python-project-symbol-icon { align-items: center; color: #1e66f5; display: inline-flex; flex: 0 0 auto; }
+.python-project-symbol-icon.is-class { color: #179299; }
+.python-project-editor .cm-python-definition-link { cursor: pointer; text-decoration: underline; text-decoration-color: #1e66f5; text-underline-offset: 2px; }
 .python-project-editor .cm-editor { background: #eff1f5; font-family: var(--font-code); font-size: 13px; }
 .python-project-editor .cm-editor.cm-focused { outline: 2px solid rgba(30, 102, 245, .22); outline-offset: -1px; }
 .python-project-editor .cm-scroller { line-height: 1.58; }

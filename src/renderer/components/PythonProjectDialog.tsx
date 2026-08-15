@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Modal, Select, Space, Spin, Tabs, Typography } from 'antd'
-import { CaretRightOutlined, FunctionOutlined, StopOutlined } from '@ant-design/icons'
+import { Alert, Button, Modal, Space, Spin, Tabs, TreeSelect, Typography, type TreeSelectProps } from 'antd'
+import { CaretRightOutlined, CodeOutlined, FunctionOutlined, StopOutlined } from '@ant-design/icons'
 import CodeMirror from '@uiw/react-codemirror'
 import { python } from '@codemirror/lang-python'
 import type { EditorView } from '@codemirror/view'
@@ -9,7 +9,7 @@ import type { ParseResult, ProjectConfig } from '../types'
 import { getBridge } from '../services/bridge'
 import { projectPythonEditorTheme } from '../services/pythonEditorTheme'
 import { buildPythonProjectContext } from '../services/pythonProject'
-import { jumpToPythonOffset, listPythonSymbols, pythonNavigation } from '../services/pythonNavigation'
+import { buildPythonSymbolTree, jumpToPythonOffset, listPythonSymbols, pythonNavigation, type PythonSymbolNode } from '../services/pythonNavigation'
 
 export interface PythonProjectDialogProps {
   open: boolean
@@ -36,6 +36,22 @@ function CodeBlock({ children }: { children: string }) {
   return <pre className="python-project-code-block">{children || 'No output.'}</pre>
 }
 
+function symbolTreeData(nodes: PythonSymbolNode[], source: string, depth = 0): NonNullable<TreeSelectProps['treeData']> {
+  return nodes.map(node => ({
+    value: String(node.symbol.from),
+    title: (
+      <span className="python-project-symbol-title" style={{ paddingLeft: depth * 12 }}>
+        <span className={`python-project-symbol-icon is-${node.symbol.kind}`}>
+          {node.symbol.kind === 'class' ? <CodeOutlined /> : <FunctionOutlined />}
+        </span>
+        <span>{node.symbol.name}</span>
+        <small>line {source.slice(0, node.symbol.from).split('\n').length}</small>
+      </span>
+    ),
+    children: symbolTreeData(node.children, source, depth + 1),
+  }))
+}
+
 export function PythonProjectDialog({ open, project, parseResult, onSourceChange, onClose }: PythonProjectDialogProps) {
   const [result, setResult] = useState<PythonProjectResult | null>(null)
   const [bridgeError, setBridgeError] = useState('')
@@ -45,6 +61,7 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
   const source = project.pythonScript?.source ?? ''
   const [draftSource, setDraftSource] = useState(source)
   const symbols = useMemo(() => listPythonSymbols(draftSource), [draftSource])
+  const symbolNodes = useMemo(() => buildPythonSymbolTree(symbols), [symbols])
   const context = useMemo(
     () => parseResult?.success ? buildPythonProjectContext(project, parseResult) : null,
     [parseResult, project.id, project.name, project.workbooks],
@@ -164,15 +181,14 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
         onChange={setActiveTab}
         items={items}
         tabBarExtraContent={activeTab === 'script' ? (
-          <Select
+          <TreeSelect
             aria-label="Python symbols"
             className="python-project-symbols"
             placeholder="Symbols"
             suffixIcon={<FunctionOutlined />}
-            options={symbols.map(symbol => ({
-              value: String(symbol.from),
-              label: `${symbol.qualifiedName} · line ${draftSource.slice(0, symbol.from).split('\n').length}`,
-            }))}
+            treeData={symbolTreeData(symbolNodes, draftSource)}
+            treeDefaultExpandAll
+            treeLine
             onSelect={value => {
               if (editorRef.current) jumpToPythonOffset(editorRef.current, Number(value))
             }}

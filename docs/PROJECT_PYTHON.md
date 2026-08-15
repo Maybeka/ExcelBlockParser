@@ -11,10 +11,11 @@ The script is not assigned to individual blocks or regions and is not run when
 a project is opened, saved, recovered, or parsed.
 
 The editor provides syntax highlighting, search, bracket matching, code
-folding, a local class/function/method symbol list, `F12` go-to-definition, and
-`Cmd/Ctrl + click` go-to-definition. Navigation is limited to symbols declared
-in the single project script; it does not resolve imported modules, installed
-packages, or inferred runtime types.
+folding, a hierarchical local symbol tree with class/function/method icons,
+`F12` go-to-definition, and `Cmd/Ctrl + click` go-to-definition. A local symbol
+is underlined while the navigation modifier is held. Navigation is limited to
+symbols declared in the single project script; it does not resolve imported
+modules, installed packages, or inferred runtime types.
 
 ## Entry Point
 
