@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Modal, Space, Spin, Tabs, Typography } from 'antd'
-import { CaretRightOutlined, StopOutlined } from '@ant-design/icons'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Button, Modal, Select, Space, Spin, Tabs, Typography } from 'antd'
+import { CaretRightOutlined, FunctionOutlined, StopOutlined } from '@ant-design/icons'
 import CodeMirror from '@uiw/react-codemirror'
 import { python } from '@codemirror/lang-python'
+import type { EditorView } from '@codemirror/view'
 import type { PythonProjectResult } from '../../shared/pythonRuntime'
 import type { ParseResult, ProjectConfig } from '../types'
 import { getBridge } from '../services/bridge'
 import { buildPythonProjectContext } from '../services/pythonProject'
+import { jumpToPythonOffset, listPythonSymbols, pythonNavigation } from '../services/pythonNavigation'
 
 export interface PythonProjectDialogProps {
   open: boolean
@@ -21,6 +23,7 @@ function jsonDisplay(value: string): string {
 }
 
 const MAX_DISPLAY_CHARS = 1_000_000
+const PYTHON_EDITOR_EXTENSIONS = [python(), pythonNavigation()]
 
 function boundedDisplay(value: string): string {
   return value.length <= MAX_DISPLAY_CHARS
@@ -37,8 +40,10 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
   const [bridgeError, setBridgeError] = useState('')
   const [running, setRunning] = useState(false)
   const [activeTab, setActiveTab] = useState('script')
+  const editorRef = useRef<EditorView | null>(null)
   const source = project.pythonScript?.source ?? ''
   const [draftSource, setDraftSource] = useState(source)
+  const symbols = useMemo(() => listPythonSymbols(draftSource), [draftSource])
   const context = useMemo(
     () => parseResult?.success ? buildPythonProjectContext(project, parseResult) : null,
     [parseResult, project.id, project.name, project.workbooks],
@@ -92,23 +97,42 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
       key: 'script',
       label: 'Script',
       children: (
-        <div className="python-project-editor" aria-label="Project Python source">
-          <CodeMirror
-            value={draftSource}
-            height="390px"
-            extensions={[python()]}
-            onChange={setDraftSource}
-            editable={!running}
-            basicSetup={{
-              autocompletion: false,
-              bracketMatching: true,
-              closeBrackets: true,
-              foldGutter: true,
-              highlightActiveLine: true,
-              highlightSelectionMatches: true,
-              lineNumbers: true,
-            }}
-          />
+        <div>
+          <div className="python-project-editor-toolbar">
+            <Select
+              aria-label="Python symbols"
+              className="python-project-symbols"
+              placeholder="Symbols"
+              suffixIcon={<FunctionOutlined />}
+              options={symbols.map(symbol => ({
+                value: String(symbol.from),
+                label: `${symbol.qualifiedName} · line ${draftSource.slice(0, symbol.from).split('\n').length}`,
+              }))}
+              onSelect={value => {
+                if (editorRef.current) jumpToPythonOffset(editorRef.current, Number(value))
+              }}
+              value={null}
+            />
+          </div>
+          <div className="python-project-editor" aria-label="Project Python source">
+            <CodeMirror
+              value={draftSource}
+              height="390px"
+              extensions={PYTHON_EDITOR_EXTENSIONS}
+              onCreateEditor={view => { editorRef.current = view }}
+              onChange={setDraftSource}
+              editable={!running}
+              basicSetup={{
+                autocompletion: false,
+                bracketMatching: true,
+                closeBrackets: true,
+                foldGutter: true,
+                highlightActiveLine: true,
+                highlightSelectionMatches: true,
+                lineNumbers: true,
+              }}
+            />
+          </div>
         </div>
       ),
     },

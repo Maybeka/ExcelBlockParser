@@ -271,6 +271,8 @@ html, body, #root {
 .preview-shell .ant-input:focus { border-color: #75bdf3 !important; box-shadow: 0 0 0 2px rgba(51, 144, 236, .1) !important; }
 
 .python-project-editor { border: 1px solid #dce7ee; border-radius: 6px; overflow: hidden; }
+.python-project-editor-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+.python-project-symbols { width: min(280px, 100%); }
 .python-project-editor .cm-editor { font-family: var(--font-code); font-size: 13px; }
 .python-project-editor .cm-editor.cm-focused { outline: 2px solid rgba(51, 144, 236, .18); }
 .python-project-editor .cm-scroller { line-height: 1.5; }

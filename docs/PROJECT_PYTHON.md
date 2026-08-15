@@ -10,6 +10,12 @@ Project Python > Run**.
 The script is not assigned to individual blocks or regions and is not run when
 a project is opened, saved, recovered, or parsed.
 
+The editor provides syntax highlighting, search, bracket matching, code
+folding, a local class/function/method symbol list, `F12` go-to-definition, and
+`Cmd/Ctrl + click` go-to-definition. Navigation is limited to symbols declared
+in the single project script; it does not resolve imported modules, installed
+packages, or inferred runtime types.
+
 ## Entry Point
 
 The script must define this callable:
