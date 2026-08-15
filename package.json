@@ -90,6 +90,8 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.6.1",
+    "@codemirror/lang-python": "^6.2.1",
+    "@uiw/react-codemirror": "^4.25.11",
     "@univerjs/core": "0.22.0",
     "@univerjs/preset-sheets-core": "0.22.0",
     "@univerjs/presets": "0.22.0",

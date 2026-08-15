@@ -188,7 +188,7 @@ export function validateProjectV3Document(value: unknown): string[] {
   if (typeof value.exportedAt !== 'string' || Number.isNaN(Date.parse(value.exportedAt)) || new Date(value.exportedAt).toISOString() !== value.exportedAt) documentErrors.push('Invalid project file: exportedAt must be an ISO date-time.')
   if (!isRecord(value.project)) return ['Invalid project file: missing project object.']
   const project = value.project
-  const projectExtra = unknownKey(project, new Set(['id', 'name', 'workbooks', 'activeWorkbookId', 'blocks', 'regions', 'activeBlockId', 'activeRegionId', 'focusMode']))
+  const projectExtra = unknownKey(project, new Set(['id', 'name', 'workbooks', 'activeWorkbookId', 'blocks', 'regions', 'activeBlockId', 'activeRegionId', 'focusMode', 'pythonScript']))
   if (projectExtra) return [`Invalid project file: unknown project field "${projectExtra}".`]
   if (typeof project.id !== 'string' || !project.id || typeof project.name !== 'string' || !project.name
     || !Array.isArray(project.workbooks) || !Array.isArray(project.blocks) || !Array.isArray(project.regions)
@@ -196,6 +196,10 @@ export function validateProjectV3Document(value: unknown): string[] {
     || typeof project.activeBlockId !== 'string'
     || (project.activeRegionId !== null && typeof project.activeRegionId !== 'string')
     || (project.focusMode !== 'always-editable' && project.focusMode !== 'activate-first')) return ['Invalid project file: project fields are incomplete or invalid.']
+  if (project.pythonScript !== undefined && (!isRecord(project.pythonScript)
+    || Boolean(unknownKey(project.pythonScript, new Set(['source'])))
+    || typeof project.pythonScript.source !== 'string'
+    || new TextEncoder().encode(project.pythonScript.source).byteLength > 256 * 1024)) return ['Invalid project file: Python script is invalid.']
   if (!isRecord(value.data) || !isJsonValue(value.data) || !Array.isArray(value.blockResults)
     || (value.regionResults !== undefined && !Array.isArray(value.regionResults))) return ['Invalid project file: result fields are invalid.']
 

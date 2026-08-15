@@ -84,6 +84,10 @@ export interface ProjectWorkbook {
   activeSheetName?: string | null
 }
 
+export interface PythonScriptConfig {
+  source: string
+}
+
 export interface ProjectConfig {
   id: string
   name: string
@@ -94,6 +98,7 @@ export interface ProjectConfig {
   activeBlockId: string
   activeRegionId: string | null
   focusMode: 'always-editable' | 'activate-first'
+  pythonScript?: PythonScriptConfig
 }
 
 export interface ExportedProject {

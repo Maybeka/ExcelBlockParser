@@ -239,7 +239,15 @@
         "regions": { "type": "array", "items": { "$ref": "#/$defs/region" } },
         "activeBlockId": { "type": "string" },
         "activeRegionId": { "type": ["string", "null"] },
-        "focusMode": { "enum": ["always-editable", "activate-first"] }
+        "focusMode": { "enum": ["always-editable", "activate-first"] },
+        "pythonScript": {
+          "type": "object",
+          "required": ["source"],
+          "properties": {
+            "source": { "type": "string", "maxLength": 262144 }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

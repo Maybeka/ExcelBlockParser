@@ -13,6 +13,7 @@ runtime transitions, extraction execution, or diagnostics decisions.
 | Project | `services/serializer.ts`, `services/project.ts`, `services/projectLifecycle.ts` | Strict Project v3 serialization, import validation, source inspection, save/save-as, and feature-neutral state commands. |
 | Workbook runtime | `services/workbookRuntime.ts`, `services/spreadsheetCapability.ts` | Authorized paths, load generations, attachment/selection state, and bounded workbook/sheet/range capabilities. |
 | Execution | `services/projectExecution.ts`, feature registry | Reader collection and stale-run rejection; registered modules own parsing, snapshots, previews, and save preparation. |
+| Project Python | `services/pythonProject.ts`, `python_runtime.go` | Versioned JSON context construction, isolated interpreter lifecycle, cancellation, and structured result transport. |
 | Workspace | `services/workspaceHistory.ts`, `services/diagnostics.ts` | Atomic history/dirty transitions, deterministic diagnostics, and cross-workbook focus targets. |
 | Validation | `services/extraction.ts`, `components/ConfigPanel.tsx` | Parse-time deterministic diagnostics and UI-time configuration checks. |
 | UI | `WorkspaceApplication.tsx`, `components/` | User interactions, rendering, previews, and notifications. |
@@ -22,7 +23,7 @@ runtime transitions, extraction execution, or diagnostics decisions.
 
 The current and only supported saved-project schema is version `3`. It persists
 project identity, multiple workbook sources, workbook-owned blocks and regions,
-editor state, and the most recent successful result. Versions `1` and `2` are
+editor state, the optional project Python source, and the most recent successful result. Versions `1` and `2` are
 rejected without migration. Unsupported versions and malformed definitions are rejected
 before they reach UI state. See `SESSION_SCHEMA.md` and
 `project-v3.schema.json` for the public contract.

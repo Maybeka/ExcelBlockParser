@@ -9,24 +9,24 @@ import (
 )
 
 type App struct {
-	ctx          context.Context
-	previewData  map[string]interface{}
-	previewOpen  bool
-	filePolicy   filePolicy
-	projectPaths map[string]bool
-	recoveryDir  string
-	emitEvent    func(context.Context, string, ...interface{})
-	pythonDebug  pythonDebugRunner
+	ctx           context.Context
+	previewData   map[string]interface{}
+	previewOpen   bool
+	filePolicy    filePolicy
+	projectPaths  map[string]bool
+	recoveryDir   string
+	emitEvent     func(context.Context, string, ...interface{})
+	pythonRuntime pythonRuntimeRunner
 }
 
-// RunPythonDebug executes one source buffer in a fresh isolated interpreter.
-func (a *App) RunPythonDebug(source string) PythonDebugResult {
-	return a.pythonDebug.Run(source)
+// CancelPythonRun requests KeyboardInterrupt for the active project run.
+func (a *App) CancelPythonRun() bool {
+	return a.pythonRuntime.Cancel()
 }
 
-// CancelPythonDebug requests KeyboardInterrupt for the active debug run.
-func (a *App) CancelPythonDebug() bool {
-	return a.pythonDebug.Cancel()
+// RunProjectPython executes the project's process(context) entry point.
+func (a *App) RunProjectPython(source string, contextJSON string) PythonProjectResult {
+	return a.pythonRuntime.RunProject(source, contextJSON)
 }
 
 func (a *App) startup(ctx context.Context) {

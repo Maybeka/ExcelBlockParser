@@ -6,9 +6,9 @@
  * Browser:  throws descriptive errors (used for dev/testing)
  */
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../../shared/bridgeResult'
-import type { PythonDebugResult } from '../../shared/pythonDebug'
+import type { PythonProjectResult } from '../../shared/pythonRuntime'
 
-export type { PythonDebugResult } from '../../shared/pythonDebug'
+export type { PythonProjectResult } from '../../shared/pythonRuntime'
 
 export interface BridgeAPI {
   openXlsx: () => Promise<BridgeResult<string>>
@@ -25,8 +25,8 @@ export interface BridgeAPI {
   getPreviewData: (blockId: string) => Promise<unknown>
   closePreviewWindow: () => Promise<void>
   onPreviewReload: (callback: (blockId: string) => void) => () => void
-  runPythonDebug: (source: string) => Promise<BridgeResult<PythonDebugResult>>
-  cancelPythonDebug: () => Promise<BridgeResult<boolean>>
+  cancelPythonRun: () => Promise<BridgeResult<boolean>>
+  runProjectPython: (source: string, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
 }
 
 // ── Wails bridge ────────────────────────────────────────────────────────────
@@ -46,8 +46,8 @@ export interface WailsGoAPI {
       SetPreviewData: (blockId: string, data: unknown) => Promise<void>
       GetPreviewData: (blockId: string) => Promise<unknown>
       ClosePreviewWindow: () => Promise<void>
-      RunPythonDebug: (source: string) => Promise<PythonDebugResult>
-      CancelPythonDebug: () => Promise<boolean>
+      CancelPythonRun: () => Promise<boolean>
+      RunProjectPython: (source: string, contextJson: string) => Promise<PythonProjectResult>
     }
   }
 }
@@ -66,7 +66,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     'OpenXlsx', 'ReadFile', 'SaveJson', 'SaveJsonToPath', 'OpenJson',
     'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
     'OpenPreviewWindow', 'SetPreviewData', 'GetPreviewData', 'ClosePreviewWindow',
-    'RunPythonDebug', 'CancelPythonDebug',
+    'CancelPythonRun', 'RunProjectPython',
   ] as const
   if (requiredMethods.some(method => typeof App[method] !== 'function')) {
     throw new Error('Wails runtime is missing a required desktop capability')
@@ -138,11 +138,11 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
       console.warn('onPreviewReload not available in Wails')
       return () => {}
     },
-    runPythonDebug: async source => {
-      try { return bridgeOk(await App.RunPythonDebug(source)) } catch (error) { return bridgeError(error) }
+    cancelPythonRun: async () => {
+      try { return bridgeOk(await App.CancelPythonRun()) } catch (error) { return bridgeError(error) }
     },
-    cancelPythonDebug: async () => {
-      try { return bridgeOk(await App.CancelPythonDebug()) } catch (error) { return bridgeError(error) }
+    runProjectPython: async (source, contextJson) => {
+      try { return bridgeOk(await App.RunProjectPython(source, contextJson)) } catch (error) { return bridgeError(error) }
     },
   }
 }
@@ -168,8 +168,8 @@ function createBrowserBridge(): BridgeAPI {
       console.warn('onPreviewReload requires Electron or Wails')
       return () => {}
     },
-    runPythonDebug: async () => bridgeError('Embedded Python debug requires the Wails runtime.'),
-    cancelPythonDebug: async () => bridgeOk(false),
+    cancelPythonRun: async () => bridgeOk(false),
+    runProjectPython: async () => bridgeError('Project Python requires the Wails runtime.'),
   }
 }
 

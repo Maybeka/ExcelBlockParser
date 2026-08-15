@@ -87,6 +87,9 @@ The implemented application supports this general workflow:
   as template metadata for downstream code-generation workflows; v1 does not
   execute Python expressions or add computed values to parsed JSON.
 - Parsed JSON output with block and optional region results.
+- One project-owned Python script with a fixed `process(context)` entry point,
+  explicit execution, syntax highlighting, JSON input/result views, captured
+  output and errors, and cancellation in the Wails runtime.
 
 ### 3.5 Project persistence and reconciliation
 
@@ -151,15 +154,17 @@ The current repository should not be represented as providing the following:
 - Multi-user collaboration, hosted workspaces, or cloud synchronization.
 - A server API, authentication system, or job queue.
 - A marketplace or sandboxed plugin platform.
-- Arbitrary Python execution as part of data export.
+- Implicit Python execution during parsing, project open, save, or export.
+- Python package management, terminal access, debugger integration, LSP, or a
+  generator workspace.
 - Guaranteed support for all Excel file features, especially macros, external
   links, pivot tables, complex charts, and every formula behavior.
 
 ## 7. Future Code Generation and Extensions
 
-Generating source files from parsed JSON remains a valid future capability. It
-is separate from the current Phase B module implementation and should consume the
-stable extraction contract through an explicit phase:
+Generating and writing source files remains a future capability. The project
+Python runner now provides the explicit JSON transformation phase, but it does
+not write files:
 
 ```text
 Workbook -> extraction template -> validated JSON -> generator recipe -> files
@@ -203,11 +208,12 @@ collect structured diagnostics and generated-file metadata.
 
 ### Safety boundary
 
-Python code must not execute in the renderer or be implicitly run during JSON
-export. Use a dedicated child-process runner with an explicitly selected
-interpreter/environment, stdin or a temporary JSON input file, timeouts,
-cancellation, output-size limits, and captured diagnostics. Third-party
-generators require an explicit user trust decision.
+Python code does not execute in the renderer and is never implicitly run. The
+Wails host owns an isolated embedded interpreter with memory, source, context,
+and result-size limits; cancellation and diagnostics are captured. Host files,
+network access, and child processes are denied. Third-party generators still
+require a separate trust decision and are not part of this project-owned script
+surface.
 
 ## 8. Current Refinement Priorities
 

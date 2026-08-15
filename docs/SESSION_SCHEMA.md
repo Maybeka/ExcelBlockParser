@@ -11,7 +11,8 @@ The project contains both editor configuration and the most recent extraction
 result:
 
 - `project` defines workbook sources, extractors, regions, ordering, and active
-  editor state.
+  editor state. Its optional `pythonScript.source` stores the unified project
+  processing script.
 - `data`, `blockResults`, and optional `regionResults` contain the most recent
   successful run result.
 - `exportedAt` records when the project file was last saved.
@@ -31,7 +32,10 @@ result:
     "regions": [],
     "activeBlockId": "",
     "activeRegionId": null,
-    "focusMode": "always-editable"
+    "focusMode": "always-editable",
+    "pythonScript": {
+      "source": "def process(context):\n    return context[\"data\"]\n"
+    }
   },
   "data": {},
   "blockResults": []
@@ -47,6 +51,11 @@ Every block and region belongs to exactly one workbook through `workbookId`.
 Names need only be unique within that workbook. Parsed `data` is keyed first by
 workbook ID and then by extractor label so equal labels in different workbooks
 remain unambiguous.
+
+The Python source is project configuration, not extracted output. It is only
+executed after an explicit user action and receives the current `data`,
+`blockResults`, and `regionResults` through the contract documented in
+[PROJECT_PYTHON.md](PROJECT_PYTHON.md).
 
 ## Lifecycle
 

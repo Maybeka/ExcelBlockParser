@@ -17,8 +17,8 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
         SetPreviewData: vi.fn(async () => undefined),
         GetPreviewData: vi.fn(async () => ({ blockId: 'block' })),
         ClosePreviewWindow: vi.fn(async () => undefined),
-        RunPythonDebug: vi.fn(async () => ({ ok: true, repr: '', stdout: 'ready\n', stderr: '', error: '', hostError: '', durationMs: 10 })),
-        CancelPythonDebug: vi.fn(async () => true),
+        CancelPythonRun: vi.fn(async () => true),
+        RunProjectPython: vi.fn(async () => ({ ok: true, resultJson: '{"count":1}\n', stdout: '', stderr: '', error: '', hostError: '', durationMs: 12 })),
         ...overrides,
       },
     },
@@ -45,16 +45,16 @@ describe('Wails bridge contract', () => {
     await bridge.setPreviewData('block', { blockId: 'block' })
     expect(await bridge.getPreviewData('block')).toEqual({ blockId: 'block' })
     await bridge.closePreviewWindow()
-    expect(await bridge.runPythonDebug("print('ready')")).toEqual({
+    expect(await bridge.cancelPythonRun()).toEqual({ status: 'ok', value: true })
+    expect(await bridge.runProjectPython('def process(context): pass', '{"data":{}}')).toEqual({
       status: 'ok',
-      value: { ok: true, repr: '', stdout: 'ready\n', stderr: '', error: '', hostError: '', durationMs: 10 },
+      value: { ok: true, resultJson: '{"count":1}\n', stdout: '', stderr: '', error: '', hostError: '', durationMs: 12 },
     })
-    expect(await bridge.cancelPythonDebug()).toEqual({ status: 'ok', value: true })
 
     expect(app.OpenXlsx).toHaveBeenCalledOnce()
     expect(app.ReadFile).toHaveBeenCalledWith('/tmp/workbook.xlsx')
     expect(app.ClosePreviewWindow).toHaveBeenCalledOnce()
-    expect(app.RunPythonDebug).toHaveBeenCalledWith("print('ready')")
+    expect(app.RunProjectPython).toHaveBeenCalledWith('def process(context): pass', '{"data":{}}')
   })
 
   it('preserves cancellation values and rejects an incomplete generated binding', async () => {

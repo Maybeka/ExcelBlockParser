@@ -1,6 +1,6 @@
-export interface PythonDebugResult {
+export interface PythonProjectResult {
   ok: boolean
-  repr: string
+  resultJson: string
   stdout: string
   stderr: string
   error: string

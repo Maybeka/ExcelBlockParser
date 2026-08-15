@@ -41,3 +41,7 @@ each release. Authenticode signing remains deferred distribution hardening.
 - Computed properties are validated template metadata. The application does
   not execute Python-like expressions or include their derived values in
   parsed JSON.
+- Project Python is available only in the Wails runtime. It executes one
+  explicitly invoked `process(context)` script in an isolated embedded
+  interpreter. There is no pip management, terminal, debugger, LSP, host
+  filesystem access, network access, or child-process access.

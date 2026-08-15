@@ -54,8 +54,9 @@ See [Project JSON Contract](docs/SESSION_SCHEMA.md),
 
 ## Scope
 
-The product creates reusable extraction templates and JSON output. Computed
-properties are validated template metadata, not in-app Python execution. It
-does not run arbitrary generators, macros, external workbook links, or a full
-Excel formula engine. See [Product Scope](docs/SCOPE.md) for the current
-boundary.
+The product creates reusable extraction templates and JSON output. The Wails
+runtime also supports one explicitly invoked, project-owned Python script that
+receives the complete parsed result through a versioned JSON contract. It does
+not provide pip management, a terminal, debugger, LSP, macros, external
+workbook links, or a full Excel formula engine. See [Project Python](docs/PROJECT_PYTHON.md)
+and [Product Scope](docs/SCOPE.md) for the current boundary.
