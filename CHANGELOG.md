@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 - 2026-08-16
+
+- Added the project-owned embedded Python workspace with an isolated runtime,
+  explicit project-wide input preparation, cancellation, diagnostics, and
+  validated JSON result handling.
+- Added multi-file Python packages with a protected entry file, file tree,
+  cross-file definition navigation, semantic highlighting, symbols, member
+  completion, and a Catppuccin Latte editor and preview theme.
+- Added validated generated text artifacts, including Python, JSON, Verilog,
+  and SystemVerilog syntax previews and host-controlled file export.
+- Added project-relative workbook source persistence and recovery-path support
+  for portable multi-workbook Project v3 documents.
+
 ## 1.2.0 - 2026-08-11
 
 - Scoped locked Block, Region, and column highlights to their source sheet so
