@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,16 @@ func writeTestFile(t *testing.T, directory, name, content string) string {
 		t.Fatalf("write test file: %v", err)
 	}
 	return path
+}
+
+func createTestSymlink(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("Windows runner cannot create a symbolic-link test fixture: %v", err)
+		}
+		t.Fatalf("create test symlink: %v", err)
+	}
 }
 
 func TestFilePolicyApprovesOnlySelectedWorkbook(t *testing.T) {
@@ -153,9 +164,7 @@ func TestWriteJSONFileUsesSafeRegularDestination(t *testing.T) {
 
 	target := writeTestFile(t, directory, "target.json", `{"safe":true}`)
 	link := filepath.Join(directory, "link.json")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatalf("create export symlink: %v", err)
-	}
+	createTestSymlink(t, target, link)
 	if err := writeJSONFile(link, `{"unsafe":true}`); err == nil {
 		t.Fatal("expected export symlink to be rejected")
 	}

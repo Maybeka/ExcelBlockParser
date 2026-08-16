@@ -109,15 +109,11 @@ func TestPythonArtifactsRejectSymlinkDestinationsAndParents(t *testing.T) {
 	if err := os.WriteFile(outsideFile, []byte("safe"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(directory, "linked")); err != nil {
-		t.Fatal(err)
-	}
+	createTestSymlink(t, outside, filepath.Join(directory, "linked"))
 	if _, _, err := preparePythonArtifacts(directory, artifactJSON(t, []PythonArtifact{{Path: "linked/output.py", Content: "unsafe"}})); err == nil {
 		t.Fatal("symlink parent was accepted")
 	}
-	if err := os.Symlink(outsideFile, filepath.Join(directory, "output.py")); err != nil {
-		t.Fatal(err)
-	}
+	createTestSymlink(t, outsideFile, filepath.Join(directory, "output.py"))
 	if _, _, err := preparePythonArtifacts(directory, artifactJSON(t, []PythonArtifact{{Path: "output.py", Content: "unsafe"}})); err == nil {
 		t.Fatal("symlink destination was accepted")
 	}
