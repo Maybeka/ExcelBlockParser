@@ -6,7 +6,7 @@
  * Browser:  throws descriptive errors (used for dev/testing)
  */
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../../shared/bridgeResult'
-import type { PythonProjectResult } from '../../shared/pythonRuntime'
+import type { PythonArtifact, PythonArtifactExportResult, PythonProjectResult } from '../../shared/pythonRuntime'
 
 export type { PythonProjectResult } from '../../shared/pythonRuntime'
 
@@ -27,6 +27,7 @@ export interface BridgeAPI {
   onPreviewReload: (callback: (blockId: string) => void) => () => void
   cancelPythonRun: () => Promise<BridgeResult<boolean>>
   runProjectPython: (source: string, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
+  exportPythonArtifacts: (projectName: string, artifacts: PythonArtifact[]) => Promise<BridgeResult<PythonArtifactExportResult>>
 }
 
 // ── Wails bridge ────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ export interface WailsGoAPI {
       ClosePreviewWindow: () => Promise<void>
       CancelPythonRun: () => Promise<boolean>
       RunProjectPython: (source: string, contextJson: string) => Promise<PythonProjectResult>
+      ExportPythonArtifacts: (projectName: string, artifactsJson: string) => Promise<{ success: boolean; directory: string; written: number; error: string }>
     }
   }
 }
@@ -66,7 +68,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     'OpenXlsx', 'ReadFile', 'SaveJson', 'SaveJsonToPath', 'OpenJson',
     'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
     'OpenPreviewWindow', 'SetPreviewData', 'GetPreviewData', 'ClosePreviewWindow',
-    'CancelPythonRun', 'RunProjectPython',
+    'CancelPythonRun', 'RunProjectPython', 'ExportPythonArtifacts',
   ] as const
   if (requiredMethods.some(method => typeof App[method] !== 'function')) {
     throw new Error('Wails runtime is missing a required desktop capability')
@@ -144,6 +146,13 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     runProjectPython: async (source, contextJson) => {
       try { return bridgeOk(await App.RunProjectPython(source, contextJson)) } catch (error) { return bridgeError(error) }
     },
+    exportPythonArtifacts: async (projectName, artifacts) => {
+      try {
+        const result = await App.ExportPythonArtifacts(projectName, JSON.stringify(artifacts))
+        if (result.success) return bridgeOk({ directory: result.directory, written: result.written })
+        return result.error?.toLowerCase() === 'cancelled' ? bridgeCancelled() : bridgeError(result.error || 'Unable to save generated files.')
+      } catch (error) { return bridgeError(error) }
+    },
   }
 }
 
@@ -170,6 +179,7 @@ function createBrowserBridge(): BridgeAPI {
     },
     cancelPythonRun: async () => bridgeOk(false),
     runProjectPython: async () => bridgeError('Project Python requires the Wails runtime.'),
+    exportPythonArtifacts: async () => bridgeError('Saving generated files requires the Wails runtime.'),
   }
 }
 

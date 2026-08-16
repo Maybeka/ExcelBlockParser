@@ -296,6 +296,18 @@ html, body, #root {
   margin: 0; max-height: 390px; min-height: 120px; overflow: auto; padding: 10px; white-space: pre-wrap;
 }
 .python-project-error { font-family: var(--font-code); margin: 6px 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap; }
+.python-artifact-browser { border: 1px solid #dce7ee; display: grid; grid-template-columns: minmax(220px, 34%) 1fr; height: 390px; min-width: 0; overflow: hidden; }
+.python-artifact-list { border-right: 1px solid #dce7ee; list-style: none; margin: 0; min-width: 0; overflow: auto; padding: 5px; }
+.python-artifact-list button { align-items: center; background: transparent; border: 0; border-radius: 5px; color: #4c4f69; cursor: pointer; display: grid; gap: 7px; grid-template-columns: 18px minmax(0, 1fr) auto; padding: 7px 8px; text-align: left; width: 100%; }
+.python-artifact-list button:hover { background: #e6e9ef; }
+.python-artifact-list button.is-active { background: #dce8f8; color: #1e66f5; }
+.python-artifact-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.python-artifact-list button small { color: #8c8fa1; font-size: 10px; }
+.python-artifact-preview { display: grid; grid-template-rows: 36px minmax(0, 1fr); min-width: 0; overflow: hidden; }
+.python-artifact-preview header { align-items: center; border-bottom: 1px solid #dce7ee; display: flex; gap: 12px; justify-content: space-between; min-width: 0; padding: 0 10px; }
+.python-artifact-preview header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.python-artifact-preview .python-project-code-block { border: 0; border-radius: 0; height: 100%; margin: 0; max-height: none; min-height: 0; }
+.python-artifact-save-status { display: inline-block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 900px) {
   .workspace-desktop-nav, .workspace-sidebar-toggle { display: none; }

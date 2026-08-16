@@ -13,7 +13,7 @@ import (
 const (
 	maxPythonSourceBytes     = 256 * 1024
 	maxPythonContextBytes    = 25 * 1024 * 1024
-	maxPythonResultBytes     = 10 * 1024 * 1024
+	maxPythonResultBytes     = 32 * 1024 * 1024
 	maxPythonOutputBytes     = 1 * 1024 * 1024
 	pythonRuntimeMemoryBytes = 128 * 1024 * 1024
 )
@@ -189,7 +189,7 @@ __ebp_result_json = __ebp_json.dumps(__ebp_result, ensure_ascii=False, allow_nan
 		return result
 	}
 	if len(encodedResult.Stdout) > maxPythonResultBytes {
-		result.HostError = "Python result exceeds the 10 MB limit."
+		result.HostError = "Python result exceeds the 32 MB limit."
 		return result
 	}
 	result.ResultJSON = encodedResult.Stdout

@@ -43,5 +43,7 @@ each release. Authenticode signing remains deferred distribution hardening.
   parsed JSON.
 - Project Python is available only in the Wails runtime. It executes one
   explicitly invoked `process(context)` script in an isolated embedded
-  interpreter. There is no pip management, terminal, debugger, LSP, host
-  filesystem access, network access, or child-process access.
+  interpreter. There is no pip management, terminal, debugger, LSP, direct host
+  filesystem access, network access, or child-process access. A script may
+  return bounded UTF-8 text artifacts; after preview and user directory
+  selection, the Wails host validates and writes them.

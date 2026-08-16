@@ -7,6 +7,7 @@ export const DEFAULT_PROJECT_PYTHON_SOURCE = `def process(context):
 
     context["data"] contains the data section from Run & Preview.
     The return value must be JSON serializable.
+    Add a top-level "artifacts" list to preview and save UTF-8 text files.
     """
     return {
         "project": context["project"]["name"],

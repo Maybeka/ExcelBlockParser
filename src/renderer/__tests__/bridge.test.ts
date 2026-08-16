@@ -19,6 +19,7 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
         ClosePreviewWindow: vi.fn(async () => undefined),
         CancelPythonRun: vi.fn(async () => true),
         RunProjectPython: vi.fn(async () => ({ ok: true, resultJson: '{"count":1}\n', stdout: '', stderr: '', error: '', hostError: '', durationMs: 12 })),
+        ExportPythonArtifacts: vi.fn(async () => ({ success: true, directory: '/tmp/output', written: 1, error: '' })),
         ...overrides,
       },
     },
@@ -50,11 +51,16 @@ describe('Wails bridge contract', () => {
       status: 'ok',
       value: { ok: true, resultJson: '{"count":1}\n', stdout: '', stderr: '', error: '', hostError: '', durationMs: 12 },
     })
+    expect(await bridge.exportPythonArtifacts('Demo', [{ path: 'output.py', content: 'pass\n', encoding: 'utf-8' }])).toEqual({
+      status: 'ok',
+      value: { directory: '/tmp/output', written: 1 },
+    })
 
     expect(app.OpenXlsx).toHaveBeenCalledOnce()
     expect(app.ReadFile).toHaveBeenCalledWith('/tmp/workbook.xlsx')
     expect(app.ClosePreviewWindow).toHaveBeenCalledOnce()
     expect(app.RunProjectPython).toHaveBeenCalledWith('def process(context): pass', '{"data":{}}')
+    expect(app.ExportPythonArtifacts).toHaveBeenCalledWith('Demo', '[{"path":"output.py","content":"pass\\n","encoding":"utf-8"}]')
   })
 
   it('preserves cancellation values and rejects an incomplete generated binding', async () => {

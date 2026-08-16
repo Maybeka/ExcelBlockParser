@@ -56,7 +56,8 @@ See [Project JSON Contract](docs/SESSION_SCHEMA.md),
 
 The product creates reusable extraction templates and JSON output. The Wails
 runtime also supports one explicitly invoked, project-owned Python script that
-receives the complete parsed result through a versioned JSON contract. It does
-not provide pip management, a terminal, debugger, LSP, macros, external
+receives the complete parsed result through a versioned JSON contract and may
+return previewable, host-written UTF-8 text artifacts. It does not provide pip
+management, a terminal, debugger, LSP, direct filesystem access, macros, external
 workbook links, or a full Excel formula engine. See [Project Python](docs/PROJECT_PYTHON.md)
 and [Product Scope](docs/SCOPE.md) for the current boundary.

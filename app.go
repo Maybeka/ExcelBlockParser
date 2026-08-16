@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -89,6 +90,61 @@ type JsonSaveResult struct {
 	Success  bool   `json:"success"`
 	FilePath string `json:"filePath,omitempty"`
 	Error    string `json:"error,omitempty"`
+}
+
+type PythonArtifactExportResult struct {
+	Success   bool   `json:"success"`
+	Directory string `json:"directory,omitempty"`
+	Written   int    `json:"written,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// ExportPythonArtifacts lets the user select one output directory and writes
+// only the validated relative UTF-8 files returned by the project script.
+func (a *App) ExportPythonArtifacts(projectName string, artifactsJSON string) PythonArtifactExportResult {
+	validationRoot, err := os.MkdirTemp("", "python-artifact-validation-*")
+	if err != nil {
+		return PythonArtifactExportResult{Error: "unable to validate generated files"}
+	}
+	defer os.RemoveAll(validationRoot)
+	_, _, err = preparePythonArtifacts(validationRoot, artifactsJSON)
+	if err != nil {
+		return PythonArtifactExportResult{Error: err.Error()}
+	}
+	directory, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:                "Save Generated Files - " + projectName,
+		CanCreateDirectories: true,
+	})
+	if err != nil {
+		return PythonArtifactExportResult{Error: err.Error()}
+	}
+	if directory == "" {
+		return PythonArtifactExportResult{Error: "cancelled"}
+	}
+	artifacts, conflicts, err := preparePythonArtifacts(directory, artifactsJSON)
+	if err != nil {
+		return PythonArtifactExportResult{Error: err.Error()}
+	}
+	if conflicts > 0 {
+		choice, dialogErr := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+			Type:          runtime.QuestionDialog,
+			Title:         "Replace generated files?",
+			Message:       fmt.Sprintf("%d generated file(s) already exist in the selected directory.", conflicts),
+			Buttons:       []string{"Replace", "Cancel"},
+			DefaultButton: "Cancel",
+			CancelButton:  "Cancel",
+		})
+		if dialogErr != nil {
+			return PythonArtifactExportResult{Error: dialogErr.Error()}
+		}
+		if choice != "Replace" {
+			return PythonArtifactExportResult{Error: "cancelled"}
+		}
+	}
+	if err := writePreparedPythonArtifacts(directory, artifacts); err != nil {
+		return PythonArtifactExportResult{Error: err.Error()}
+	}
+	return PythonArtifactExportResult{Success: true, Directory: directory, Written: len(artifacts)}
 }
 
 // SaveJson opens a save dialog and writes JSON data to the chosen path.

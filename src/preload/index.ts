@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../shared/bridgeResult'
-import type { PythonProjectResult } from '../shared/pythonRuntime'
+import type { PythonArtifact, PythonArtifactExportResult, PythonProjectResult } from '../shared/pythonRuntime'
 
 export interface ElectronAPI {
   openXlsx: () => Promise<BridgeResult<string>>
@@ -19,6 +19,7 @@ export interface ElectronAPI {
   onPreviewReload: (callback: (blockId: string) => void) => () => void
   cancelPythonRun: () => Promise<BridgeResult<boolean>>
   runProjectPython: (source: string, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
+  exportPythonArtifacts: (projectName: string, artifacts: PythonArtifact[]) => Promise<BridgeResult<PythonArtifactExportResult>>
 }
 
 const api: ElectronAPI = {
@@ -72,6 +73,7 @@ const api: ElectronAPI = {
   },
   cancelPythonRun: async () => bridgeOk(false),
   runProjectPython: async () => bridgeError('Project Python requires the Wails runtime.'),
+  exportPythonArtifacts: async () => bridgeError('Saving generated files requires the Wails runtime.'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

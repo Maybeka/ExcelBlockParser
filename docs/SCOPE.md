@@ -1,9 +1,9 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** v1.2.0 released
+**Status:** development after v1.2.0
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
-**Last assessed:** 2026-08-11
+**Last assessed:** 2026-08-16
 
 ## 1. Product Intent
 
@@ -17,10 +17,11 @@ values, and evolving source files. Rather than writing one-off spreadsheet
 scripts, a user defines an extraction template visually and reuses it with
 later versions of the workbook.
 
-The durable output of the product is therefore two related artifacts:
+The durable output of the product is therefore three related artifacts:
 
 1. An extraction project (the saved Project v3 configuration).
 2. Validated JSON produced by applying that template to a workbook.
+3. Optional UTF-8 text files generated explicitly by the project Python script.
 
 ## 2. Current User Workflow
 
@@ -38,6 +39,8 @@ The implemented application supports this general workflow:
 8. Run extractors and preview raw versus parsed data from the extraction panel.
 9. Save or save-as the complete project JSON through the desktop lifecycle.
 10. Reconcile existing block definitions after a workbook has changed.
+11. Optionally run the project Python script, preview returned files, and save
+    them to a user-selected directory through the Wails host.
 
 ## 3. Implemented Scope
 
@@ -88,8 +91,9 @@ The implemented application supports this general workflow:
   execute Python expressions or add computed values to parsed JSON.
 - Parsed JSON output with block and optional region results.
 - One project-owned Python script with a fixed `process(context)` entry point,
-  explicit execution, syntax highlighting, JSON input/result views, captured
-  output and errors, and cancellation in the Wails runtime.
+  explicit execution, semantic editing support, JSON input/result views,
+  captured output and errors, cancellation, and bounded UTF-8 generated-file
+  preview/export in the Wails runtime.
 
 ### 3.5 Project persistence and reconciliation
 
@@ -160,66 +164,47 @@ The current repository should not be represented as providing the following:
 - Guaranteed support for all Excel file features, especially macros, external
   links, pivot tables, complex charts, and every formula behavior.
 
-## 7. Future Code Generation and Extensions
+## 7. Project Python Generation and Extensions
 
-Generating and writing source files remains a future capability. The project
-Python runner now provides the explicit JSON transformation phase, but it does
-not write files:
+The project Python runner provides one unified transformation and generation
+phase:
 
 ```text
-Workbook -> extraction template -> validated JSON -> generator recipe -> files
+Workbook -> extraction template -> validated JSON -> project script -> previewed files
 ```
 
-The generator must consume a documented JSON schema, not workbook coordinates,
-React state, or internal block identifiers. This keeps templates reusable and
-allows the same extracted data to drive Python, TypeScript, SQL, configuration,
-or test-fixture generators.
+The script consumes the documented project context rather than workbook runtime
+objects or React state. It returns JSON by value. An optional top-level
+`artifacts` list describes relative UTF-8 text files; Python never receives an
+output directory or direct host filesystem access. The Wails host validates,
+previews, confirms conflicts, and writes those files.
 
 Finite application-owned scenarios will first be implemented as compile-time
 built-in feature modules. A runtime plugin system is not justified by scenario
 count alone and remains gated on independent distribution, external ownership,
 and an approved trust model. See `FEATURE_MODULE_ARCHITECTURE.md`.
 
-### Initial scope
-
-- A `Generate Code` action available after a successful preview.
-- One bundled Python generator, such as Python dataclasses, Pydantic models,
-  configuration modules, or test fixtures.
-- User-configurable generator options.
-- Previewed output files and a file-tree/diff view before writing.
-- User-selected output directory and overwrite confirmation.
-- Structured diagnostics and a recorded generation result.
-
-### Generator contract
-
-Each generator should be packaged independently and declare a manifest plus an
-entry script:
-
-```text
-generator/
-  manifest.json
-  generate.py
-```
-
-The manifest should declare its identifier, display name, compatible input
-schema/template versions, option schema, output expectations, and optional
-validation command. The runner should provide JSON input and options, then
-collect structured diagnostics and generated-file metadata.
+The current design intentionally has no generator workspace, per-Block/Region
+entry points, pip management, or independently packaged generator manifests.
+Those abstractions should be introduced only if concrete scenarios demonstrate
+that the unified project script is insufficient.
 
 ### Safety boundary
 
 Python code does not execute in the renderer and is never implicitly run. The
 Wails host owns an isolated embedded interpreter with memory, source, context,
 and result-size limits; cancellation and diagnostics are captured. Host files,
-network access, and child processes are denied. Third-party generators still
+network access, and child processes are denied. Generated files cross the
+runtime boundary only as validated result data. Third-party scripts still
 require a separate trust decision and are not part of this project-owned script
 surface.
 
 ## 8. Current Refinement Priorities
 
 Version 1.2.0 is released, Phase A is complete, and Phase B established the
-compile-time built-in module architecture. Current work should preserve Project
-v3 and refine the supported Block and Region extraction workflow.
+compile-time built-in module architecture. Current development is validating
+the unified Project Python workflow without opening Gate C or weakening Block
+and Region extraction quality.
 
 ### Baseline maintenance
 
