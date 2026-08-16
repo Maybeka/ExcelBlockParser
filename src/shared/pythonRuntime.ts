@@ -8,6 +8,16 @@ export interface PythonProjectResult {
   durationMs: number
 }
 
+export interface PythonProjectFileInput {
+  path: string
+  source: string
+}
+
+export interface PythonProjectPackageInput {
+  entryPath: string
+  files: PythonProjectFileInput[]
+}
+
 export interface PythonArtifact {
   path: string
   content: string

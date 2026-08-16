@@ -55,4 +55,47 @@ describe('project lifecycle coordinator', () => {
     expect(saveJsonToPath).toHaveBeenCalledOnce()
     expect(JSON.parse(writes[1]).project.name).toBe('New Name')
   })
+  it('persists workbook paths relative to the selected project location', async () => {
+    const writes: string[] = []
+    const writer = {
+      saveJson: async (_name: string, content: string) => { writes.push(content); return bridgeOk({ filePath: '/projects/demo/project.json' }) },
+      saveJsonToPath: async (_path: string, content: string) => { writes.push(content); return bridgeOk({ filePath: '/projects/demo/project.json' }) },
+    }
+    const result = await saveProjectDocument(
+      writer,
+      project,
+      null,
+      null,
+      true,
+      current => current,
+      { a: '/projects/demo/excel/a.xlsx', b: '/projects/shared/b.xlsx' },
+    )
+    expect(result.status).toBe('ok')
+    expect(writes).toHaveLength(2)
+    expect(JSON.parse(writes[1]).project.workbooks.map((workbook: { sourcePath: string }) => workbook.sourcePath)).toEqual([
+      'excel/a.xlsx',
+      '../shared/b.xlsx',
+    ])
+    if (result.status === 'ok') expect(result.project.workbooks.map(workbook => workbook.sourcePath)).toEqual(['excel/a.xlsx', '../shared/b.xlsx'])
+  })
+  it('recalculates relative sources on Save As and keeps cross-drive Windows paths absolute', async () => {
+    const writes: string[] = []
+    const movedProject = {
+      ...project,
+      workbooks: [
+        { ...project.workbooks[0], sourcePath: 'excel/a.xlsx' },
+        { ...project.workbooks[1], sourcePath: 'D:\\shared\\b.xlsx' },
+      ],
+    }
+    const writer = {
+      saveJson: async (_name: string, content: string) => { writes.push(content); return bridgeOk({ filePath: 'C:\\new\\project.json' }) },
+      saveJsonToPath: async (_path: string, content: string) => { writes.push(content); return bridgeOk({ filePath: 'C:\\new\\project.json' }) },
+    }
+    const result = await saveProjectDocument(writer, movedProject, null, 'C:\\old\\project.json', true, current => current)
+    expect(result.status).toBe('ok')
+    expect(JSON.parse(writes[1]).project.workbooks.map((workbook: { sourcePath: string }) => workbook.sourcePath)).toEqual([
+      '../old/excel/a.xlsx',
+      'D:\\shared\\b.xlsx',
+    ])
+  })
 })

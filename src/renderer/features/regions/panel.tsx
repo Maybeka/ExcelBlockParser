@@ -54,7 +54,7 @@ export const regionPanelProvider: WorkspaceFeaturePanelProvider = {
     }
   },
   navigation(context) {
-    const regions = regionsForWorkbook(context.project, context.project.activeWorkbookId)
+    const regions = context.project.regions
     return {
       id: this.featureId,
       label: 'Regions',
@@ -69,11 +69,17 @@ export const regionPanelProvider: WorkspaceFeaturePanelProvider = {
       items: regions.map((region, index) => ({
         id: region.id,
         label: region.label || `region_${index + 1}`,
-        detail: region.range?.a1Notation,
+        detail: [
+          context.project.workbooks.find(workbook => workbook.id === region.workbookId)?.name,
+          region.range ? `${region.activeSheet ? `${region.activeSheet}!` : ''}${region.range.a1Notation}` : null,
+        ].filter(Boolean).join(' · '),
         active: region.id === context.project.activeRegionId,
         locked: region.selectionLocked,
         avatarClassName: 'workspace-region-avatar',
-        select: () => context.selectProject(project => ({ ...project, activeRegionId: region.id, activeBlockId: '' })),
+        select: () => {
+          if (region.workbookId) context.activateWorkbook(region.workbookId, region.activeSheet ?? undefined)
+          context.selectProject(project => ({ ...project, activeRegionId: region.id, activeBlockId: '' }))
+        },
         move: direction => context.transactProject(project => moveRegion(project, region.id, direction)),
       })),
     }

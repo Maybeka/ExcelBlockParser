@@ -1,4 +1,5 @@
 import { MAX_ROW_FILTER_DEPTH } from './rowFilter'
+import { MAX_PYTHON_FILE_BYTES, MAX_PYTHON_PROJECT_BYTES, normalizePythonPath } from './pythonPackage'
 
 type RecordValue = Record<string, unknown>
 
@@ -196,10 +197,25 @@ export function validateProjectV3Document(value: unknown): string[] {
     || typeof project.activeBlockId !== 'string'
     || (project.activeRegionId !== null && typeof project.activeRegionId !== 'string')
     || (project.focusMode !== 'always-editable' && project.focusMode !== 'activate-first')) return ['Invalid project file: project fields are incomplete or invalid.']
-  if (project.pythonScript !== undefined && (!isRecord(project.pythonScript)
-    || Boolean(unknownKey(project.pythonScript, new Set(['source'])))
-    || typeof project.pythonScript.source !== 'string'
-    || new TextEncoder().encode(project.pythonScript.source).byteLength > 256 * 1024)) return ['Invalid project file: Python script is invalid.']
+  if (project.pythonScript !== undefined) {
+    if (!isRecord(project.pythonScript)
+      || Boolean(unknownKey(project.pythonScript, new Set(['entryPath', 'files'])))
+      || typeof project.pythonScript.entryPath !== 'string'
+      || !Array.isArray(project.pythonScript.files)) return ['Invalid project file: Python package is invalid.']
+    const entryPath = normalizePythonPath(project.pythonScript.entryPath)
+    const names = new Set<string>()
+    let totalBytes = 0
+    for (const file of project.pythonScript.files) {
+      if (!isRecord(file) || Boolean(unknownKey(file, new Set(['path', 'source']))) || typeof file.path !== 'string' || typeof file.source !== 'string') return ['Invalid project file: Python package is invalid.']
+      const path = normalizePythonPath(file.path)
+      if (!path || names.has(path.toLocaleLowerCase('en-US'))) return ['Invalid project file: Python package is invalid.']
+      names.add(path.toLocaleLowerCase('en-US'))
+      const bytes = new TextEncoder().encode(file.source).byteLength
+      if (bytes > MAX_PYTHON_FILE_BYTES) return ['Invalid project file: Python package is invalid.']
+      totalBytes += bytes
+    }
+    if (!entryPath || !names.has(entryPath.toLocaleLowerCase('en-US')) || totalBytes > MAX_PYTHON_PROJECT_BYTES) return ['Invalid project file: Python package is invalid.']
+  }
   if (!isRecord(value.data) || !isJsonValue(value.data) || !Array.isArray(value.blockResults)
     || (value.regionResults !== undefined && !Array.isArray(value.regionResults))) return ['Invalid project file: result fields are invalid.']
 

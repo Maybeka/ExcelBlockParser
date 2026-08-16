@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+func pythonProject(entry string, files ...PythonProjectFile) PythonProjectPackage {
+	return PythonProjectPackage{EntryPath: entry, Files: files}
+}
+
 func TestPythonRuntimeCapturesOutputAndResult(t *testing.T) {
 	runner := &pythonRuntimeRunner{}
 	result := runner.Eval("print('hello from python')\n1 + 2")
@@ -21,11 +25,11 @@ func TestPythonRuntimeCapturesOutputAndResult(t *testing.T) {
 func TestPythonProjectRunnerReceivesDataAndReturnsJSON(t *testing.T) {
 	runner := &pythonRuntimeRunner{}
 	contextJSON := `{"contractVersion":1,"project":{"name":"Demo"},"data":{"records":[{"value":7}]},"blockResults":[],"regionResults":[]}`
-	result := runner.RunProject(`
+	result := runner.RunProject(pythonProject("main.py", PythonProjectFile{Path: "main.py", Source: `
 def process(context):
     print("processing", context["project"]["name"])
     return {"doubled": context["data"]["records"][0]["value"] * 2}
-`, contextJSON)
+`}), contextJSON)
 	if !result.OK || result.HostError != "" || result.Error != "" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
@@ -39,16 +43,33 @@ def process(context):
 }
 
 func TestPythonProjectRunnerRequiresProcessEntryPoint(t *testing.T) {
-	result := (&pythonRuntimeRunner{}).RunProject("value = 1", `{}`)
+	result := (&pythonRuntimeRunner{}).RunProject(pythonProject("main.py", PythonProjectFile{Path: "main.py", Source: "value = 1"}), `{}`)
 	if result.OK || !strings.Contains(result.Error, "process(context)") || result.HostError != "" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 }
 
 func TestPythonProjectRunnerRejectsNonJSONResult(t *testing.T) {
-	result := (&pythonRuntimeRunner{}).RunProject("def process(context):\n    return {1, 2}", `{}`)
+	result := (&pythonRuntimeRunner{}).RunProject(pythonProject("main.py", PythonProjectFile{Path: "main.py", Source: "def process(context):\n    return {1, 2}"}), `{}`)
 	if result.OK || !strings.Contains(result.Error, "JSON serializable") || result.HostError != "" {
 		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestPythonProjectRunnerImportsProjectModules(t *testing.T) {
+	result := (&pythonRuntimeRunner{}).RunProject(pythonProject("main.py",
+		PythonProjectFile{Path: "main.py", Source: "from generators.formatting import multiply\n\ndef process(context):\n    return {\"value\": multiply(context[\"value\"])}"},
+		PythonProjectFile{Path: "generators/formatting.py", Source: "def multiply(value):\n    return value * 3"},
+	), `{"value": 7}`)
+	if !result.OK || result.Error != "" || result.HostError != "" || !strings.Contains(result.ResultJSON, `"value": 21`) {
+		t.Fatalf("project module import failed: %#v", result)
+	}
+}
+
+func TestPythonProjectRunnerRejectsUnsafeProjectPaths(t *testing.T) {
+	result := (&pythonRuntimeRunner{}).RunProject(pythonProject("../main.py", PythonProjectFile{Path: "../main.py", Source: "def process(context): return {}"}), `{}`)
+	if result.OK || !strings.Contains(result.HostError, "entry Python file") {
+		t.Fatalf("unsafe project path accepted: %#v", result)
 	}
 }
 

@@ -18,7 +18,7 @@ const (
 )
 
 type filePolicy struct {
-	approvedWorkbookPath string
+	approvedWorkbookPaths map[string]string
 }
 
 func isSupportedWorkbookPath(path string) bool {
@@ -68,6 +68,10 @@ func resolveRegularFile(path string, maxBytes int64, label string) (string, erro
 }
 
 func (p *filePolicy) approveWorkbook(path string) (string, error) {
+	return p.approveWorkbookAlias(path, path)
+}
+
+func (p *filePolicy) approveWorkbookAlias(alias, path string) (string, error) {
 	resolved, err := resolveRegularFile(path, maxWorkbookBytes, "Workbook")
 	if err != nil {
 		return "", err
@@ -75,19 +79,28 @@ func (p *filePolicy) approveWorkbook(path string) (string, error) {
 	if !isSupportedWorkbookPath(resolved) {
 		return "", errors.New("select an .xlsx or .xls workbook")
 	}
-	p.approvedWorkbookPath = resolved
+	if p.approvedWorkbookPaths == nil {
+		p.approvedWorkbookPaths = make(map[string]string)
+	}
+	p.approvedWorkbookPaths[filepath.Clean(alias)] = resolved
+	p.approvedWorkbookPaths[resolved] = resolved
 	return resolved, nil
 }
 
+func (p *filePolicy) resetApprovedWorkbooks() {
+	p.approvedWorkbookPaths = make(map[string]string)
+}
+
 func (p *filePolicy) readApprovedWorkbook(path string) ([]byte, error) {
-	if p.approvedWorkbookPath == "" {
+	approvedPath, approved := p.approvedWorkbookPaths[filepath.Clean(path)]
+	if !approved {
 		return nil, errors.New("select a workbook before reading it")
 	}
-	resolved, err := resolveRegularFile(path, maxWorkbookBytes, "Workbook")
+	resolved, err := resolveRegularFile(approvedPath, maxWorkbookBytes, "Workbook")
 	if err != nil {
 		return nil, err
 	}
-	if resolved != p.approvedWorkbookPath {
+	if resolved != approvedPath {
 		return nil, errors.New("the workbook must be selected through the Open dialog")
 	}
 	data, err := readFileWithTimeout(resolved, fileReadTimeout, os.ReadFile)

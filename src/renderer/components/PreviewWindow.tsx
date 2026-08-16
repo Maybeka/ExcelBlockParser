@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { Layout, Segmented, Input, Spin, Typography, Empty, Result, Alert, Button, Select, Tooltip } from 'antd'
 import { CodeOutlined, CloseOutlined, DatabaseOutlined, FileTextOutlined, SearchOutlined } from '@ant-design/icons'
 import { PreviewTable } from './PreviewTable'
-import ReactJson from '@microlink/react-json-view'
 import type { PreviewData } from '../types'
+import { JsonTreeView } from './JsonTreeView'
 
 const { Header, Content } = Layout
 const { Text } = Typography
@@ -190,17 +190,7 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
         {showJson ? (
           <div className="preview-json">
             <div className="preview-json-heading"><FileTextOutlined /> Parsed output JSON</div>
-            <ReactJson
-              src={previewData.parsedRows}
-              theme="monokai"
-              displayDataTypes={true}
-              displayObjectSize={true}
-              enableClipboard={false}
-              collapsed={1}
-              style={{ padding: 14, fontFamily: 'var(--font-code)', fontSize: 13, lineHeight: 1.45 }}
-              name={false}
-              quotesOnKeys={false}
-            />
+            <JsonTreeView value={previewData.parsedRows} collapsed={1} />
           </div>
         ) : (
           <PreviewTable

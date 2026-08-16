@@ -50,6 +50,23 @@ describe('Project v3 complete fixture persistence', () => {
     }
   })
 
+  it('makes relative workbook sources recoverable without changing the live project', () => {
+    const { project, parseResult } = decodeFixture()
+    const relative = {
+      ...project,
+      workbooks: project.workbooks.map((workbook, index) => ({ ...workbook, sourcePath: `sources/book-${index + 1}.xlsx` })),
+    }
+    const recovered = decodeProjectDocument(projectRecoveryContent(relative, parseResult, '/projects/demo/project.json'))
+    expect(recovered.status).toBe('ok')
+    if (recovered.status === 'ok') {
+      expect(recovered.document.project.workbooks.map(workbook => workbook.sourcePath)).toEqual([
+        '/projects/demo/sources/book-1.xlsx',
+        '/projects/demo/sources/book-2.xlsx',
+      ])
+    }
+    expect(relative.workbooks.map(workbook => workbook.sourcePath)).toEqual(['sources/book-1.xlsx', 'sources/book-2.xlsx'])
+  })
+
   it('preserves all feature state through workbook switching and undo/redo', () => {
     const { project } = decodeFixture()
     const coordinator = new WorkspaceStateCoordinator()

@@ -36,6 +36,30 @@ func TestFilePolicyApprovesOnlySelectedWorkbook(t *testing.T) {
 	}
 }
 
+func TestFilePolicyRetainsMultipleProjectWorkbooksAndAliases(t *testing.T) {
+	directory := t.TempDir()
+	first := writeTestFile(t, directory, "first.xlsx", "first")
+	second := writeTestFile(t, directory, "second.xlsx", "second")
+	policy := &filePolicy{}
+
+	if _, err := policy.approveWorkbookAlias("sources/first.xlsx", first); err != nil {
+		t.Fatalf("approve first workbook alias: %v", err)
+	}
+	if _, err := policy.approveWorkbookAlias("sources/second.xlsx", second); err != nil {
+		t.Fatalf("approve second workbook alias: %v", err)
+	}
+	for path, expected := range map[string]string{"sources/first.xlsx": "first", "sources/second.xlsx": "second"} {
+		data, err := policy.readApprovedWorkbook(path)
+		if err != nil || string(data) != expected {
+			t.Fatalf("read approved workbook %q = %q, %v", path, data, err)
+		}
+	}
+	policy.resetApprovedWorkbooks()
+	if _, err := policy.readApprovedWorkbook("sources/first.xlsx"); err == nil {
+		t.Fatal("expected reset workbook authorization to be rejected")
+	}
+}
+
 func TestFilePolicyRejectsUnsupportedOrOversizedWorkbook(t *testing.T) {
 	directory := t.TempDir()
 	policy := &filePolicy{}

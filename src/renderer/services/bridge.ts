@@ -6,7 +6,7 @@
  * Browser:  throws descriptive errors (used for dev/testing)
  */
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../../shared/bridgeResult'
-import type { PythonArtifact, PythonArtifactExportResult, PythonProjectResult } from '../../shared/pythonRuntime'
+import type { PythonArtifact, PythonArtifactExportResult, PythonProjectPackageInput, PythonProjectResult } from '../../shared/pythonRuntime'
 
 export type { PythonProjectResult } from '../../shared/pythonRuntime'
 
@@ -26,7 +26,7 @@ export interface BridgeAPI {
   closePreviewWindow: () => Promise<void>
   onPreviewReload: (callback: (blockId: string) => void) => () => void
   cancelPythonRun: () => Promise<BridgeResult<boolean>>
-  runProjectPython: (source: string, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
+  runProjectPython: (project: PythonProjectPackageInput, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
   exportPythonArtifacts: (projectName: string, artifacts: PythonArtifact[]) => Promise<BridgeResult<PythonArtifactExportResult>>
 }
 
@@ -48,7 +48,7 @@ export interface WailsGoAPI {
       GetPreviewData: (blockId: string) => Promise<unknown>
       ClosePreviewWindow: () => Promise<void>
       CancelPythonRun: () => Promise<boolean>
-      RunProjectPython: (source: string, contextJson: string) => Promise<PythonProjectResult>
+      RunProjectPython: (project: PythonProjectPackageInput, contextJson: string) => Promise<PythonProjectResult>
       ExportPythonArtifacts: (projectName: string, artifactsJson: string) => Promise<{ success: boolean; directory: string; written: number; error: string }>
     }
   }
@@ -143,8 +143,8 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     cancelPythonRun: async () => {
       try { return bridgeOk(await App.CancelPythonRun()) } catch (error) { return bridgeError(error) }
     },
-    runProjectPython: async (source, contextJson) => {
-      try { return bridgeOk(await App.RunProjectPython(source, contextJson)) } catch (error) { return bridgeError(error) }
+    runProjectPython: async (project, contextJson) => {
+      try { return bridgeOk(await App.RunProjectPython(project, contextJson)) } catch (error) { return bridgeError(error) }
     },
     exportPythonArtifacts: async (projectName, artifacts) => {
       try {

@@ -1,23 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Modal, Space, Spin, Tabs, TreeSelect, Typography, type TreeSelectProps } from 'antd'
-import { CaretRightOutlined, CodeOutlined, FileTextOutlined, FolderOpenOutlined, FunctionOutlined, StopOutlined } from '@ant-design/icons'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { Alert, Button, Input, Modal, Space, Spin, Splitter, Tabs, Tree, TreeSelect, Typography, type TreeSelectProps } from 'antd'
+import { ArrowLeftOutlined, CaretRightOutlined, CodeOutlined, DeleteOutlined, EditOutlined, FileAddOutlined, FileTextOutlined, FolderOpenOutlined, FunctionOutlined, ReloadOutlined, StarFilled, StopOutlined } from '@ant-design/icons'
 import CodeMirror from '@uiw/react-codemirror'
 import { python } from '@codemirror/lang-python'
 import type { EditorView } from '@codemirror/view'
-import type { PythonProjectResult } from '../../shared/pythonRuntime'
-import type { ParseResult, ProjectConfig } from '../types'
+import type { PythonArtifact, PythonProjectResult } from '../../shared/pythonRuntime'
+import type { ParseResult, ProjectConfig, PythonScriptConfig } from '../types'
 import { getBridge } from '../services/bridge'
 import { projectPythonEditorTheme } from '../services/pythonEditorTheme'
 import { buildPythonProjectContext } from '../services/pythonProject'
 import { parsePythonArtifacts, pythonArtifactSize } from '../services/pythonArtifacts'
 import { buildPythonSymbolTree, jumpToPythonOffset, listPythonSymbols, pythonNavigation, type PythonSymbolNode } from '../services/pythonNavigation'
+import { createPythonPackage, normalizePythonPath, sourceForPythonFile, validatePythonPackage } from '../services/pythonPackage'
+import { highlightPreview, type PreviewLanguage } from '../services/syntaxPreview'
+import { resolvePythonPackageDefinition, type PythonExternalDefinition } from '../services/pythonPackageNavigation'
+import { JsonTreeView } from './JsonTreeView'
 
 export interface PythonProjectDialogProps {
   open: boolean
   project: ProjectConfig
   parseResult: ParseResult | null
-  onSourceChange: (source: string) => void
+  onPrepareInput: () => Promise<{ project: ProjectConfig; result: ParseResult } | { error: string }>
+  onSourceChange: (pythonScript: PythonScriptConfig) => void
   onClose: () => void
+  toolbarContainer: HTMLElement | null
 }
 
 function jsonDisplay(value: string): string {
@@ -25,7 +32,6 @@ function jsonDisplay(value: string): string {
 }
 
 const MAX_DISPLAY_CHARS = 1_000_000
-const PYTHON_EDITOR_EXTENSIONS = [python(), projectPythonEditorTheme, pythonNavigation()]
 
 function boundedDisplay(value: string): string {
   return value.length <= MAX_DISPLAY_CHARS
@@ -35,6 +41,70 @@ function boundedDisplay(value: string): string {
 
 function CodeBlock({ children }: { children: string }) {
   return <pre className="python-project-code-block">{children || 'No output.'}</pre>
+}
+
+function CodeOverview({ source, onNavigate }: { source: string; onNavigate: (offset: number) => void }) {
+  const lines = source.split('\n')
+  const step = Math.max(1, Math.ceil(lines.length / 800))
+  const overview = lines.filter((_line, index) => index % step === 0).join('\n')
+
+  return (
+    <button
+      type="button"
+      className="python-code-overview"
+      aria-label="Code overview"
+      title="Click to navigate the code"
+      onClick={event => {
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const ratio = Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
+        const line = Math.round(ratio * Math.max(0, lines.length - 1))
+        onNavigate(lines.slice(0, line).reduce((offset, value) => offset + value.length + 1, 0))
+      }}
+    >
+      <pre>{overview}</pre>
+    </button>
+  )
+}
+
+function PythonInputJson({ value }: { value: unknown }) {
+  return (
+    <JsonTreeView
+      value={value as Record<string, unknown>}
+      className="python-project-input-json"
+      shouldCollapse={({ name, namespace }) => {
+          if (name === false) return false
+          const rootBranch = namespace.find(part => typeof part === 'string')
+          return rootBranch !== 'blockResults' && rootBranch !== 'regionResults'
+      }}
+    />
+  )
+}
+
+function previewLanguage(path: string): PreviewLanguage | null {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.json')) return 'json'
+  if (lower.endsWith('.py')) return 'python'
+  if (/\.(?:sv|svh|v|vh)$/.test(lower)) return 'system-verilog'
+  return null
+}
+
+function SyntaxPreview({ path, content }: { path: string; content: string }) {
+  const [html, setHtml] = useState('')
+  const language = previewLanguage(path)
+  const preview = boundedDisplay(content)
+
+  useEffect(() => {
+    let active = true
+    if (!language) { setHtml(''); return () => { active = false } }
+    void highlightPreview(preview, language)
+      .then(value => { if (active) setHtml(value) })
+      .catch(() => { if (active) setHtml('') })
+    return () => { active = false }
+  }, [language, preview])
+
+  return html
+    ? <div className="python-syntax-preview" dangerouslySetInnerHTML={{ __html: html }} />
+    : <CodeBlock>{preview}</CodeBlock>
 }
 
 function formatBytes(value: number): string {
@@ -59,38 +129,135 @@ function symbolTreeData(nodes: PythonSymbolNode[], source: string, depth = 0): N
   }))
 }
 
-export function PythonProjectDialog({ open, project, parseResult, onSourceChange, onClose }: PythonProjectDialogProps) {
+interface PackageTreeNode { key: string; title: ReactNode; children?: PackageTreeNode[] }
+
+function packageTreeData(files: PythonScriptConfig['files'], entryPath: string): PackageTreeNode[] {
+  type MutableNode = PackageTreeNode & { children: PackageTreeNode[]; index: Map<string, MutableNode> }
+  const root: MutableNode = { key: '__root__', title: '', children: [], index: new Map() }
+  for (const file of files) {
+    const parts = file.path.split('/')
+    let parent = root
+    for (const [index, part] of parts.entries()) {
+      const isFile = index === parts.length - 1
+      let node = parent.index.get(part)
+      if (!node) {
+        node = {
+          key: isFile ? file.path : `dir:${parts.slice(0, index + 1).join('/')}`,
+          title: isFile ? <span className="python-package-tree-file"><FileTextOutlined />{part}{file.path === entryPath && <StarFilled title="Entry file" />}</span> : <span className="python-package-tree-folder"><FolderOpenOutlined />{part}</span>,
+          children: [], index: new Map(),
+        }
+        parent.index.set(part, node)
+        parent.children.push(node)
+      }
+      parent = node
+    }
+  }
+  const strip = (node: MutableNode): PackageTreeNode => ({ key: node.key, title: node.title, ...(node.children.length ? { children: node.children.map(strip) } : {}) })
+  return root.children.map(strip)
+}
+
+function artifactTreeData(artifacts: PythonArtifact[]): PackageTreeNode[] {
+  type MutableNode = PackageTreeNode & { children: MutableNode[]; index: Map<string, MutableNode> }
+  const root: MutableNode = { key: '__artifact_root__', title: '', children: [], index: new Map() }
+  for (const artifact of artifacts) {
+    const parts = artifact.path.split('/')
+    let parent = root
+    for (const [index, part] of parts.entries()) {
+      const isFile = index === parts.length - 1
+      let node = parent.index.get(part)
+      if (!node) {
+        node = {
+          key: isFile ? artifact.path : `artifact-dir:${parts.slice(0, index + 1).join('/')}`,
+          title: isFile
+            ? <span className="python-artifact-tree-file"><FileTextOutlined /><span>{part}</span><small>{formatBytes(pythonArtifactSize(artifact))}</small></span>
+            : <span className="python-package-tree-folder"><FolderOpenOutlined />{part}</span>,
+          children: [], index: new Map(),
+        }
+        parent.index.set(part, node)
+        parent.children.push(node)
+      }
+      parent = node
+    }
+  }
+  const strip = (node: MutableNode): PackageTreeNode => ({ key: node.key, title: node.title, ...(node.children.length ? { children: node.children.map(strip) } : {}) })
+  return root.children.map(strip)
+}
+
+export function PythonProjectDialog({ open, project, parseResult, onPrepareInput, onSourceChange, onClose, toolbarContainer }: PythonProjectDialogProps) {
   const [result, setResult] = useState<PythonProjectResult | null>(null)
   const [bridgeError, setBridgeError] = useState('')
   const [running, setRunning] = useState(false)
+  const [preparingInput, setPreparingInput] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNotice, setExportNotice] = useState('')
   const [selectedArtifactPath, setSelectedArtifactPath] = useState('')
   const [activeTab, setActiveTab] = useState('script')
+  const [fileDialog, setFileDialog] = useState<{ mode: 'add' | 'rename'; value: string } | null>(null)
+  const [preparedContext, setPreparedContext] = useState<ReturnType<typeof buildPythonProjectContext> | null>(null)
   const editorRef = useRef<EditorView | null>(null)
-  const source = project.pythonScript?.source ?? ''
-  const [draftSource, setDraftSource] = useState(source)
+  const pendingExternalJumpRef = useRef<PythonExternalDefinition | null>(null)
+  const lastRunInputKeyRef = useRef('')
+  const pythonScript = project.pythonScript ?? createPythonPackage()
+  const [draftPackage, setDraftPackage] = useState<PythonScriptConfig>(pythonScript)
+  const [activeFilePath, setActiveFilePath] = useState(pythonScript.entryPath)
+  const draftSource = sourceForPythonFile(draftPackage, activeFilePath)
+  const resolveExternal = useCallback((source: string, position: number) => resolvePythonPackageDefinition(draftPackage.files, source, position), [draftPackage.files])
+  const openExternal = useCallback((target: PythonExternalDefinition) => {
+    pendingExternalJumpRef.current = target
+    setActiveFilePath(target.filePath)
+  }, [])
+  const pythonEditorExtensions = useMemo(() => [python(), projectPythonEditorTheme, pythonNavigation({ resolveExternal, openExternal })], [openExternal, resolveExternal])
   const symbols = useMemo(() => listPythonSymbols(draftSource), [draftSource])
   const symbolNodes = useMemo(() => buildPythonSymbolTree(symbols), [symbols])
-  const context = useMemo(
+  const parsedContext = useMemo(
     () => parseResult?.success ? buildPythonProjectContext(project, parseResult) : null,
     [parseResult, project.id, project.name, project.workbooks],
   )
+  const context = preparedContext ?? parsedContext
   const contextJson = useMemo(() => context ? JSON.stringify(context) : '', [context])
+  const inputKey = `${JSON.stringify(draftPackage)}\u0000${contextJson}`
   const artifactResult = useMemo(() => parsePythonArtifacts(result?.resultJson ?? ''), [result?.resultJson])
   const selectedArtifact = artifactResult.artifacts.find(artifact => artifact.path === selectedArtifactPath) ?? artifactResult.artifacts[0]
 
   useEffect(() => {
-    if (open) setDraftSource(source)
-  }, [open, source])
+    if (open) {
+      setDraftPackage(pythonScript)
+      setActiveFilePath(pythonScript.entryPath)
+      setResult(null)
+      setExportNotice('')
+      setSelectedArtifactPath('')
+    }
+  }, [open, project.id])
 
   useEffect(() => {
-    if (!open || draftSource === source) return
-    const timer = window.setTimeout(() => onSourceChange(draftSource), 400)
-    return () => window.clearTimeout(timer)
-  }, [draftSource, onSourceChange, open, source])
+    if (!open) {
+      setPreparedContext(null)
+      setResult(null)
+      setExportNotice('')
+      setSelectedArtifactPath('')
+    }
+  }, [open])
 
-  useEffect(() => { setResult(null); setExportNotice(''); setSelectedArtifactPath('') }, [contextJson, draftSource])
+  useEffect(() => {
+    const pending = pendingExternalJumpRef.current
+    if (!pending || pending.filePath !== activeFilePath || !editorRef.current) return
+    const frame = window.requestAnimationFrame(() => {
+      if (editorRef.current) jumpToPythonOffset(editorRef.current, pending.definition.from)
+      pendingExternalJumpRef.current = null
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [activeFilePath, draftSource])
+
+  useEffect(() => {
+    if (!open || JSON.stringify(draftPackage) === JSON.stringify(pythonScript)) return
+    const timer = window.setTimeout(() => onSourceChange(draftPackage), 400)
+    return () => window.clearTimeout(timer)
+  }, [draftPackage, onSourceChange, open, pythonScript])
+
+  useEffect(() => {
+    if (inputKey === lastRunInputKeyRef.current) return
+    setExportNotice('')
+  }, [inputKey])
 
   useEffect(() => {
     if (artifactResult.artifacts.length > 0 && !artifactResult.artifacts.some(artifact => artifact.path === selectedArtifactPath)) {
@@ -99,8 +266,8 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
   }, [artifactResult.artifacts, selectedArtifactPath])
 
   const commitSource = useCallback(() => {
-    if (draftSource !== source) onSourceChange(draftSource)
-  }, [draftSource, onSourceChange, source])
+    if (JSON.stringify(draftPackage) !== JSON.stringify(pythonScript)) onSourceChange(draftPackage)
+  }, [draftPackage, onSourceChange, pythonScript])
 
   const close = () => {
     commitSource()
@@ -108,12 +275,26 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
   }
 
   const run = async () => {
-    if (!context) return
     commitSource()
     setRunning(true)
     setBridgeError('')
-    setResult(null)
-    const response = await getBridge().runProjectPython(draftSource, contextJson)
+    const prepared = await onPrepareInput()
+    if ('error' in prepared) {
+      setBridgeError(prepared.error)
+      setRunning(false)
+      return
+    }
+    const nextContext = buildPythonProjectContext(prepared.project, prepared.result)
+    const nextContextJson = JSON.stringify(nextContext)
+    const packageError = validatePythonPackage(draftPackage)
+    if (packageError) {
+      setBridgeError(packageError)
+      setRunning(false)
+      return
+    }
+    lastRunInputKeyRef.current = `${JSON.stringify(draftPackage)}\u0000${nextContextJson}`
+    setPreparedContext(nextContext)
+    const response = await getBridge().runProjectPython(draftPackage, nextContextJson)
     setRunning(false)
     if (response.status === 'ok') {
       setResult(response.value)
@@ -123,6 +304,18 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
       }
     }
     else setBridgeError(response.status === 'error' ? response.error.message : 'Python run was cancelled.')
+  }
+
+  const prepareInput = async () => {
+    setPreparingInput(true)
+    setBridgeError('')
+    const prepared = await onPrepareInput()
+    setPreparingInput(false)
+    if ('error' in prepared) {
+      setBridgeError(prepared.error)
+      return
+    }
+    setPreparedContext(buildPythonProjectContext(prepared.project, prepared.result))
   }
 
   const cancel = async () => {
@@ -142,39 +335,114 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
   }
 
   const runtimeError = result?.hostError || result?.error
+  const updateActiveFileSource = (nextSource: string) => {
+    setDraftPackage(current => ({ ...current, files: current.files.map(file => file.path === activeFilePath ? { ...file, source: nextSource } : file) }))
+  }
+  const submitFileDialog = () => {
+    if (!fileDialog) return
+    const path = normalizePythonPath(fileDialog.value)
+    if (!path) {
+      setBridgeError('Python file paths must be relative .py paths without empty, . or .. segments.')
+      return
+    }
+    if (fileDialog.mode === 'add') {
+    if (draftPackage.files.some(file => file.path.toLocaleLowerCase('en-US') === path.toLocaleLowerCase('en-US'))) {
+      setBridgeError(`A Python file already exists at ${path}.`)
+      return
+    }
+    setDraftPackage(current => ({ ...current, files: [...current.files, { path, source: '' }] }))
+    setActiveFilePath(path)
+    setFileDialog(null)
+    return
+    }
+    if (path === activeFilePath) { setFileDialog(null); return }
+    if (draftPackage.files.some(file => file.path !== activeFilePath && file.path.toLocaleLowerCase('en-US') === path.toLocaleLowerCase('en-US'))) {
+      setBridgeError(`A Python file already exists at ${path}.`)
+      return
+    }
+    setDraftPackage(current => ({
+      entryPath: current.entryPath === activeFilePath ? path : current.entryPath,
+      files: current.files.map(file => file.path === activeFilePath ? { ...file, path } : file),
+    }))
+    setActiveFilePath(path)
+    setFileDialog(null)
+  }
+  const deleteActiveFile = () => {
+    if (draftPackage.files.length <= 1 || activeFilePath === draftPackage.entryPath || !window.confirm(`Delete ${activeFilePath}?`)) return
+    const nextFiles = draftPackage.files.filter(file => file.path !== activeFilePath)
+    setDraftPackage(current => ({ ...current, files: nextFiles }))
+    setActiveFilePath(nextFiles[0].path)
+  }
+  const setEntryFile = () => setDraftPackage(current => ({ ...current, entryPath: activeFilePath }))
   const items = [
     {
       key: 'script',
       label: 'Script',
       children: (
-        <div className="python-project-editor" aria-label="Project Python source">
-          <CodeMirror
-            value={draftSource}
-            height="390px"
-            extensions={PYTHON_EDITOR_EXTENSIONS}
-            onCreateEditor={view => { editorRef.current = view }}
-            onChange={setDraftSource}
-            editable={!running}
-            basicSetup={{
-              autocompletion: false,
-              bracketMatching: true,
-              closeBrackets: true,
-              foldGutter: true,
-              highlightActiveLine: true,
-              highlightSelectionMatches: true,
-              lineNumbers: true,
-              syntaxHighlighting: false,
-            }}
-          />
-        </div>
+        <Splitter className="python-project-script-splitter">
+          <Splitter.Panel defaultSize={230} min={160} max="50%">
+            <aside className="python-package-files" aria-label="Python project files">
+              <header>
+                <strong>Files</strong>
+                <Space.Compact size="small">
+                  <Button type="text" size="small" icon={<FileAddOutlined />} aria-label="Add Python file" title="Add Python file" onClick={() => setFileDialog({ mode: 'add', value: 'helpers.py' })} />
+                  <Button type="text" size="small" icon={<StarFilled />} aria-label="Set active Python file as entry" title="Set active file as entry" onClick={setEntryFile} disabled={running || exporting || activeFilePath === draftPackage.entryPath} />
+                  <Button type="text" size="small" icon={<EditOutlined />} aria-label="Rename active Python file" title="Rename active file" onClick={() => setFileDialog({ mode: 'rename', value: activeFilePath })} disabled={running || exporting} />
+                  <Button danger type="text" size="small" icon={<DeleteOutlined />} aria-label="Delete active Python file" title="Delete active file" onClick={deleteActiveFile} disabled={running || exporting || draftPackage.files.length <= 1 || activeFilePath === draftPackage.entryPath} />
+                </Space.Compact>
+              </header>
+              <Tree
+                className="python-package-file-tree"
+                aria-label="Python project files"
+                blockNode
+                defaultExpandAll
+                selectedKeys={[activeFilePath]}
+                treeData={packageTreeData(draftPackage.files, draftPackage.entryPath)}
+                onSelect={keys => {
+                  const path = String(keys[0] ?? '')
+                  if (draftPackage.files.some(file => file.path === path)) setActiveFilePath(path)
+                }}
+              />
+            </aside>
+          </Splitter.Panel>
+          <Splitter.Panel min="40%">
+            <div className="python-project-editor" aria-label="Project Python source">
+              <header>
+                <strong>{activeFilePath}</strong>
+                <Typography.Text type="secondary">Python</Typography.Text>
+              </header>
+              <div className="python-editor-surface">
+                <CodeMirror
+                  value={draftSource}
+                  height="100%"
+                  extensions={pythonEditorExtensions}
+                  onCreateEditor={view => { editorRef.current = view }}
+                  onChange={updateActiveFileSource}
+                  editable={!running}
+                  basicSetup={{
+                    autocompletion: false,
+                    bracketMatching: true,
+                    closeBrackets: true,
+                    foldGutter: true,
+                    highlightActiveLine: true,
+                    highlightSelectionMatches: true,
+                    lineNumbers: true,
+                    syntaxHighlighting: false,
+                  }}
+                />
+                <CodeOverview source={draftSource} onNavigate={offset => { if (editorRef.current) jumpToPythonOffset(editorRef.current, offset) }} />
+              </div>
+            </div>
+          </Splitter.Panel>
+        </Splitter>
       ),
     },
     {
       key: 'input',
       label: 'Input',
       children: context
-        ? <CodeBlock>{boundedDisplay(JSON.stringify(context, null, 2))}</CodeBlock>
-        : <Typography.Text type="secondary">Run &amp; Preview the project to create Python input.</Typography.Text>,
+        ? <PythonInputJson value={context} />
+        : <CodeBlock>No input.</CodeBlock>,
     },
     {
       key: 'result',
@@ -189,33 +457,33 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
       children: artifactResult.error
         ? <Alert type="error" showIcon message="Generated files are invalid" description={artifactResult.error} />
         : artifactResult.artifacts.length === 0
-          ? <Typography.Text type="secondary">The Python result did not include generated files.</Typography.Text>
+          ? <CodeBlock>No generated files.</CodeBlock>
           : (
-            <div className="python-artifact-browser">
-              <ul className="python-artifact-list" aria-label="Generated files">
-                {artifactResult.artifacts.map(artifact => (
-                  <li key={artifact.path}>
-                    <button
-                      type="button"
-                      aria-label={`Preview ${artifact.path}`}
-                      className={artifact.path === selectedArtifact?.path ? 'is-active' : ''}
-                      onClick={() => setSelectedArtifactPath(artifact.path)}
-                    >
-                      <FileTextOutlined />
-                      <span>{artifact.path}</span>
-                      <small>{formatBytes(pythonArtifactSize(artifact))}</small>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="python-artifact-preview">
-                <header>
-                  <strong>{selectedArtifact?.path}</strong>
-                  <Typography.Text type="secondary">UTF-8</Typography.Text>
-                </header>
-                <CodeBlock>{selectedArtifact?.content ?? ''}</CodeBlock>
-              </div>
-            </div>
+            <Splitter className="python-artifact-browser">
+              <Splitter.Panel defaultSize="34%" min={180} max="60%">
+                <Tree
+                  className="python-artifact-tree"
+                  aria-label="Generated files"
+                  blockNode
+                  defaultExpandAll
+                  selectedKeys={selectedArtifact ? [selectedArtifact.path] : []}
+                  treeData={artifactTreeData(artifactResult.artifacts)}
+                  onSelect={keys => {
+                    const path = String(keys[0] ?? '')
+                    if (artifactResult.artifacts.some(artifact => artifact.path === path)) setSelectedArtifactPath(path)
+                  }}
+                />
+              </Splitter.Panel>
+              <Splitter.Panel min="30%">
+                <div className="python-artifact-preview">
+                  <header>
+                    <strong>{selectedArtifact?.path}</strong>
+                    <Typography.Text type="secondary">UTF-8</Typography.Text>
+                  </header>
+                  {selectedArtifact && <SyntaxPreview path={selectedArtifact.path} content={selectedArtifact.content} />}
+                </div>
+              </Splitter.Panel>
+            </Splitter>
           ),
     },
     {
@@ -225,31 +493,35 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
     },
   ]
 
+  const toolbar = (
+    <Space className="python-workspace-actions" size={6}>
+      <Button className="python-workspace-return" type="primary" icon={<ArrowLeftOutlined />} onClick={close} disabled={running || exporting}>
+        Back to workspace
+      </Button>
+      {exportNotice && <Typography.Text type="success" className="python-artifact-save-status" title={exportNotice}>{exportNotice}</Typography.Text>}
+      {result && <Typography.Text type={result.ok ? 'success' : 'danger'}>{result.durationMs} ms</Typography.Text>}
+      {artifactResult.artifacts.length > 0 && !artifactResult.error && (
+        <Button icon={<FolderOpenOutlined />} loading={exporting} disabled={running} onClick={() => void exportArtifacts()}>
+          Save generated files
+        </Button>
+      )}
+      {running
+        ? <Button danger icon={<StopOutlined />} onClick={cancel}>Cancel run</Button>
+        : <Button type="primary" icon={<CaretRightOutlined />} onClick={() => void run()} disabled={!draftPackage.files.some(file => file.path === draftPackage.entryPath && file.source.trim()) || exporting}>Run</Button>}
+    </Space>
+  )
+
+  if (!open) return null
+
   return (
-    <Modal
-      title="Project Python"
-      open={open}
-      width={980}
-      onCancel={() => { if (!running && !exporting) close() }}
-      footer={<Space>
-        {exportNotice && <Typography.Text type="success" className="python-artifact-save-status" title={exportNotice}>{exportNotice}</Typography.Text>}
-        {result && <Typography.Text type={result.ok ? 'success' : 'danger'}>{result.durationMs} ms</Typography.Text>}
-        {artifactResult.artifacts.length > 0 && !artifactResult.error && (
-          <Button icon={<FolderOpenOutlined />} loading={exporting} disabled={running} onClick={() => void exportArtifacts()}>
-            Save generated files
-          </Button>
-        )}
-        <Button onClick={close} disabled={running || exporting}>Close</Button>
-        {running
-          ? <Button danger icon={<StopOutlined />} onClick={cancel}>Cancel run</Button>
-          : <Button type="primary" icon={<CaretRightOutlined />} onClick={() => void run()} disabled={!draftSource.trim() || !context || exporting}>Run</Button>}
-      </Space>}
-      destroyOnHidden={false}
-    >
-      {!context && <Alert type="info" showIcon message="No current parse result" description="Run & Preview before executing the project script." style={{ marginBottom: 10 }} />}
+    <>
+      <section className="python-project-workspace" role="dialog" aria-modal="true" aria-label="Project Python">
+        <div className="python-project-workspace-body">
       {bridgeError && <Alert type="error" showIcon message={bridgeError} closable onClose={() => setBridgeError('')} style={{ marginBottom: 10 }} />}
       {runtimeError && <Alert type="error" showIcon message="Python execution failed" description={<pre className="python-project-error">{runtimeError}</pre>} style={{ marginBottom: 10 }} />}
       <Tabs
+        className="python-project-tabs"
+        size="small"
         activeKey={activeTab}
         onChange={setActiveTab}
         items={items}
@@ -257,18 +529,42 @@ export function PythonProjectDialog({ open, project, parseResult, onSourceChange
           <TreeSelect
             aria-label="Python symbols"
             className="python-project-symbols"
+            size="small"
             placeholder="Symbols"
             suffixIcon={<FunctionOutlined />}
             treeData={symbolTreeData(symbolNodes, draftSource)}
             treeDefaultExpandAll
             treeLine
+            getPopupContainer={trigger => trigger.parentElement ?? document.body}
             onSelect={value => {
               if (editorRef.current) jumpToPythonOffset(editorRef.current, Number(value))
             }}
             value={null}
           />
+        ) : activeTab === 'input' && !context ? (
+          <Button size="small" type="primary" icon={<ReloadOutlined />} loading={preparingInput} disabled={running || exporting} onClick={() => void prepareInput()}>Prepare input</Button>
         ) : null}
       />
-    </Modal>
+        </div>
+        <Modal
+        open={fileDialog !== null}
+        zIndex={1204}
+        title={fileDialog?.mode === 'add' ? 'Add Python file' : 'Rename Python file'}
+        okText={fileDialog?.mode === 'add' ? 'Add file' : 'Rename file'}
+        onCancel={() => setFileDialog(null)}
+        onOk={submitFileDialog}
+      >
+        <Input
+          aria-label="Python file path"
+          autoFocus
+          value={fileDialog?.value ?? ''}
+          placeholder="generators/models.py"
+          onChange={event => setFileDialog(current => current ? { ...current, value: event.target.value } : null)}
+          onPressEnter={submitFileDialog}
+        />
+        </Modal>
+      </section>
+      {toolbarContainer && createPortal(toolbar, toolbarContainer)}
+    </>
   )
 }

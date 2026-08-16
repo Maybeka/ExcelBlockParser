@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,9 +26,9 @@ func (a *App) CancelPythonRun() bool {
 	return a.pythonRuntime.Cancel()
 }
 
-// RunProjectPython executes the project's process(context) entry point.
-func (a *App) RunProjectPython(source string, contextJSON string) PythonProjectResult {
-	return a.pythonRuntime.RunProject(source, contextJSON)
+// RunProjectPython executes the project's packaged process(context) entry point.
+func (a *App) RunProjectPython(project PythonProjectPackage, contextJSON string) PythonProjectResult {
+	return a.pythonRuntime.RunProject(project, contextJSON)
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -40,6 +41,31 @@ func (a *App) startup(ctx context.Context) {
 		baseDir = os.TempDir()
 	}
 	a.recoveryDir = filepath.Join(baseDir, "Excel Block Parser")
+}
+
+func (a *App) authorizeProjectSources(content, projectPath string) {
+	var document struct {
+		Version int `json:"version"`
+		Project struct {
+			Workbooks []struct {
+				SourcePath string `json:"sourcePath"`
+			} `json:"workbooks"`
+		} `json:"project"`
+	}
+	a.filePolicy.resetApprovedWorkbooks()
+	if json.Unmarshal([]byte(content), &document) != nil || document.Version != 3 {
+		return
+	}
+	for _, workbook := range document.Project.Workbooks {
+		if workbook.SourcePath == "" {
+			continue
+		}
+		sourcePath := workbook.SourcePath
+		if !filepath.IsAbs(sourcePath) && projectPath != "" {
+			sourcePath = filepath.Join(filepath.Dir(projectPath), sourcePath)
+		}
+		_, _ = a.filePolicy.approveWorkbookAlias(workbook.SourcePath, sourcePath)
+	}
 }
 
 // OpenPreviewWindow emits an event for the frontend to navigate to the preview route.
@@ -210,6 +236,7 @@ func (a *App) OpenJson() (*JsonOpenResult, error) {
 		return nil, err
 	}
 	a.projectPaths[filepath.Clean(path)] = true
+	a.authorizeProjectSources(content, path)
 
 	return &JsonOpenResult{
 		FilePath: path,
@@ -222,7 +249,11 @@ func (a *App) SaveRecovery(jsonData string) error {
 }
 
 func (a *App) LoadRecovery() (string, error) {
-	return loadRecovery(a.recoveryDir)
+	content, err := loadRecovery(a.recoveryDir)
+	if err == nil && content != "" {
+		a.authorizeProjectSources(content, "")
+	}
+	return content, err
 }
 
 func (a *App) ClearRecovery() error {

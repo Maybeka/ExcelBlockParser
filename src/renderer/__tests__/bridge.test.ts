@@ -47,7 +47,8 @@ describe('Wails bridge contract', () => {
     expect(await bridge.getPreviewData('block')).toEqual({ blockId: 'block' })
     await bridge.closePreviewWindow()
     expect(await bridge.cancelPythonRun()).toEqual({ status: 'ok', value: true })
-    expect(await bridge.runProjectPython('def process(context): pass', '{"data":{}}')).toEqual({
+    const pythonPackage = { entryPath: 'main.py', files: [{ path: 'main.py', source: 'def process(context): pass' }] }
+    expect(await bridge.runProjectPython(pythonPackage, '{"data":{}}')).toEqual({
       status: 'ok',
       value: { ok: true, resultJson: '{"count":1}\n', stdout: '', stderr: '', error: '', hostError: '', durationMs: 12 },
     })
@@ -59,7 +60,7 @@ describe('Wails bridge contract', () => {
     expect(app.OpenXlsx).toHaveBeenCalledOnce()
     expect(app.ReadFile).toHaveBeenCalledWith('/tmp/workbook.xlsx')
     expect(app.ClosePreviewWindow).toHaveBeenCalledOnce()
-    expect(app.RunProjectPython).toHaveBeenCalledWith('def process(context): pass', '{"data":{}}')
+    expect(app.RunProjectPython).toHaveBeenCalledWith(pythonPackage, '{"data":{}}')
     expect(app.ExportPythonArtifacts).toHaveBeenCalledWith('Demo', '[{"path":"output.py","content":"pass\\n","encoding":"utf-8"}]')
   })
 

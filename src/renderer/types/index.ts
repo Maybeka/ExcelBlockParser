@@ -84,8 +84,15 @@ export interface ProjectWorkbook {
   activeSheetName?: string | null
 }
 
-export interface PythonScriptConfig {
+export interface PythonProjectFile {
+  path: string
   source: string
+}
+
+/** A self-contained Python package stored in the project document. */
+export interface PythonScriptConfig {
+  entryPath: string
+  files: PythonProjectFile[]
 }
 
 export interface ProjectConfig {

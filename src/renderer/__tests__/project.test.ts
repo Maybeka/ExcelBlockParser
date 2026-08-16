@@ -3,6 +3,7 @@ import { parseProjectWorkbooks } from '../services/extraction'
 import { loadProject, serializeProject } from '../services/serializer'
 import { validateBlocks } from '../features/extraction/validation'
 import { blocksForWorkbook, moveBlock, removeBlock } from '../features/extraction/model'
+import { moveRegion } from '../features/regions/model'
 import { builtInFeatureRegistry } from '../features/builtinRegistry'
 import type { BlockConfig, ProjectConfig } from '../types'
 import type { WorkbookReader } from '../services/workbook'
@@ -271,6 +272,16 @@ describe('project workspace', () => {
     expect(moveBlock(project, salesB.id, -1).blocks.map(item => item.id))
       .toEqual(['sales-a', 'sales-b', 'costs-a', 'costs-b'])
     expect(moveBlock(project, salesA.id, -1)).toBe(project)
+  })
+
+  it('reorders regions in project-wide navigation order', () => {
+    const region = (id: string, workbookId: string) => ({
+      id, label: id, workbookId, range: null, activeSheet: null, splitRules: [], blocks: [], collapsed: false, selectionLocked: false,
+    })
+    const project = { ...createProject(), regions: [region('sales-a', 'sales'), region('costs-a', 'costs'), region('sales-b', 'sales')] }
+    expect(moveRegion(project, 'sales-b', -1).regions.map(item => item.id))
+      .toEqual(['sales-a', 'sales-b', 'costs-a'])
+    expect(moveRegion(project, 'sales-a', -1)).toBe(project)
   })
 
   it('rejects duplicate project item IDs during import', () => {

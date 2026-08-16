@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createProject } from '../services/project'
-import { buildPythonProjectContext, DEFAULT_PROJECT_PYTHON_SOURCE } from '../services/pythonProject'
+import { buildPythonProjectContext } from '../services/pythonProject'
+import { DEFAULT_PROJECT_PYTHON_SOURCE, createPythonPackage, validatePythonPackage } from '../services/pythonPackage'
 import { loadProject, serializeProject } from '../services/serializer'
 
 describe('project Python contract', () => {
@@ -21,22 +22,25 @@ describe('project Python contract', () => {
     expect(context.project.workbooks[0]).not.toHaveProperty('sourcePath')
   })
 
-  it('persists the project script in strict Project v3 documents', () => {
+  it('persists a multi-file Python package in strict Project v3 documents', () => {
     const project = createProject('Python project')
-    project.pythonScript = { source: 'def process(context):\n    return context["data"]\n' }
+    project.pythonScript = { entryPath: 'main.py', files: [{ path: 'main.py', source: 'from helpers import value\n\ndef process(context): return value()' }, { path: 'helpers.py', source: 'def value(): return 1' }] }
     const encoded = serializeProject(project, null)
     const decoded = loadProject(encoded)
     expect(decoded.errors).toEqual([])
     expect(decoded.project?.project.pythonScript).toEqual(project.pythonScript)
   })
 
-  it('creates new projects with the documented process entry point', () => {
-    expect(createProject().pythonScript?.source).toBe(DEFAULT_PROJECT_PYTHON_SOURCE)
+  it('creates new projects with a documented entry module', () => {
+    expect(createProject().pythonScript).toEqual(createPythonPackage())
+    expect(createProject().pythonScript?.files[0].source).toBe(DEFAULT_PROJECT_PYTHON_SOURCE)
+    expect(createProject().pythonScript?.files[1].source).toContain('"artifacts"')
   })
 
-  it('rejects malformed script configuration in strict Project v3 input', () => {
+  it('rejects malformed or unsafe package configuration in strict Project v3 input', () => {
     const encoded = serializeProject(createProject('Invalid Python'), null) as unknown as Record<string, unknown>
     ;(encoded.project as Record<string, unknown>).pythonScript = { source: 42 }
-    expect(loadProject(encoded).errors).toContain('Invalid project file: Python script is invalid.')
+    expect(loadProject(encoded).errors).toContain('Invalid project file: Python package is invalid.')
+    expect(validatePythonPackage({ entryPath: '../main.py', files: [{ path: '../main.py', source: '' }] })).toContain('entry Python file')
   })
 })

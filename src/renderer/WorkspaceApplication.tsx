@@ -45,6 +45,7 @@ import { executeProject, type ProjectExecutionResult } from './services/projectE
 import { orderDiagnostics, type DiagnosticFocusTarget } from './services/diagnostics'
 
 export function WorkspaceApplication() {
+  const e2eMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')
   const { univerAPI, sheetNames } = useUniver()
   const spreadsheet = useMemo(() => createUniverSpreadsheetCapability(univerAPI, sheetNames), [sheetNames, univerAPI])
 
@@ -83,6 +84,7 @@ export function WorkspaceApplication() {
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null)
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false)
   const [pythonProjectOpen, setPythonProjectOpen] = useState(false)
+  const [pythonToolbarContainer, setPythonToolbarContainer] = useState<HTMLDivElement | null>(null)
   const [pendingProjectRemoval, setPendingProjectRemoval] = useState<string | null>(null)
   const [hasUnsavedChanges, setDirtyState] = useState(false)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
@@ -209,6 +211,7 @@ export function WorkspaceApplication() {
   }, [])
 
   useEffect(() => {
+    if (e2eMode) return
     let active = true
     void getBridge().loadRecovery().then((result) => {
       if (!active || result.status !== 'ok' || !result.value) return
@@ -219,17 +222,17 @@ export function WorkspaceApplication() {
       // Recovery is optional; a filesystem issue must not prevent startup.
     })
     return () => { active = false }
-  }, [])
+  }, [e2eMode])
 
   useEffect(() => {
-    if (!hasUnsavedChanges) return
+    if (e2eMode || !hasUnsavedChanges) return
     const timer = window.setTimeout(() => {
-      void getBridge().saveRecovery(projectRecoveryContent(project, parseResult)).then((result) => {
+      void getBridge().saveRecovery(projectRecoveryContent(project, parseResult, projectFilePath)).then((result) => {
         if (result.status === 'error') console.warn('Unable to save workspace recovery data:', result.error.message)
       })
     }, 1000)
     return () => window.clearTimeout(timer)
-  }, [hasUnsavedChanges, parseResult, project])
+  }, [e2eMode, hasUnsavedChanges, parseResult, project, projectFilePath])
 
   const attachWorkbook = useCallback(async () => {
     if (projectRef.current.workbooks.length === 0) {
@@ -380,9 +383,9 @@ export function WorkspaceApplication() {
     setProjectActiveSheet(sheetName)
   }, [loadedWorkbookId, spreadsheet])
 
-  const handleParse = useCallback(async () => {
+  const runProjectExtraction = useCallback(async (showPreview: boolean): Promise<{ project: ProjectConfig; result: ParseResult } | { error: string }> => {
     const clearPreview = () => {
-      setPreviewExecution(null)
+      if (showPreview) setPreviewExecution(null)
     }
     if (!builtInFeatureRegistry.executionReady(projectRef.current)) {
       const error = 'Configure at least one feature range before running'
@@ -390,8 +393,8 @@ export function WorkspaceApplication() {
       const result = { success: false, data: {}, blocks: [], error }
       setParseResult(result)
       recordParseFailure('parse-preview', result)
-      message.warning(error)
-      return
+      if (showPreview) message.warning(error)
+      return { error }
     }
 
     executionControllerRef.current?.abort()
@@ -406,15 +409,16 @@ export function WorkspaceApplication() {
       () => executionGenerationRef.current === generation,
       controller.signal,
     )
-    if (execution.status === 'stale') return
+    if (execution.status === 'stale') return { error: 'The project changed before input preparation completed. Run again.' }
     const result = execution.result
     if (!result.success) {
       clearPreview()
       setParseResult(result)
       recordParseFailure('parse-preview', result)
       setDiagnosticsOpen(true)
-      message.error(result.error || 'Parsing could not complete. Review the diagnostics for details.')
-      return
+      const error = result.error || 'Parsing could not complete. Review diagnostics for details.'
+      if (showPreview) message.error(error)
+      return { error }
     }
 
     if (execution.project !== projectRef.current) {
@@ -423,8 +427,12 @@ export function WorkspaceApplication() {
     }
     setProject(execution.project)
     setParseResult(result)
-    setPreviewExecution(execution)
+    if (showPreview) setPreviewExecution(execution)
+    return { project: execution.project, result }
   }, [rememberWorkspace])
+
+  const handleParse = useCallback(() => { void runProjectExtraction(true) }, [runProjectExtraction])
+  const preparePythonInput = useCallback(() => runProjectExtraction(false), [runProjectExtraction])
 
   const saveProjectToDisk = useCallback(async (saveAs: boolean) => {
     try {
@@ -432,6 +440,7 @@ export function WorkspaceApplication() {
       const result = await saveProjectDocument(
         getBridge(), projectForSave, parseResult, projectFilePath, saveAs,
         current => builtInFeatureRegistry.prepareForSave(current),
+        workbookRuntimeRef.current.paths,
       )
       if (result.status === 'ok') {
         setProject(result.project)
@@ -594,6 +603,11 @@ export function WorkspaceApplication() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleImportConfig, handleParse, handleRedo, handleSaveProject, handleUndo])
 
+  const handlePythonPackageChange = useCallback((pythonScript: NonNullable<ProjectConfig['pythonScript']>) => {
+    setProject(current => ({ ...current, pythonScript }))
+    setHasUnsavedChanges(true)
+  }, [])
+
   const requestedFeatureName = new URLSearchParams(featurePanelPrototypeSearch).get('feature-panel-prototype')
   const requestedFeatureId = import.meta.env.DEV && requestedFeatureName ? `builtin.${requestedFeatureName}` : null
   const featureContext: WorkspaceFeaturePanelContext = {
@@ -651,7 +665,7 @@ export function WorkspaceApplication() {
     <Layout className="app-shell">
       <Layout.Header className="app-header">
         <div className="app-brand">
-          <Tooltip title={sidebarHidden ? 'Show workspace navigation' : 'Hide workspace navigation'}>
+          {!pythonProjectOpen && <Tooltip title={sidebarHidden ? 'Show workspace navigation' : 'Hide workspace navigation'}>
             <Button
               className="workspace-sidebar-toggle"
               aria-label={sidebarHidden ? 'Show workspace navigation' : 'Hide workspace navigation'}
@@ -660,15 +674,15 @@ export function WorkspaceApplication() {
               icon={sidebarHidden ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setSidebarHidden(hidden => !hidden)}
             />
-          </Tooltip>
+          </Tooltip>}
           <span className="app-brand-copy">
-            <strong>Excel Block Parser</strong>
+            <strong>{pythonProjectOpen ? 'Project Python' : 'Excel Block Parser'}</strong>
           </span>
         </div>
-        <Tooltip title="Workspace navigation">
+        {!pythonProjectOpen && <Tooltip title="Workspace navigation">
           <Button className="workspace-mobile-nav" aria-label="Workspace navigation" size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} />
-        </Tooltip>
-        {openWorkbookIds.length > 0 && (
+        </Tooltip>}
+        {!pythonProjectOpen && openWorkbookIds.length > 0 && (
           <div className="workbook-tabs" role="tablist" aria-label="Project workbooks">
             {projectWorkbooks.filter(workbook => openWorkbookIds.includes(workbook.id)).map(workbook => (
               <div key={workbook.id} className={`workbook-tab ${workbook.id === activeWorkbookId ? 'is-active' : ''}`}>
@@ -687,13 +701,15 @@ export function WorkspaceApplication() {
             ))}
           </div>
         )}
-        <Space className="app-actions" size={6}>
-          <Tooltip title="Undo">
-            <Button aria-keyshortcuts="Control+Z Meta+Z" aria-label="Undo" icon={<UndoOutlined />} onClick={handleUndo} disabled={!historyRef.current.canUndo} />
-          </Tooltip>
-          <Tooltip title="Redo">
-            <Button aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" aria-label="Redo" icon={<RedoOutlined />} onClick={handleRedo} disabled={!historyRef.current.canRedo} />
-          </Tooltip>
+        {!pythonProjectOpen && <Space className="app-actions" size={6}>
+          {!pythonProjectOpen && <>
+            <Tooltip title="Undo">
+              <Button aria-keyshortcuts="Control+Z Meta+Z" aria-label="Undo" icon={<UndoOutlined />} onClick={handleUndo} disabled={!historyRef.current.canUndo} />
+            </Tooltip>
+            <Tooltip title="Redo">
+              <Button aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" aria-label="Redo" icon={<RedoOutlined />} onClick={handleRedo} disabled={!historyRef.current.canRedo} />
+            </Tooltip>
+          </>}
           <Space.Compact className="project-command">
             <Button aria-keyshortcuts="Control+O Meta+O" icon={<ImportOutlined />} onClick={handleImportConfig}>
               Open Project
@@ -729,7 +745,8 @@ export function WorkspaceApplication() {
               <Button aria-label="Diagnostics" icon={<WarningOutlined />} onClick={() => setDiagnosticsOpen(true)} />
             </Badge>
           </Tooltip>
-        </Space>
+        </Space>}
+        {pythonProjectOpen && <div ref={setPythonToolbarContainer} className="python-header-actions" aria-label="Python workspace actions" />}
       </Layout.Header>
       {importError && (
         <Alert
@@ -932,11 +949,10 @@ export function WorkspaceApplication() {
         open={pythonProjectOpen}
         project={project}
         parseResult={parseResult}
-        onSourceChange={source => {
-          setProject(current => ({ ...current, pythonScript: { source } }))
-          setHasUnsavedChanges(true)
-        }}
+        onPrepareInput={preparePythonInput}
+        onSourceChange={handlePythonPackageChange}
         onClose={() => setPythonProjectOpen(false)}
+        toolbarContainer={pythonToolbarContainer}
       />
     </Layout>
   )

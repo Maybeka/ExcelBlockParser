@@ -5,6 +5,7 @@ import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extens
 import { Decoration, EditorView, hoverTooltip, keymap, ViewPlugin, type DecorationSet, type Tooltip } from '@codemirror/view'
 import { pythonLanguage } from '@codemirror/lang-python'
 import { analyzePython, type PythonDefinition, type PythonSemanticModel } from './pythonSemantics'
+import type { PythonExternalDefinition } from './pythonPackageNavigation'
 
 type PythonNode = ReturnType<typeof pythonLanguage.parser.parse>['topNode']
 
@@ -49,14 +50,21 @@ export function buildPythonSymbolTree(symbols: PythonSymbol[]): PythonSymbolNode
   return roots
 }
 
-interface DefinitionTarget { definition: PythonDefinition; from: number; to: number }
+interface DefinitionTarget { definition: PythonDefinition; from: number; to: number; filePath?: string }
+export interface PythonNavigationOptions {
+  resolveExternal?: (source: string, position: number) => PythonExternalDefinition | null
+  openExternal?: (target: PythonExternalDefinition) => void
+}
 
-function findDefinitionTarget(state: EditorState, position: number): DefinitionTarget | null {
+function findDefinitionTarget(state: EditorState, position: number, options?: PythonNavigationOptions): DefinitionTarget | null {
   const tree = ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state)
   const node = tree.resolveInner(position, -1)
   if (!['VariableName', 'PropertyName'].includes(node.name)) return null
-  const definition = analyzePython(state.doc.toString()).resolve(node.from)
-  return definition ? { definition, from: node.from, to: node.to } : null
+  const source = state.doc.toString()
+  const definition = analyzePython(source).resolve(node.from)
+  if (definition) return { definition, from: node.from, to: node.to }
+  const external = options?.resolveExternal?.(source, node.from)
+  return external ? { definition: external.definition, from: node.from, to: node.to, filePath: external.filePath } : null
 }
 
 export function findPythonDefinition(state: EditorState, position = state.selection.main.head): PythonDefinition | null {
@@ -68,10 +76,11 @@ export function jumpToPythonOffset(view: EditorView, offset: number): void {
   view.focus()
 }
 
-function goToDefinition(view: EditorView): boolean {
-  const definition = findPythonDefinition(view.state)
-  if (!definition) return false
-  jumpToPythonOffset(view, definition.from)
+function goToDefinition(view: EditorView, options?: PythonNavigationOptions): boolean {
+  const target = findDefinitionTarget(view.state, view.state.selection.main.head, options)
+  if (!target) return false
+  if (target.filePath) options?.openExternal?.({ filePath: target.filePath, definition: target.definition })
+  else jumpToPythonOffset(view, target.definition.from)
   return true
 }
 
@@ -122,25 +131,19 @@ function semanticClass(definition: PythonDefinition, parentName: string): string
   return null
 }
 
-function semanticDecorations(state: EditorState): DecorationSet {
+function semanticDecorations(state: EditorState, options?: PythonNavigationOptions): DecorationSet {
   const model = analyzePython(state.doc.toString())
   const builder = new RangeSetBuilder<Decoration>()
   const cursor = syntaxTree(state).cursor()
   do {
     if (!['VariableName', 'PropertyName'].includes(cursor.name)) continue
-    const definition = model.resolve(cursor.from)
+    const definition = model.resolve(cursor.from) ?? options?.resolveExternal?.(state.doc.toString(), cursor.from)?.definition
     if (!definition) continue
     const className = semanticClass(definition, cursor.node.parent?.name ?? '')
     if (className) builder.add(cursor.from, cursor.to, Decoration.mark({ class: className }))
   } while (cursor.next())
   return builder.finish()
 }
-
-const semanticHighlightField = StateField.define<DecorationSet>({
-  create: semanticDecorations,
-  update(value, transaction) { return transaction.docChanged ? semanticDecorations(transaction.state) : value },
-  provide: field => EditorView.decorations.from(field),
-})
 
 function memberCompletions(model: PythonSemanticModel, typeName: string): Completion[] {
   const completions = new Map<string, Completion>()
@@ -197,8 +200,8 @@ function pythonSyntaxDiagnostics(view: EditorView): Diagnostic[] {
   return diagnostics
 }
 
-const pythonDefinitionTooltip = hoverTooltip((view, position): Tooltip | null => {
-  const target = findDefinitionTarget(view.state, position)
+function pythonDefinitionTooltip(options?: PythonNavigationOptions) { return hoverTooltip((view, position): Tooltip | null => {
+  const target = findDefinitionTarget(view.state, position, options)
   if (!target) return null
   const definition = target.definition
   const detail = definition.signature ?? `${definition.kind} ${definition.qualifiedName}${definition.typeName ? `: ${definition.typeName}` : ''}`
@@ -212,30 +215,35 @@ const pythonDefinitionTooltip = hoverTooltip((view, position): Tooltip | null =>
       const title = document.createElement('strong')
       title.textContent = detail
       dom.append(title)
-      if (definition.className && definition.kind === 'method') {
+      if (target.filePath || (definition.className && definition.kind === 'method')) {
         const owner = document.createElement('small')
-        owner.textContent = `Defined in ${definition.className}`
+        owner.textContent = target.filePath ? `Defined in ${target.filePath}` : `Defined in ${definition.className}`
         dom.append(owner)
       }
       return { dom }
     },
   }
-})
+}) }
 
-export function pythonNavigation(): Extension {
+export function pythonNavigation(options?: PythonNavigationOptions): Extension {
+  const highlights = StateField.define<DecorationSet>({
+    create: state => semanticDecorations(state, options),
+    update(value, transaction) { return transaction.docChanged ? semanticDecorations(transaction.state, options) : value },
+    provide: field => EditorView.decorations.from(field),
+  })
   return [
     definitionHoverField,
     definitionHoverRelease,
-    semanticHighlightField,
-    pythonDefinitionTooltip,
+    highlights,
+    pythonDefinitionTooltip(options),
     autocompletion({ override: [pythonSemanticCompletion], activateOnTyping: true }),
     linter(pythonSyntaxDiagnostics, { delay: 250 }),
-    keymap.of([{ key: 'F12', run: goToDefinition }]),
+    keymap.of([{ key: 'F12', run: view => goToDefinition(view, options) }]),
     EditorView.domEventHandlers({
       mousemove(event, view) {
         if (!(event.metaKey || event.ctrlKey)) { updateDefinitionHover(view, null); return false }
         const position = view.posAtCoords({ x: event.clientX, y: event.clientY })
-        const target = position === null ? null : findDefinitionTarget(view.state, position)
+        const target = position === null ? null : findDefinitionTarget(view.state, position, options)
         updateDefinitionHover(view, target ? { from: target.from, to: target.to } : null)
         return false
       },
@@ -248,11 +256,12 @@ export function pythonNavigation(): Extension {
         if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) return false
         const position = view.posAtCoords({ x: event.clientX, y: event.clientY })
         if (position === null) return false
-        const definition = findPythonDefinition(view.state, position)
-        if (!definition) return false
+        const target = findDefinitionTarget(view.state, position, options)
+        if (!target) return false
         event.preventDefault()
         updateDefinitionHover(view, null)
-        jumpToPythonOffset(view, definition.from)
+        if (target.filePath) options?.openExternal?.({ filePath: target.filePath, definition: target.definition })
+        else jumpToPythonOffset(view, target.definition.from)
         return true
       },
     }),

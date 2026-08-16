@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../shared/bridgeResult'
-import type { PythonArtifact, PythonArtifactExportResult, PythonProjectResult } from '../shared/pythonRuntime'
+import type { PythonArtifact, PythonArtifactExportResult, PythonProjectPackageInput, PythonProjectResult } from '../shared/pythonRuntime'
 
 export interface ElectronAPI {
   openXlsx: () => Promise<BridgeResult<string>>
@@ -18,7 +18,7 @@ export interface ElectronAPI {
   closePreviewWindow: () => Promise<void>
   onPreviewReload: (callback: (blockId: string) => void) => () => void
   cancelPythonRun: () => Promise<BridgeResult<boolean>>
-  runProjectPython: (source: string, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
+  runProjectPython: (project: PythonProjectPackageInput, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
   exportPythonArtifacts: (projectName: string, artifacts: PythonArtifact[]) => Promise<BridgeResult<PythonArtifactExportResult>>
 }
 

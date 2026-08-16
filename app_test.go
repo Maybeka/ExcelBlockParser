@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -59,5 +60,26 @@ func TestAppRecoveryLifecycle(t *testing.T) {
 	actual, err = app.LoadRecovery()
 	if err != nil || actual != "" {
 		t.Fatalf("cleared recovery = %q, %v", actual, err)
+	}
+}
+
+func TestRecoveryReauthorizesEveryDeclaredWorkbook(t *testing.T) {
+	directory := t.TempDir()
+	first := writeTestFile(t, directory, "first.xlsx", "first")
+	second := writeTestFile(t, directory, "second.xlsx", "second")
+	app := &App{recoveryDir: t.TempDir()}
+	content := `{"version":3,"project":{"workbooks":[{"sourcePath":` + fmt.Sprintf("%q", first) + `},{"sourcePath":` + fmt.Sprintf("%q", second) + `}]}}`
+
+	if err := app.SaveRecovery(content); err != nil {
+		t.Fatalf("save recovery: %v", err)
+	}
+	if _, err := app.LoadRecovery(); err != nil {
+		t.Fatalf("load recovery: %v", err)
+	}
+	for path, expected := range map[string]string{first: "first", second: "second"} {
+		data, err := app.ReadFile(path)
+		if err != nil || string(data) != expected {
+			t.Fatalf("read recovered workbook %q = %q, %v", path, data, err)
+		}
 	}
 }

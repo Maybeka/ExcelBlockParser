@@ -11,8 +11,8 @@ The project contains both editor configuration and the most recent extraction
 result:
 
 - `project` defines workbook sources, extractors, regions, ordering, and active
-  editor state. Its optional `pythonScript.source` stores the unified project
-  processing script.
+  editor state. Its optional `pythonScript` stores a self-contained multi-file
+  Python package with an explicit entry file.
 - `data`, `blockResults`, and optional `regionResults` contain the most recent
   successful run result.
 - `exportedAt` records when the project file was last saved.
@@ -34,7 +34,11 @@ result:
     "activeRegionId": null,
     "focusMode": "always-editable",
     "pythonScript": {
-      "source": "def process(context):\n    return context[\"data\"]\n"
+      "entryPath": "main.py",
+      "files": [
+        { "path": "main.py", "source": "from helpers import transform\n\ndef process(context):\n    return transform(context)\n" },
+        { "path": "helpers.py", "source": "def transform(context):\n    return context[\"data\"]\n" }
+      ]
     }
   },
   "data": {},
@@ -46,11 +50,17 @@ Each workbook has a stable `id`, display `name`, optional `sourcePath`, known
 `sheetNames`, and `activeSheetName`. Relative source paths are resolved from
 the project file directory. If a source cannot be opened, the application
 requires the user to reassign its path or remove it in Project settings.
+Saving or using Save Project As automatically persists workbook sources
+relative to the destination project file whenever both paths are on the same
+filesystem root. Windows sources on a different drive remain absolute. Runtime
+file authorization continues to use resolved paths and is not stored as UI
+state.
 
-Every block and region belongs to exactly one workbook through `workbookId`.
-Names need only be unique within that workbook. Parsed `data` is keyed first by
-workbook ID and then by extractor label so equal labels in different workbooks
-remain unambiguous.
+Blocks and regions are project-level ordered collections. Every item belongs to
+exactly one workbook through `workbookId`; selecting an item in project
+navigation activates its owning workbook and sheet. Names need only be unique
+within that workbook. Parsed `data` is keyed first by workbook ID and then by
+extractor label so equal labels in different workbooks remain unambiguous.
 
 The Python source is project configuration, not extracted output. It is only
 executed after an explicit user action and receives the current `data`,

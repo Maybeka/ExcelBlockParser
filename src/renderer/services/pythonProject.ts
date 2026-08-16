@@ -1,19 +1,7 @@
 import type { ParseResult, ProjectConfig } from '../types'
+export { DEFAULT_PROJECT_PYTHON_SOURCE } from './pythonPackage'
 
 export const PYTHON_CONTEXT_VERSION = 1 as const
-
-export const DEFAULT_PROJECT_PYTHON_SOURCE = `def process(context):
-    """Transform the complete parsed project result.
-
-    context["data"] contains the data section from Run & Preview.
-    The return value must be JSON serializable.
-    Add a top-level "artifacts" list to preview and save UTF-8 text files.
-    """
-    return {
-        "project": context["project"]["name"],
-        "data": context["data"],
-    }
-`
 
 export interface PythonProjectContext {
   contractVersion: typeof PYTHON_CONTEXT_VERSION

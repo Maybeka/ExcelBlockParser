@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { builtInFeaturePanelRegistry, builtInFeatureRegistry } from '../features/builtinRegistry'
 import { BuiltInFeatureRegistry, type ProjectFeatureModule } from '../features/core/projectFeature'
+import type { WorkspaceFeaturePanelContext } from '../features/panel/workspacePanel'
 import { createProject } from '../services/project'
 import { createUnavailableSpreadsheetCapability } from '../services/spreadsheetCapability'
 
@@ -26,6 +27,51 @@ describe('built-in feature registration', () => {
     expect(projectIds).toEqual(['builtin.extraction', 'builtin.regions', 'builtin.external-review'])
     expect(panelIds).toEqual(projectIds)
     expect(builtInFeatureRegistry.definitions().map(module => module.schemaVersion)).toEqual([1, 1, 1])
+  })
+
+  it('exposes regions from every workbook and navigates to their owner', () => {
+    let project = {
+      ...createProject('Cross-workbook regions'),
+      workbooks: [
+        { id: 'sales', name: 'sales.xlsx', activeSheetName: 'Orders' },
+        { id: 'costs', name: 'costs.xlsx', activeSheetName: 'Summary' },
+      ],
+      activeWorkbookId: 'sales',
+      regions: [
+        { id: 'sales-region', label: 'Sales', workbookId: 'sales', activeSheet: 'Orders', range: null, splitRules: [], blocks: [], collapsed: false, selectionLocked: false },
+        { id: 'costs-region', label: 'Costs', workbookId: 'costs', activeSheet: 'Summary', range: { startRow: 0, startCol: 1, endRow: 4, endCol: 2, a1Notation: 'B1:C5' }, splitRules: [], blocks: [], collapsed: false, selectionLocked: true },
+      ],
+      activeRegionId: 'sales-region',
+      activeBlockId: '',
+    }
+    const activations: Array<[string, string | undefined]> = []
+    const context: WorkspaceFeaturePanelContext = {
+      project,
+      loadedWorkbookId: 'sales',
+      activeColIndex: null,
+      parseResult: null,
+      spreadsheet: createUnavailableSpreadsheetCapability(['Orders']),
+      requestedFeatureId: null,
+      transactProject: update => { project = update(project) },
+      selectProject: update => { project = update(project) },
+      activateWorkbook: (workbookId, sheetName) => { activations.push([workbookId, sheetName]) },
+      run: () => undefined,
+      setActiveColumn: () => undefined,
+      setReconciliationItem: () => undefined,
+      takeReselectedRange: () => undefined,
+      setPreviewSheet: () => undefined,
+    }
+
+    const regions = builtInFeaturePanelRegistry.navigation(context).find(section => section.id === 'builtin.regions')
+    expect(regions?.items.map(item => [item.label, item.detail])).toEqual([
+      ['Sales', 'sales.xlsx'],
+      ['Costs', 'costs.xlsx · Summary!B1:C5'],
+    ])
+
+    regions?.items[1].select()
+    expect(activations).toEqual([['costs', 'Summary']])
+    expect(project.activeRegionId).toBe('costs-region')
+    expect(project.activeBlockId).toBe('')
   })
 
   it('routes selection and active canvas state through the active feature only', () => {

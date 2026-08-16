@@ -1,6 +1,6 @@
 import type { ProjectConfig, ProjectWorkbook } from '../types'
 import type { BuiltInFeatureRegistry, WorkbookLoadedEvent } from '../features/core/projectFeature'
-import { DEFAULT_PROJECT_PYTHON_SOURCE } from './pythonProject'
+import { createPythonPackage } from './pythonPackage'
 
 export type ProjectCommandResult =
   | { status: 'changed'; project: ProjectConfig }
@@ -50,7 +50,7 @@ export function createProject(name = 'Untitled project'): ProjectConfig {
     activeBlockId: '',
     activeRegionId: null,
     focusMode: 'always-editable',
-    pythonScript: { source: DEFAULT_PROJECT_PYTHON_SOURCE },
+    pythonScript: createPythonPackage(),
   }
 }
 

@@ -19,13 +19,10 @@ export function createDefaultRegion(project: ProjectConfig, workbookId: string |
 }
 
 export function moveRegion(project: ProjectConfig, regionId: string, direction: -1 | 1): ProjectConfig {
-  const item = project.regions.find(region => region.id === regionId)
-  if (!item) return project
-  const scoped = project.regions.map((region, index) => region.workbookId === item.workbookId ? index : -1).filter(index => index >= 0)
-  const index = scoped.findIndex(candidate => project.regions[candidate].id === regionId)
+  const index = project.regions.findIndex(region => region.id === regionId)
   const target = index + direction
-  if (index < 0 || target < 0 || target >= scoped.length) return project
+  if (index < 0 || target < 0 || target >= project.regions.length) return project
   const regions = [...project.regions]
-  ;[regions[scoped[index]], regions[scoped[target]]] = [regions[scoped[target]], regions[scoped[index]]]
+  ;[regions[index], regions[target]] = [regions[target], regions[index]]
   return { ...project, regions }
 }

@@ -52,6 +52,7 @@ html, body, #root {
 .project-command .ant-btn:last-child { padding-inline: 7px; }
 .project-command .anticon,
 .project-command-menu .ant-dropdown-menu-item .anticon { font-size: 14px; }
+.project-command-menu { z-index: 1202 !important; }
 .project-command-menu .ant-dropdown-menu { min-width: 154px; }
 
 .workspace-layout { background: #e7eff5; display: flex; gap: 10px; min-height: 0; overflow: hidden; padding: 10px; }
@@ -163,8 +164,8 @@ html, body, #root {
 .preview-parsed-dot { background: #3390ec; }
 .preview-context-bar .preview-filter-state { color: #2384db; margin-left: auto; }
 .preview-content { flex: 1; min-height: 0; overflow: auto; }
-.preview-json { background: #182a39; color: #edf7ff; min-height: 100%; overflow: auto; }
-.preview-json-heading { align-items: center; background: #233c50; border-bottom: 1px solid #355166; color: #c7e6fc; display: flex; font-size: 10px; font-weight: 650; gap: 6px; padding: 6px 10px; }
+.preview-json { background: #eff1f5; color: #4c4f69; min-height: 100%; overflow: auto; }
+.preview-json-heading { align-items: center; background: #e6e9ef; border-bottom: 1px solid #ccd0da; color: #4c4f69; display: flex; font-size: 10px; font-weight: 650; gap: 6px; padding: 6px 10px; }
 .preview-table-wrap { font-size: 11px; }
 .preview-table .ant-table-container { border-inline: 0 !important; border-radius: 0 !important; }
 .preview-table .ant-table-cell { border-color: #e4ecf2 !important; line-height: 1.3; padding: 3px 6px !important; }
@@ -270,7 +271,48 @@ html, body, #root {
 .preview-shell .ant-select-selector { border-color: #dbe6ed !important; box-shadow: none !important; }
 .preview-shell .ant-input:focus { border-color: #75bdf3 !important; box-shadow: 0 0 0 2px rgba(51, 144, 236, .1) !important; }
 
-.python-project-editor { border: 1px solid #ccd0da; border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65); overflow: hidden; }
+.python-project-workspace { background: #eff1f5; bottom: 0; display: flex; flex-direction: column; left: 0; position: fixed; right: 0; top: 46px; z-index: 900; }
+.python-project-workspace-body { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; padding: 0; }
+.python-header-actions { align-items: center; display: flex; margin-left: auto; min-width: 0; }
+.python-workspace-actions { align-items: center; min-width: 0; }
+.python-workspace-return { box-shadow: 0 0 0 2px rgba(30, 102, 245, .14), 0 4px 10px rgba(30, 102, 245, .24) !important; font-weight: 700; }
+.python-workspace-return:not(:disabled) { animation: python-workspace-return-pulse 2.8s ease-in-out infinite; }
+@keyframes python-workspace-return-pulse { 50% { box-shadow: 0 0 0 4px rgba(30, 102, 245, .08), 0 4px 14px rgba(30, 102, 245, .3) !important; } }
+@media (prefers-reduced-motion: reduce) { .python-workspace-return:not(:disabled) { animation: none; } }
+.python-project-workspace-body > .ant-alert { flex: 0 0 auto; }
+.python-project-tabs { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.python-project-tabs .ant-tabs-nav { flex: 0 0 auto; margin: 0; min-height: 30px; padding: 0 10px; }
+.python-project-tabs .ant-tabs-nav::before { border-bottom-color: #dce7ee; }
+.python-project-tabs .ant-tabs-tab { font-size: 12px; margin-left: 0 !important; padding: 4px 10px !important; }
+.python-project-tabs .ant-tabs-extra-content { align-items: center; display: flex; }
+.python-project-tabs .ant-tabs-content-holder, .python-project-tabs .ant-tabs-content, .python-project-tabs .ant-tabs-tabpane { flex: 1; height: 100%; min-height: 0; }
+.python-project-tabs .ant-tabs-content-holder, .python-project-tabs .ant-tabs-content, .python-project-tabs .ant-tabs-tabpane-active { display: flex; flex-direction: column; overflow: hidden; }
+.python-project-tabs .ant-tabs-tabpane-active > .ant-splitter { flex: 1; min-height: 0; }
+.python-project-script-splitter, .python-artifact-browser { height: 100%; min-height: 0; }
+.python-project-script-splitter > .ant-splitter-panel { min-height: 0; }
+.python-project-script-splitter > .ant-splitter-panel:last-child { display: flex; flex-direction: column; }
+.python-package-files { background: transparent; border-radius: 0; display: flex; height: 100%; flex-direction: column; min-width: 0; overflow: hidden; }
+.python-package-files header { align-items: center; border-bottom: 1px solid #ccd0da; display: flex; font-size: 12px; height: 32px; justify-content: space-between; padding: 0 7px 0 10px; text-transform: uppercase; }
+.python-package-file-tree { background: #e6e9ef; border-radius: 0; flex: 1; min-height: 0; overflow: auto; padding: 3px; }
+.python-package-file-tree .ant-tree-indent-unit { width: 14px; }
+.python-package-file-tree .ant-tree-switcher { line-height: 24px; width: 16px; }
+.python-package-file-tree .ant-tree-treenode { align-items: center; min-height: 24px; }
+.python-package-file-tree .ant-tree-node-content-wrapper { border-radius: 3px; font-family: var(--font-code); font-size: 12px; line-height: 24px; min-width: 0; padding: 0 4px; }
+.python-package-tree-file, .python-package-tree-folder { align-items: center; display: inline-flex; gap: 5px; min-width: 0; }
+.python-package-tree-file { color: #4c4f69; }
+.python-package-tree-folder { color: #6c6f85; }
+.python-package-tree-file .anticon-star { color: #df8e1d; font-size: 10px; }
+.python-project-editor { border: 1px solid #ccd0da; border-radius: 0; box-shadow: none; display: grid; flex: 1; grid-template-rows: 32px minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.python-project-editor > header { align-items: center; border-bottom: 1px solid #ccd0da; display: flex; gap: 12px; justify-content: space-between; min-width: 0; padding: 0 10px; }
+.python-project-editor > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.python-editor-surface { display: flex; height: 100%; min-height: 0; position: relative; }
+.python-editor-surface > div { flex: 1; height: 100%; min-height: 0; }
+.python-editor-surface .cm-editor { height: 100%; min-height: 0; }
+.python-project-editor .cm-scroller, .python-project-editor .cm-content, .python-project-editor .cm-gutters { background: #eff1f5; min-height: 100%; }
+.python-project-editor .cm-content { padding-right: 68px; }
+.python-code-overview { background: rgba(230, 233, 239, .82); border: 1px solid #ccd0da; bottom: 8px; cursor: pointer; overflow: hidden; padding: 3px; position: absolute; right: 8px; top: 8px; width: 54px; z-index: 2; }
+.python-code-overview:hover { background: #dce8f8; border-color: #1e66f5; }
+.python-code-overview pre { color: #7c7f93; font-family: var(--font-code); font-size: 3px; line-height: 4px; margin: 0; overflow: hidden; text-align: left; white-space: pre; }
 .python-project-symbols { width: 240px; }
 .python-project-symbol-title { align-items: center; display: inline-flex; gap: 6px; min-width: 0; width: 100%; }
 .python-project-symbol-title > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
@@ -292,21 +334,30 @@ html, body, #root {
 .python-project-editor .cm-editor.cm-focused { outline: 2px solid rgba(30, 102, 245, .22); outline-offset: -1px; }
 .python-project-editor .cm-scroller { line-height: 1.58; }
 .python-project-code-block {
-  background: #f4f8fb; border: 1px solid #dce7ee; border-radius: 6px; font-family: var(--font-code);
+  background: #f4f8fb; border: 1px solid #dce7ee; border-radius: 0; font-family: var(--font-code);
   margin: 0; max-height: 390px; min-height: 120px; overflow: auto; padding: 10px; white-space: pre-wrap;
 }
+.python-project-tabs .python-project-code-block { height: 100%; max-height: none; }
+.json-tree-view { background: #eff1f5; color: #4c4f69; min-height: 0; overflow: auto; }
+.python-project-input-json { height: 100%; }
+.json-tree-view .brace-row, .json-tree-view .brace-row *, .json-tree-view .brace-row [style], .json-tree-view .brace-row + span, .json-tree-view .object-name + span, .json-tree-view .array-key + div { color: #4c4f69 !important; font-weight: 600; }
+.json-tree-view .object-key { color: #1e66f5 !important; font-weight: 650; }
 .python-project-error { font-family: var(--font-code); margin: 6px 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap; }
-.python-artifact-browser { border: 1px solid #dce7ee; display: grid; grid-template-columns: minmax(220px, 34%) 1fr; height: 390px; min-width: 0; overflow: hidden; }
-.python-artifact-list { border-right: 1px solid #dce7ee; list-style: none; margin: 0; min-width: 0; overflow: auto; padding: 5px; }
-.python-artifact-list button { align-items: center; background: transparent; border: 0; border-radius: 5px; color: #4c4f69; cursor: pointer; display: grid; gap: 7px; grid-template-columns: 18px minmax(0, 1fr) auto; padding: 7px 8px; text-align: left; width: 100%; }
-.python-artifact-list button:hover { background: #e6e9ef; }
-.python-artifact-list button.is-active { background: #dce8f8; color: #1e66f5; }
-.python-artifact-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.python-artifact-list button small { color: #8c8fa1; font-size: 10px; }
+.python-artifact-browser { border: 0; min-width: 0; overflow: hidden; }
+.python-artifact-tree { background: #e6e9ef; border-radius: 0; height: 100%; min-width: 0; overflow: auto; padding: 3px; }
+.python-artifact-tree .ant-tree-indent-unit { width: 14px; }
+.python-artifact-tree .ant-tree-switcher { line-height: 24px; width: 16px; }
+.python-artifact-tree .ant-tree-treenode { align-items: center; min-height: 24px; }
+.python-artifact-tree .ant-tree-node-content-wrapper { border-radius: 3px; font-family: var(--font-code); font-size: 12px; line-height: 24px; min-width: 0; padding: 0 4px; }
+.python-artifact-tree-file { align-items: center; color: #4c4f69; display: inline-grid; gap: 5px; grid-template-columns: 16px minmax(0, 1fr) auto; min-width: 0; width: 100%; }
+.python-artifact-tree-file > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.python-artifact-tree-file small { color: #8c8fa1; font-size: 10px; }
 .python-artifact-preview { display: grid; grid-template-rows: 36px minmax(0, 1fr); min-width: 0; overflow: hidden; }
 .python-artifact-preview header { align-items: center; border-bottom: 1px solid #dce7ee; display: flex; gap: 12px; justify-content: space-between; min-width: 0; padding: 0 10px; }
 .python-artifact-preview header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .python-artifact-preview .python-project-code-block { border: 0; border-radius: 0; height: 100%; margin: 0; max-height: none; min-height: 0; }
+.python-syntax-preview { height: 100%; min-height: 0; overflow: auto; }
+.python-syntax-preview .shiki { box-sizing: border-box; margin: 0; min-height: 100%; padding: 10px; white-space: pre-wrap; }
 .python-artifact-save-status { display: inline-block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 900px) {

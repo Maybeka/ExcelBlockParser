@@ -2,30 +2,58 @@
 
 ## Purpose
 
-Each Project v3 document may store one Python script at
-`project.pythonScript.source`. The script transforms the complete result from
-**Run & Preview**. Execution is always explicit through **Project actions >
-Project Python > Run**.
+Each Project v3 document may store one self-contained multi-file Python package at
+`project.pythonScript`. The package transforms the complete result from
+the current project extraction. Execution is always explicit through
+**Project actions > Project Python > Run**. Selecting **Run** first refreshes
+the project extraction input without opening the extraction preview, then
+executes the Python script.
 
 The script is not assigned to individual blocks or regions and is not run when
 a project is opened, saved, recovered, or parsed.
 
 The editor provides semantic syntax highlighting, search, bracket matching,
 code folding, syntax diagnostics, local and member completion, definition
-hover details, and a hierarchical class/function/method symbol tree. `F12` and
-`Cmd/Ctrl + click` go to definitions; a resolvable symbol is underlined while
-the navigation modifier is held.
+hover details, a file tree, and a hierarchical class/function/method symbol
+tree. `F12` and `Cmd/Ctrl + click` go to definitions; a resolvable symbol is
+underlined while the navigation modifier is held.
 
 The local semantic model distinguishes class construction from function calls
 and resolves instance methods from constructor assignments, type annotations,
 `self` attributes, return annotations, and class inheritance. This support is
-intentionally scoped to the single project script. It does not resolve imported
-modules, installed packages, dynamically assigned members, decorators that
-replace types, or other runtime-only Python behavior. Full cross-module Python
-semantics would require a separate language server and are outside the embedded
-editor boundary.
+also resolves direct imports between project files, imported module members, and
+methods on instances constructed from imported classes. It does not resolve
+installed packages, wildcard or dynamic imports, dynamically assigned members,
+decorators that replace types, or other runtime-only Python behavior. Full
+cross-module Python semantics would require a separate language server and are
+outside the embedded editor boundary.
 
-## Entry Point
+## Package Files And Entry Point
+
+The package is stored in the project JSON, never loaded from a developer
+workspace. It contains `entryPath` and a list of UTF-8 `.py` files. Paths are
+relative, use `/`, cannot contain `.` or `..`, and are unique without regard to
+case so the package is portable to Windows. The default entry is `main.py`.
+
+Use the Files tree in **Project Python** to add, select, rename, delete, and
+choose an entry file. Create `generators/models.py` directly to add a nested
+module. Imports between project files use ordinary Python imports:
+
+```python
+# main.py
+from generators.models import build
+
+def process(context):
+    return build(context["data"])
+```
+
+```python
+# generators/models.py
+def build(data):
+    return {"records": data}
+```
+
+The entry file must define this callable:
 
 The script must define this callable:
 
@@ -35,7 +63,15 @@ def process(context):
 ```
 
 `process` receives one dictionary. Its return value must be JSON serializable.
-The editor accepts up to 256 KB of UTF-8 source.
+Each file accepts up to 2 MB; the full package accepts up to 8 MB. Python runs
+from a fresh virtual filesystem for every execution. Only project files and the
+embedded standard library can be imported. The package still cannot read or
+write host files, access the network, execute processes, or install packages.
+
+The default package returns a JSON-safe summary and three generated files:
+`generated/project-summary.json`, `generated/project_data.py`, and
+`generated/project_summary.sv`. It is a
+working `process(context)` example for both result review and file export.
 
 ## Input Contract
 
@@ -100,7 +136,10 @@ def process(context):
     }
 ```
 
-The **Files** tab previews these files. **Save generated files** asks the user
+The **Files** tab previews this structured file collection and selects one file
+at a time. Python (`.py`), JSON (`.json`), Verilog (`.v`, `.vh`) and
+SystemVerilog (`.sv`, `.svh`) previews use the bundled Shiki TextMate grammars
+with the Catppuccin Latte theme; other UTF-8 text is shown verbatim. **Save generated files** asks the user
 to select one output directory; the Wails host, not Python, writes the files.
 Existing regular files require explicit replacement confirmation.
 
@@ -127,18 +166,18 @@ the script.
 
 ## Manual Verification
 
-1. Open a Project v3 document in the Wails application and select **Run &
-   Preview** so the current project context is available.
+1. Open a Project v3 document in the Wails application.
 2. Open **Project actions > Project Python** and use the generated text-file
    example above as the `process(context)` return value.
-3. Select **Run**. Verify that the dialog activates **Files**, lists both nested
+3. Select **Run**. Verify that the workspace prepares the current extraction
+   input without opening the extraction preview, activates **Files**, lists the generated
    paths, and changes the content preview when each path is selected.
 4. Select **Save generated files**, create or choose an empty output directory,
-   and verify that both files are written with the exact UTF-8 content shown in
+   and verify that all files are written with the exact UTF-8 content shown in
    the preview.
 5. Run and save again to the same directory. Select **Cancel** in the replacement
    confirmation and verify that neither file changes. Repeat and select
-   **Replace**; verify that both files contain the new content.
+   **Replace**; verify that all files contain the new content.
 6. Change a returned path to `../outside.py`, `C:/outside.py`, `CON.txt`, or a
    duplicate path with different letter case. Verify that **Files** reports the
    contract error and saving is unavailable.

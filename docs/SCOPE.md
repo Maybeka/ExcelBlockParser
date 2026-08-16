@@ -55,10 +55,14 @@ The implemented application supports this general workflow:
   formula results, rich text, styles, fonts, fills, borders, alignment, merged
   cells, row heights, and column widths where supported by the converter.
 - Configurable default font behavior for cross-platform rendering.
+- Automatic project-relative workbook paths on Save and Save As, with absolute
+  paths retained only when a relative path cannot represent the source.
 
 ### 3.2 Block extraction
 
 - Multiple named extraction blocks.
+- Project-level Block navigation across all configured workbooks; selecting a
+  Block activates its owning workbook and sheet.
 - Range selection and range locking per block.
 - Sheet association per block.
 - One or more header rows.
@@ -73,6 +77,8 @@ The implemented application supports this general workflow:
 ### 3.3 Regions and structural detection
 
 - Regions that contain a source range and child blocks.
+- Project-level Region navigation across all configured workbooks; selecting a
+  Region activates its owning workbook and sheet.
 - Automatic rectangular sub-block detection using exact keyword, blank-row,
   and blank-column boundaries with configurable consecutive-gap thresholds.
 - Region-level parsing results that preserve the detected block label and rows.
@@ -90,8 +96,9 @@ The implemented application supports this general workflow:
   as template metadata for downstream code-generation workflows; v1 does not
   execute Python expressions or add computed values to parsed JSON.
 - Parsed JSON output with block and optional region results.
-- One project-owned Python script with a fixed `process(context)` entry point,
-  explicit execution, semantic editing support, JSON input/result views,
+- One project-owned, self-contained multi-file Python package with a fixed
+  `process(context)` entry point, explicit execution, semantic editing support,
+  JSON input/result views,
   captured output and errors, cancellation, and bounded UTF-8 generated-file
   preview/export in the Wails runtime.
 
@@ -170,7 +177,7 @@ The project Python runner provides one unified transformation and generation
 phase:
 
 ```text
-Workbook -> extraction template -> validated JSON -> project script -> previewed files
+Workbook -> extraction template -> validated JSON -> project Python package -> previewed files
 ```
 
 The script consumes the documented project context rather than workbook runtime
@@ -187,7 +194,7 @@ and an approved trust model. See `FEATURE_MODULE_ARCHITECTURE.md`.
 The current design intentionally has no generator workspace, per-Block/Region
 entry points, pip management, or independently packaged generator manifests.
 Those abstractions should be introduced only if concrete scenarios demonstrate
-that the unified project script is insufficient.
+that the project-owned package is insufficient.
 
 ### Safety boundary
 
