@@ -9,7 +9,11 @@ describe('XLSX workbook conversion', () => {
     const sheet = workbook.addWorksheet('Data')
     const cell = sheet.getCell('A1')
     cell.value = 'first line\nsecond line'
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } }
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { theme: 4, tint: 0.4 } as unknown as ExcelJS.Color,
+    }
 
     const buffer = await workbook.xlsx.writeBuffer()
     const converted = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'themed.xlsx')

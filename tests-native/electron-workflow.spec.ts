@@ -248,7 +248,12 @@ test.describe('Electron native workflow', () => {
       const saved = JSON.parse(await readFile(output, 'utf8'))
       delete source.exportedAt
       delete saved.exportedAt
+      const savedPaths = saved.project.workbooks.map((workbook: { sourcePath?: string }) => workbook.sourcePath)
+      for (const document of [source, saved]) {
+        for (const workbook of document.project.workbooks) delete workbook.sourcePath
+      }
       expect(saved).toEqual(source)
+      expect(savedPaths).toEqual(expect.arrayContaining([expect.any(String), expect.any(String)]))
     } finally {
       await app.close()
       await rm(directory, { recursive: true, force: true })

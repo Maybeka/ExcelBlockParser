@@ -27,7 +27,8 @@ interface FlatRow {
 }
 
 export function PreviewTable({ previewData, visibleModes, searchText }: PreviewTableProps) {
-  const { columns, rawRows, parsedRows, parsedRowIndices, rawColIndices } = previewData
+  const { columns, rawRows, parsedRows, rawColIndices } = previewData
+  const parsedRowIndices = previewData.parsedRowIndices ?? parsedRows.map((_, index) => index)
 
   const flatRows: FlatRow[] = useMemo(() => {
     const result: FlatRow[] = []

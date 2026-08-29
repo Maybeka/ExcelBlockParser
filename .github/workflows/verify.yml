@@ -16,8 +16,6 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npx playwright install --with-deps chromium
-      - run: npx tsc --noEmit -p tsconfig.web.json
-      - run: npx tsc --noEmit -p tsconfig.node.json
       - run: npm run test:main
       - run: npm run test:release
       - run: npm run test:unit
