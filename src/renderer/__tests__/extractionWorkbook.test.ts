@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { detectColumnChanges } from '../services/reconciliation'
 import { loadExcelJsWorkbook } from '../services/exceljsWorkbook'
 import { inferColumnType, parseWorkbook, suggestMappingsForWorkbook } from '../services/extraction'
+import { adaptPreviewData } from '../services/previewDataAdapter'
 import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
 import type { BlockConfig, CellRange, RegionConfig } from '../types'
 
@@ -93,6 +94,9 @@ describe('real Excel workbook extraction', () => {
     })
     const execution = parseWorkbook(await workbook('m2_integration.xlsx'), [configured], [])
     expect(execution.result.data.records).toEqual([{ name: 'Bob', count: 3 }])
+    expect(execution.result.blocks[0].sourceRowIndices).toEqual([1])
+    const preview = adaptPreviewData({ ...configured, dataSnapshot: execution.snapshots.get('records') ?? null }, execution.result)
+    expect(preview.parsedRowIndices).toEqual([1])
   })
 
   it('keeps multi-error diagnostic codes and block ordering stable', async () => {

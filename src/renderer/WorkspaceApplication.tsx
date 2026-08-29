@@ -1,4 +1,4 @@
-import { Suspense, useState, useCallback, useRef, useMemo, useEffect } from 'react'
+import { Suspense, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
 import { Badge, Button, Drawer, Dropdown, Layout, Modal, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
 import { CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ReloadOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
@@ -89,10 +89,36 @@ export function WorkspaceApplication() {
   const [hasUnsavedChanges, setDirtyState] = useState(false)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
   const [sidebarHidden, setSidebarHidden] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(272)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
   const [pendingDiagnosticFocus, setPendingDiagnosticFocus] = useState<DiagnosticFocusTarget | null>(null)
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const historyRef = useRef(new WorkspaceStateCoordinator())
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const resize = sidebarResizeRef.current
+      if (!resize) return
+      setSidebarWidth(Math.min(460, Math.max(210, resize.startWidth + event.clientX - resize.startX)))
+    }
+    const onPointerUp = () => { sidebarResizeRef.current = null }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+    }
+  }, [])
+
+  const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    sidebarResizeRef.current = { startX: event.clientX, startWidth: sidebarWidth }
+  }, [sidebarWidth])
+
+  const adjustSidebarWidth = useCallback((amount: number) => {
+    setSidebarWidth(width => Math.min(460, Math.max(210, width + amount)))
+  }, [])
   const setHasUnsavedChanges = useCallback((dirty: boolean) => {
     if (dirty) historyRef.current.markDirty()
     else historyRef.current.markSaved()
@@ -759,9 +785,17 @@ export function WorkspaceApplication() {
       )}
       <Layout.Content className="workspace-layout">
         {!sidebarHidden && (
-          <aside className="workspace-desktop-nav workspace-sidebar">
-            {navigator}
-          </aside>
+          <>
+            <aside className="workspace-desktop-nav workspace-sidebar" style={{ flexBasis: sidebarWidth, width: sidebarWidth }}>
+              {navigator}
+            </aside>
+            <div className="workspace-sidebar-resizer" role="separator" aria-label="Resize workspace navigation" aria-orientation="vertical"
+              aria-valuemin={210} aria-valuemax={460} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={startSidebarResize}
+              onKeyDown={event => {
+                if (event.key === 'ArrowLeft') { event.preventDefault(); adjustSidebarWidth(-12) }
+                if (event.key === 'ArrowRight') { event.preventDefault(); adjustSidebarWidth(12) }
+              }} />
+          </>
         )}
         <div className="workspace-main">
           <Splitter className="workspace-splitter">

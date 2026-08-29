@@ -1,4 +1,4 @@
-import { Button, Checkbox, Input, Segmented, Select, Tooltip } from 'antd'
+import { Button, Checkbox, Input, Popconfirm, Segmented, Select, Tooltip } from 'antd'
 import { DeleteOutlined, FolderAddOutlined, PlusOutlined } from '@ant-design/icons'
 import type { RowFilterCondition, RowFilterConfig, RowFilterGroup, RowFilterOperator, RowFilterRule } from '../types'
 import { DEFAULT_ROW_FILTER, MAX_ROW_FILTER_DEPTH } from '../services/rowFilter'
@@ -31,9 +31,11 @@ function newGroup(columnKeys: string[]): RowFilterGroup {
 }
 
 function normalizeOperator(rule: RowFilterRule, operator: RowFilterOperator): RowFilterRule {
-  if (operator === 'in' || operator === 'notIn') return { type: 'rule', column: rule.column, operator, values: [] }
+  if (operator === 'in' || operator === 'notIn') {
+    return { type: 'rule', column: rule.column, operator, values: rule.values ?? (rule.value ? [rule.value] : []) }
+  }
   if (operator === 'empty' || operator === 'notEmpty') return { type: 'rule', column: rule.column, operator }
-  return { type: 'rule', column: rule.column, operator, value: '' }
+  return { type: 'rule', column: rule.column, operator, value: rule.value ?? rule.values?.join(', ') ?? '' }
 }
 
 export function countRowFilterRules(condition: RowFilterCondition | null | undefined): number {
@@ -104,14 +106,19 @@ export function RowFilterEditor({ config: configured, columnKeys, onChange }: Ro
   const condition = config.condition
   return (
     <div className="row-filter-editor">
-      <Checkbox checked={config.removeEmptyRows}
-        onChange={event => onChange({ ...config, removeEmptyRows: event.target.checked })}>
-        Remove empty rows
-      </Checkbox>
-      <Checkbox checked={config.emptyCellConditions.fullyStruck} disabled={!config.removeEmptyRows}
-        onChange={event => onChange({ ...config, emptyCellConditions: { ...config.emptyCellConditions, fullyStruck: event.target.checked } })}>
-        Treat fully struck-through cells as empty
-      </Checkbox>
+      <div className="row-filter-checkbox">
+        <Checkbox aria-label="Remove empty rows" checked={config.removeEmptyRows}
+          onChange={event => onChange({ ...config, removeEmptyRows: event.target.checked })} />
+        <span>Remove empty rows</span>
+      </div>
+      <div className="row-filter-checkbox">
+        <Checkbox aria-label="Treat fully struck-through cells as empty" checked={config.emptyCellConditions.fullyStruck} disabled={!config.removeEmptyRows}
+          onChange={event => onChange({
+            ...config,
+            emptyCellConditions: { ...config.emptyCellConditions, fullyStruck: event.target.checked },
+          })} />
+        <span>Treat fully struck-through cells as empty</span>
+      </div>
       {condition ? (
         <ConditionEditor condition={condition.type === 'rule' ? { type: 'all', conditions: [condition] } : condition}
           columnKeys={columnKeys} depth={0} onChange={next => onChange({ ...config, condition: next })}
@@ -121,7 +128,12 @@ export function RowFilterEditor({ config: configured, columnKeys, onChange }: Ro
           Add condition
         </Button>
       )}
-      {condition && <Button size="small" type="link" danger icon={<DeleteOutlined />} onClick={() => onChange({ ...config, condition: null })}>Clear conditions</Button>}
+      {condition && (
+        <Popconfirm title="Clear all row filter conditions?" okText="Clear" cancelText="Cancel"
+          onConfirm={() => onChange({ ...config, condition: null })}>
+          <Button size="small" type="link" danger icon={<DeleteOutlined />} className="row-filter-clear-button">Clear conditions</Button>
+        </Popconfirm>
+      )}
     </div>
   )
 }

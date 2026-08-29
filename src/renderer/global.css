@@ -55,11 +55,14 @@ html, body, #root {
 .project-command-menu { z-index: 1202 !important; }
 .project-command-menu .ant-dropdown-menu { min-width: 154px; }
 
-.workspace-layout { background: #e7eff5; display: flex; gap: 10px; min-height: 0; overflow: hidden; padding: 10px; }
+.workspace-layout { background: #e7eff5; display: flex; min-height: 0; overflow: hidden; padding: 10px; }
 .workspace-sidebar {
   background: #fff; border: 0; border-radius: 16px; box-shadow: 0 4px 18px rgba(32, 62, 85, .10);
-  flex: 0 0 272px; overflow: hidden; width: 272px;
+  flex: 0 0 272px; max-width: 460px; min-width: 210px; overflow: hidden; width: 272px;
 }
+.workspace-sidebar-resizer { cursor: col-resize; flex: 0 0 10px; outline: none; position: relative; touch-action: none; }
+.workspace-sidebar-resizer::after { background: #8bc9f3; border-radius: 2px; content: ''; inset: 42% 3px; opacity: 0; position: absolute; transition: opacity .15s; }
+.workspace-sidebar-resizer:hover::after, .workspace-sidebar-resizer:focus-visible::after { opacity: 1; }
 .workspace-main { flex: 1; min-width: 0; }
 .workspace-splitter { height: 100%; }
 .workspace-splitter .ant-splitter-bar { background: transparent; width: 10px; }
@@ -111,9 +114,11 @@ html, body, #root {
 .workspace-row:hover .workspace-item-actions { opacity: 1; }
 .workspace-item { align-items: center; background: transparent; border: 0; border-radius: 8px; color: #344455; cursor: pointer; display: flex; font: inherit; font-size: 12px; gap: 9px; min-height: 42px; padding: 5px 8px; text-align: left; width: 100%; }
 .workspace-item:hover { color: #257fd0; }
-.workspace-workbook-heading { align-items: center; border-radius: 8px; display: flex; }
+.workspace-workbook-heading { align-items: center; border-radius: 8px; display: flex; min-width: 0; }
 .workspace-workbook-heading.is-active { background: #e7f3fe; }
 .workspace-workbook-heading .workspace-item.is-active { background: transparent; }
+.workspace-workbook-heading .workspace-item { flex: 1 1 auto; min-width: 0; }
+.workspace-workbook-heading .workspace-item > span:last-child { flex: 1 1 auto; min-width: 0; }
 .workspace-workbook-toggle { flex: 0 0 auto; height: 28px; min-width: 28px; padding: 0; }
 .workspace-workbook-sheets { margin: 0 0 4px 16px; border-left: 1px solid #dce8f0; padding-left: 6px; }
 .workspace-item.workspace-sheet-item { min-height: 32px; padding-block: 3px; }
@@ -246,7 +251,8 @@ html, body, #root {
 .extractor-card [style*="font-family: var(--font-code)"],
 .telegram-card [style*="font-family: var(--font-code)"] { color: #267ec5 !important; }
 .row-filter-editor { display: flex; flex-direction: column; gap: 5px; padding: 3px 0; }
-.row-filter-editor .ant-checkbox-wrapper { font-size: 11px; }
+.row-filter-checkbox { align-items: center; display: flex; font-size: 11px; gap: 6px; width: fit-content; }
+.row-filter-clear-button { align-self: flex-start; width: fit-content; }
 .row-filter-group { border-left: 2px solid #d8e5ef; padding-left: 6px; }
 .row-filter-group.depth-1 { border-left-color: #bfd7e8; }
 .row-filter-group.depth-2, .row-filter-group.depth-3 { border-left-color: #a9cadf; }
@@ -364,7 +370,8 @@ html, body, #root {
   .workspace-desktop-nav, .workspace-sidebar-toggle { display: none; }
   .workspace-mobile-nav { display: inline-flex; }
   .workspace-splitter .ant-splitter-panel:last-child { min-width: 300px !important; }
-  .workspace-layout { gap: 8px; padding: 8px; }
+  .workspace-layout { padding: 8px; }
+  .workspace-sidebar-resizer { display: none; }
   .workspace-canvas, .inspector-panel, .workspace-splitter .ant-splitter-panel:first-child, .workspace-splitter .ant-splitter-panel:last-child { border-radius: 12px; }
   .app-brand { min-width: 0; }
   .app-brand-copy small { display: none; }

@@ -23,6 +23,7 @@ export function adaptPreviewData(
 
   const parsedBlock = parseResult.blocks.find(b => b.blockId === block.id)
   const parsedRows = parsedBlock ? parsedBlock.data : []
+  const parsedRowIndices = parsedBlock?.sourceRowIndices ?? parsedRows.map((_, index) => index)
 
   return {
     blockId: block.id,
@@ -31,6 +32,7 @@ export function adaptPreviewData(
     rawColIndices,
     rawRows,
     parsedRows,
+    parsedRowIndices,
     headerRows: block.headerRows,
   }
 }

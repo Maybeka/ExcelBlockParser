@@ -70,12 +70,13 @@ export function parseWorkbook(workbook: WorkbookReader, blocks: BlockConfig[], r
     const values = cells.map(row => row.map(cell => cell.value)); snapshots.set(block.id, values)
     const headerRows = new Set(block.headerRows); let rows = cells.filter((_, index) => !headerRows.has(index)); let columns = block.columns.filter(column => !column.skip)
     if (block.skipEmptyColumns) { const empty = detectEmptyColumns(rows.map(row => row.map(cell => cell.value))); columns = columns.filter(column => !empty.has(column.colIndex - block.range!.startCol)) }
-    if (!columns.length) { blockResults.push({ blockId: block.id, label: block.label, data: [], rowCount: 0 }); data[block.label] = []; continue }
+    if (!columns.length) { blockResults.push({ blockId: block.id, label: block.label, data: [], rowCount: 0, sourceRowIndices: [] }); data[block.label] = []; continue }
     const keys = columns.map(column => column.key || column.suggestedKey)
     const sourceColumnOffsets = columns.map(column => column.colIndex - block.range!.startCol)
+    const sourceRowIndices = new Map(rows.map((row, index) => [row, index]))
     rows = applyRowFilter(rows, block.rowFilter, keys, sourceColumnOffsets)
     const parsed = rows.map((row, rowIndex) => { const entry: Record<string, unknown> = {}; columns.forEach((column, index) => { const raw = row[column.colIndex - block.range!.startCol]?.value ?? null; const map = column.valueMap.find(item => item.from === String(raw).trim()); const converted = map ? { value: map.to, failed: false } : convertValue(raw, column.type === 'valueMapping' ? (column.valueMapFallbackType ?? 'auto') : column.type); if (converted.failed) diagnostics.push({ code: 'type-conversion', severity: 'warning', blockId: block.id, row: rowIndex, column: keys[index], message: `Block "${block.label}", row ${rowIndex + 1}, column "${keys[index]}" could not be converted to ${column.type}.` }); entry[keys[index]] = converted.value }); return entry })
-    blockResults.push({ blockId: block.id, label: block.label, data: parsed, rowCount: parsed.length }); data[block.label] = parsed
+    blockResults.push({ blockId: block.id, label: block.label, data: parsed, rowCount: parsed.length, sourceRowIndices: rows.map(row => sourceRowIndices.get(row) ?? -1) }); data[block.label] = parsed
   }
   const regionExecution = parseWorkbookRegions(workbook, regions)
   diagnostics.push(...regionExecution.diagnostics)

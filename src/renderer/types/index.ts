@@ -51,6 +51,8 @@ export interface BlockParseResult {
   workbookId?: string | null
   data: Record<string, unknown>[]
   rowCount: number
+  /** Original data-row positions for preview alignment after row filtering. */
+  sourceRowIndices?: number[]
 }
 
 export interface ParseResult {
@@ -158,6 +160,8 @@ export interface PreviewData {
   rawRows: unknown[][]
   /** Parsed data rows (from parseResult, keyed by column mapping keys) */
   parsedRows: Record<string, unknown>[]
+  /** Source positions in rawRows for each parsed row. */
+  parsedRowIndices: number[]
   /** Indices of rows treated as headers (displayed above data rows) */
   headerRows: number[]
 }

@@ -122,6 +122,41 @@ test.describe('Row filtering', () => {
     await page.getByRole('button', { name: 'Add row condition group' }).click()
     await expect(page.getByRole('button', { name: 'Delete row condition group' })).toHaveCount(1)
   })
+
+  test('preserves condition values and requires confirmation before clearing', async ({ page }) => {
+    await loadWorkbookFixture(page)
+    await page.getByText('Row Filter', { exact: true }).click()
+
+    const editor = page.locator('.row-filter-editor')
+    const removeEmptyRows = page.getByRole('checkbox', { name: 'Remove empty rows' })
+    const struckEmpty = page.getByRole('checkbox', { name: 'Treat fully struck-through cells as empty' })
+    await editor.getByText('Remove empty rows', { exact: true }).click()
+    await expect(removeEmptyRows).toBeChecked()
+    await editor.getByText('Treat fully struck-through cells as empty', { exact: true }).click()
+    await expect(struckEmpty).toBeChecked()
+    await removeEmptyRows.uncheck()
+    await expect(removeEmptyRows).not.toBeChecked()
+
+    await page.getByRole('button', { name: /Add condition/ }).click()
+    const input = editor.locator('input.row-filter-value')
+    await input.fill('archived')
+    await editor.locator('.row-filter-operator').click()
+    await page.locator('.ant-select-dropdown:visible').getByText('contains', { exact: true }).click()
+    await expect(input).toHaveValue('archived')
+
+    await editor.locator('.row-filter-operator').click()
+    await page.locator('.ant-select-dropdown:visible').getByText('not in', { exact: true }).click()
+    await expect(editor.locator('.row-filter-value .ant-select-selection-item')).toHaveText('archived')
+
+    await editor.getByRole('button', { name: 'Clear conditions' }).click()
+    await expect(page.getByText('Clear all row filter conditions?')).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(editor.getByRole('button', { name: 'Clear conditions' })).toBeVisible()
+
+    await editor.getByRole('button', { name: 'Clear conditions' }).click()
+    await page.getByRole('button', { name: 'Clear', exact: true }).click()
+    await expect(editor.getByRole('button', { name: /Add condition/ })).toBeVisible()
+  })
 })
 
 // ---------------------------------------------------------------------------

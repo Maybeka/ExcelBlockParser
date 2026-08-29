@@ -13,6 +13,7 @@ import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
+type ExcelColor = { argb?: string; theme?: number; indexed?: number; tint?: number }
 let convertedWorkbookCounter = 0
 
 export interface ConversionResult {
@@ -29,6 +30,7 @@ export async function convertXlsxToWorkbookData(
 
   const sheets: Record<string, Partial<IWorksheetData>> = {}
   const sheetOrder: string[] = []
+  const resolveColor = createColorResolver((workbook.model as { themes?: { theme1?: string } }).themes?.theme1)
   const styleMap = new Map<string, string>()
   const styles: Record<string, IStyleData> = {}
   let styleCounter = 0
@@ -67,15 +69,16 @@ export async function convertXlsxToWorkbookData(
             univerCell.v = dateToExcelSerial(cell.value)
           } else if (typeof cell.value === 'object' && 'richText' in cell.value) {
             const richTextValue = cell.value as { richText: Array<{ text: string; font?: Partial<ExcelJS.Font> }> }
-            univerCell.v = richTextValue.richText.map(s => s.text).join('')
+            univerCell.v = richTextValue.richText.map(segment => normalizeLineBreaks(segment.text)).join('')
             univerCell.p = convertRichTextToDocumentData(
               richTextValue.richText,
               cell.style?.font as Partial<ExcelJS.Font> | undefined,
+              resolveColor,
             )
           } else if (typeof cell.value === 'object') {
             univerCell.v = cell.text
           } else {
-            univerCell.v = cell.value as string | number | boolean
+            univerCell.v = typeof cell.value === 'string' ? normalizeLineBreaks(cell.value) : cell.value as number | boolean
           }
         }
 
@@ -87,7 +90,11 @@ export async function convertXlsxToWorkbookData(
           univerCell.t = mapCellType(cell.type, cell.value)
         }
 
-        const cellStyle = buildCellStyle(cell)
+        const cellStyle = buildCellStyle(cell, resolveColor)
+        if (typeof univerCell.v === 'string' && univerCell.v.includes('\r\n') && !univerCell.p) {
+          univerCell.p = convertPlainTextToDocumentData(univerCell.v, cell.style?.font as Partial<ExcelJS.Font> | undefined, resolveColor)
+          if (cellStyle) cellStyle.tb = WrapStrategy.WRAP
+        }
         if (cellStyle) {
           univerCell.s = cellStyle
         }
@@ -178,6 +185,7 @@ function dateToExcelSerial(date: Date): number {
 function convertRichTextToDocumentData(
   richText: Array<{ text: string; font?: Partial<ExcelJS.Font> }>,
   baseFont?: Partial<ExcelJS.Font>,
+  resolveColor: (color: ExcelColor | undefined) => string | undefined = color => color?.argb ? argbToRgb(color.argb) : undefined,
 ): IDocumentData {
   let dataStream = ''
   const textRuns: Array<{ st: number; ed: number; ts?: Record<string, unknown> }> = []
@@ -193,15 +201,14 @@ function convertRichTextToDocumentData(
     if (font.strike) ts.st = { s: BooleanNumber.TRUE }
     if (font.name) ts.ff = font.name
     if (font.size) ts.fs = font.size
-    if (font.color?.argb) {
-      ts.cl = { rgb: argbToRgb(font.color.argb) }
-    }
+    const color = resolveColor(font.color as ExcelColor | undefined)
+    if (color) ts.cl = { rgb: color }
     return Object.keys(ts).length > 0 ? ts : undefined
   }
 
   for (const segment of richText) {
     const start = dataStream.length
-    dataStream += segment.text
+    dataStream += normalizeLineBreaks(segment.text)
     const end = dataStream.length
 
     const ts = segment.font
@@ -221,6 +228,18 @@ function convertRichTextToDocumentData(
     },
     documentStyle: {},
   }
+}
+
+function convertPlainTextToDocumentData(
+  text: string,
+  font: Partial<ExcelJS.Font> | undefined,
+  resolveColor: (color: ExcelColor | undefined) => string | undefined,
+): IDocumentData {
+  return convertRichTextToDocumentData([{ text, font }], undefined, resolveColor)
+}
+
+function normalizeLineBreaks(value: string): string {
+  return value.replace(/\r?\n/g, '\r\n')
 }
 
 function excelAddressToRC(addr: string): { row: number; col: number } {
@@ -256,7 +275,7 @@ function mapCellType(type: ExcelJS.ValueType, value: unknown): CellValueType | u
   }
 }
 
-function buildCellStyle(cell: ExcelJS.Cell): IStyleData | undefined {
+function buildCellStyle(cell: ExcelJS.Cell, resolveColor: (color: ExcelColor | undefined) => string | undefined): IStyleData | undefined {
   const s = cell.style
   const style: IStyleData = {}
 
@@ -277,15 +296,13 @@ function buildCellStyle(cell: ExcelJS.Cell): IStyleData | undefined {
   if (font?.underline && font.underline !== 'none') style.ul = { s: BooleanNumber.TRUE }
   if (font?.strike) style.st = { s: BooleanNumber.TRUE }
   if (font?.size) style.fs = font.size
-  if (font?.color?.argb) style.cl = { rgb: argbToRgb(font.color.argb) }
+  const fontColor = resolveColor(font?.color as ExcelColor | undefined)
+  if (fontColor) style.cl = { rgb: fontColor }
 
   if (s) {
     const fill = s.fill
-    if (fill && 'fgColor' in fill && fill.fgColor?.argb) {
-      style.bg = { rgb: argbToRgb(fill.fgColor.argb) }
-    } else if (fill && 'type' in fill && fill.type === 'pattern' && fill.fgColor?.argb) {
-      style.bg = { rgb: argbToRgb(fill.fgColor.argb) }
-    }
+    const fillColor = resolveColor(fill && 'fgColor' in fill ? fill.fgColor as ExcelColor | undefined : undefined)
+    if (fillColor) style.bg = { rgb: fillColor }
 
     const align = s.alignment
     if (align) {
@@ -297,7 +314,7 @@ function buildCellStyle(cell: ExcelJS.Cell): IStyleData | undefined {
       }
     }
 
-    const bd = buildBorder(s.border)
+    const bd = buildBorder(s.border, resolveColor)
     if (bd) style.bd = bd
   }
 
@@ -308,6 +325,40 @@ function argbToRgb(argb: string): string {
   if (argb.length === 8) return `#${argb.slice(2)}`
   if (argb.length === 6) return `#${argb}`
   return `#${argb}`
+}
+
+const DEFAULT_THEME_COLORS = ['#FFFFFF', '#000000', '#EEECE1', '#1F497D', '#4F81BD', '#C0504D', '#9BBB59', '#8064A2', '#4BACC6', '#F79646', '#0000FF', '#800080']
+const INDEXED_COLORS: Record<number, string> = { 0: '#000000', 1: '#FFFFFF', 2: '#FF0000', 3: '#00FF00', 4: '#0000FF', 5: '#FFFF00', 6: '#FF00FF', 7: '#00FFFF', 8: '#000000', 9: '#FFFFFF' }
+
+function createColorResolver(themeXml: string | undefined): (color: ExcelColor | undefined) => string | undefined {
+  const themeColors = extractThemeColors(themeXml)
+  return color => {
+    if (!color) return undefined
+    const base = color.argb
+      ? argbToRgb(color.argb)
+      : typeof color.theme === 'number'
+        ? themeColors[color.theme]
+        : typeof color.indexed === 'number' ? INDEXED_COLORS[color.indexed] : undefined
+    return base ? applyTint(base, color.tint) : undefined
+  }
+}
+
+function extractThemeColors(themeXml: string | undefined): string[] {
+  if (!themeXml) return DEFAULT_THEME_COLORS
+  const names = ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink']
+  return names.map((name, index) => {
+    const entry = themeXml.match(new RegExp(`<a:${name}[^>]*>([\\s\\S]*?)</a:${name}>`, 'i'))?.[1]
+    const value = entry?.match(/(?:lastClr|val)="([0-9A-F]{6})"/i)?.[1]
+    return value ? `#${value}` : DEFAULT_THEME_COLORS[index]
+  })
+}
+
+function applyTint(color: string, tint: number | undefined): string {
+  if (tint === undefined || tint === 0) return color
+  const channels = color.slice(1).match(/.{2}/g)?.map(value => Number.parseInt(value, 16))
+  if (!channels || channels.length !== 3) return color
+  const adjusted = channels.map(channel => Math.round(tint < 0 ? channel * (1 + tint) : channel + (255 - channel) * tint))
+  return `#${adjusted.map(channel => channel.toString(16).padStart(2, '0')).join('')}`
 }
 
 function mapHorizontalAlign(h: string | undefined): HorizontalAlign | undefined {
@@ -330,7 +381,7 @@ function mapVerticalAlign(v: string | undefined): VerticalAlign | undefined {
   }
 }
 
-function buildBorder(border: Partial<ExcelJS.Borders> | undefined): IStyleData['bd'] | undefined {
+function buildBorder(border: Partial<ExcelJS.Borders> | undefined, resolveColor: (color: ExcelColor | undefined) => string | undefined): IStyleData['bd'] | undefined {
   if (!border) return undefined
   const bd: NonNullable<IStyleData['bd']> = {}
   const sides: Array<[keyof typeof bd, keyof ExcelJS.Borders]> = [
@@ -341,7 +392,7 @@ function buildBorder(border: Partial<ExcelJS.Borders> | undefined): IStyleData['
     if (edge?.style) {
       bd[univerSide] = {
         s: EXCEL_BORDER_MAP[edge.style] ?? BorderStyleTypes.THIN,
-        cl: edge.color?.argb ? { rgb: argbToRgb(edge.color.argb) } : { rgb: '#000000' },
+        cl: { rgb: resolveColor(edge.color as ExcelColor | undefined) ?? '#000000' },
       }
     }
   }

@@ -27,16 +27,16 @@ interface FlatRow {
 }
 
 export function PreviewTable({ previewData, visibleModes, searchText }: PreviewTableProps) {
-  const { columns, rawRows, parsedRows, rawColIndices } = previewData
+  const { columns, rawRows, parsedRows, parsedRowIndices, rawColIndices } = previewData
 
   const flatRows: FlatRow[] = useMemo(() => {
     const result: FlatRow[] = []
-    const maxCount = Math.max(rawRows.length, parsedRows.length)
     const hasRaw = visibleModes.includes('raw')
     const hasParsed = visibleModes.includes('parsed')
+    const parsedBySourceRow = new Map(parsedRows.map((row, index) => [parsedRowIndices[index] ?? index, { row, index }]))
 
-    for (let i = 0; i < maxCount; i++) {
-      if (hasRaw && i < rawRows.length) {
+    if (hasRaw && rawRows.length) {
+      for (let i = 0; i < rawRows.length; i++) {
         const raw = rawRows[i]
         result.push({
           key: `r${i}`,
@@ -48,21 +48,32 @@ export function PreviewTable({ previewData, visibleModes, searchText }: PreviewT
             return ''
           }),
         })
-      }
-      if (hasParsed && i < parsedRows.length) {
-        const parsedRow = parsedRows[i] ?? {}
+        const parsed = parsedBySourceRow.get(i)
+        if (!hasParsed || !parsed) continue
+        const parsedRow = parsed.row
         const values = columns.map(col => parsedRow[col])
         result.push({
-          key: `p${i}`,
+          key: `p${parsed.index}`,
           type: 'parsed',
           rowIndex: i,
           cells: values.map(v => String(v ?? '')),
           parsedValues: values,
         })
       }
+    } else if (hasParsed) {
+      parsedRows.forEach((parsedRow, index) => {
+        const values = columns.map(col => parsedRow[col])
+        result.push({
+          key: `p${index}`,
+          type: 'parsed',
+          rowIndex: parsedRowIndices[index] ?? index,
+          cells: values.map(v => String(v ?? '')),
+          parsedValues: values,
+        })
+      })
     }
     return result
-  }, [rawRows, parsedRows, columns, visibleModes])
+  }, [rawRows, parsedRows, parsedRowIndices, columns, visibleModes])
 
   const filteredRows = useMemo(() => {
     if (!searchText) return flatRows

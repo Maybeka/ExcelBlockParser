@@ -51,6 +51,19 @@ test.describe('M3 workspace layout', () => {
     await expect(navigation).toBeVisible()
   })
 
+  test('allows desktop navigation width to be adjusted from its separator', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+
+    const separator = page.getByRole('separator', { name: 'Resize workspace navigation' })
+    await expect(separator).toHaveAttribute('aria-valuenow', '272')
+    await separator.focus()
+    await separator.press('ArrowLeft')
+    await expect(separator).toHaveAttribute('aria-valuenow', '260')
+    await separator.press('ArrowRight')
+    await expect(separator).toHaveAttribute('aria-valuenow', '272')
+  })
+
   test('collapses workbook, extractor, and region sections independently', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Show workspace navigation' }).click()

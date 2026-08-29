@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.1 - 2026-08-29
+
+- Preserved Row Filter values when changing condition operators, restricted
+  checkbox interaction to the controls themselves, and added confirmation
+  before clearing conditions.
+- Kept parsed Block rows aligned with their original workbook rows after row
+  filtering in the preview.
+- Added a resizable workspace sidebar and prevented long workbook names from
+  pushing tree controls outside the sidebar.
+- Improved XLSX rendering for theme and tinted colors and for plain and rich
+  multi-line cell text.
+- Refreshed application icons, using the opaque rounded-square asset by
+  default and the transparent asset for Electron on macOS.
+
 ## 1.3.0 - 2026-08-16
 
 - Added the project-owned embedded Python workspace with an isolated runtime,
