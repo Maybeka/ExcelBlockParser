@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+if [ "${SKIP_PRE_PUSH_CHECKS:-}" = "1" ]; then
+  echo "Skipping pre-push checks because SKIP_PRE_PUSH_CHECKS=1."
+  exit 0
+fi
+
+npm run verify:prepush

@@ -5,6 +5,9 @@
   "author": "Excel Block Parser contributors",
   "main": "./out/main/index.js",
   "scripts": {
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "setup:git-hooks": "node scripts/install-git-hooks.mjs",
+    "verify:prepush": "node scripts/pre-push-check.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
