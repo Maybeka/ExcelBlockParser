@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.3.5 - 2026-08-31
+
+- Preserved Excel worksheet tab colors in the spreadsheet canvas and workspace
+  navigation after opening or refreshing a workbook.
+
+## 1.3.4 - 2026-08-31
+
+- Refined workspace controls and disabled extraction creation when no workbook
+  is active, including the empty Block configuration state.
+- Improved project settings section boundaries and extraction action spacing.
+
+## 1.3.3 - 2026-08-31
+
+- Added explicit Row Filter behavior for retaining or removing matching rows.
+- Added Chinese Row Filter labels and verified matching against Chinese column
+  keys and values.
+
+## 1.3.2 - 2026-08-31
+
+- Added English and Simplified Chinese interface support outside the Python
+  workspace, including project workflows, extraction configuration, previews,
+  reconciliation, and diagnostics.
+
 ## 1.3.1 - 2026-08-29
 
 - Preserved Row Filter values when changing condition operators, restricted
