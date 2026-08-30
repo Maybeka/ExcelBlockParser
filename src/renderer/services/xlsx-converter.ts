@@ -13,12 +13,13 @@ import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
-type ExcelColor = { argb?: string; theme?: number; indexed?: number; tint?: number }
+type ExcelColor = { argb?: string; theme?: number | string; indexed?: number | string; tint?: number | string; auto?: boolean | number | string }
 let convertedWorkbookCounter = 0
 
 export interface ConversionResult {
   workbookData: IWorkbookData
   fonts: string[]
+  sheetTabColors: Record<string, string>
 }
 
 export async function convertXlsxToWorkbookData(
@@ -30,6 +31,7 @@ export async function convertXlsxToWorkbookData(
 
   const sheets: Record<string, Partial<IWorksheetData>> = {}
   const sheetOrder: string[] = []
+  const sheetTabColors: Record<string, string> = {}
   const resolveColor = createColorResolver((workbook.model as { themes?: { theme1?: string } }).themes?.theme1)
   const styleMap = new Map<string, string>()
   const styles: Record<string, IStyleData> = {}
@@ -48,6 +50,8 @@ export async function convertXlsxToWorkbookData(
   workbook.eachSheet((worksheet, sheetIndex) => {
     const sheetId = worksheet.name || `Sheet${sheetIndex}`
     sheetOrder.push(sheetId)
+    const tabColor = resolveColor(worksheet.properties.tabColor as ExcelColor | undefined)
+    if (tabColor) sheetTabColors[worksheet.name || sheetId] = tabColor
 
     const cellData: CellMatrix = {}
     let maxRow = 0
@@ -91,7 +95,7 @@ export async function convertXlsxToWorkbookData(
         }
 
         const cellStyle = buildCellStyle(cell, resolveColor)
-        if (typeof univerCell.v === 'string' && univerCell.v.includes('\r\n') && !univerCell.p) {
+        if (typeof cell.value === 'string' && hasLineBreak(cell.value) && !univerCell.p) {
           univerCell.p = convertPlainTextToDocumentData(univerCell.v, cell.style?.font as Partial<ExcelJS.Font> | undefined, resolveColor)
           if (cellStyle) cellStyle.tb = WrapStrategy.WRAP
         }
@@ -146,6 +150,7 @@ export async function convertXlsxToWorkbookData(
     sheets[sheetId] = {
       id: sheetId,
       name: worksheet.name || sheetId,
+      ...(tabColor ? { tabColor } : {}),
       rowCount: maxRow + 50,
       columnCount: maxCol + 50,
       cellData,
@@ -173,6 +178,7 @@ export async function convertXlsxToWorkbookData(
       sheets,
     },
     fonts: [...fontSet],
+    sheetTabColors,
   }
 }
 
@@ -225,6 +231,8 @@ function convertRichTextToDocumentData(
     body: {
       dataStream,
       textRuns: textRuns.length > 0 ? (textRuns as any) : undefined,
+      paragraphs: createParagraphs(dataStream),
+      sectionBreaks: [{ startIndex: dataStream.length - 1 }],
     },
     documentStyle: {},
   }
@@ -239,7 +247,21 @@ function convertPlainTextToDocumentData(
 }
 
 function normalizeLineBreaks(value: string): string {
-  return value.replace(/\r?\n/g, '\r\n')
+  // Univer represents paragraphs with \r and a document section terminator with
+  // \r\n. Encoding each Excel line break as \r\n ends the cell document early.
+  return value.replace(/\r\n|\r|\n/g, '\r')
+}
+
+function hasLineBreak(value: string): boolean {
+  return /\r|\n/.test(value)
+}
+
+function createParagraphs(dataStream: string): Array<{ startIndex: number }> {
+  const paragraphs: Array<{ startIndex: number }> = []
+  for (let index = 0; index < dataStream.length; index++) {
+    if (dataStream[index] === '\r') paragraphs.push({ startIndex: index })
+  }
+  return paragraphs
 }
 
 function excelAddressToRC(addr: string): { row: number; col: number } {
@@ -321,25 +343,35 @@ function buildCellStyle(cell: ExcelJS.Cell, resolveColor: (color: ExcelColor | u
   return Object.keys(style).length > 0 ? style : undefined
 }
 
-function argbToRgb(argb: string): string {
-  if (argb.length === 8) return `#${argb.slice(2)}`
-  if (argb.length === 6) return `#${argb}`
-  return `#${argb}`
+function argbToRgb(argb: string): string | undefined {
+  const value = argb.replace(/^#/, '')
+  const rgb = value.length === 8 ? value.slice(2) : value
+  return /^[0-9a-f]{6}$/i.test(rgb) ? `#${rgb}` : undefined
 }
 
 const DEFAULT_THEME_COLORS = ['#FFFFFF', '#000000', '#EEECE1', '#1F497D', '#4F81BD', '#C0504D', '#9BBB59', '#8064A2', '#4BACC6', '#F79646', '#0000FF', '#800080']
-const INDEXED_COLORS: Record<number, string> = { 0: '#000000', 1: '#FFFFFF', 2: '#FF0000', 3: '#00FF00', 4: '#0000FF', 5: '#FFFF00', 6: '#FF00FF', 7: '#00FFFF', 8: '#000000', 9: '#FFFFFF' }
+const INDEXED_COLORS = [
+  '#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF',
+  '#800000', '#008000', '#000080', '#808000', '#800080', '#008080', '#C0C0C0', '#808080',
+  '#9999FF', '#993366', '#FFFFCC', '#CCFFFF', '#660066', '#FF8080', '#0066CC', '#CCCCFF',
+  '#000080', '#FF00FF', '#FFFF00', '#00FFFF', '#800080', '#800000', '#008080', '#0000FF',
+  '#00CCFF', '#CCFFFF', '#CCFFCC', '#FFFF99', '#99CCFF', '#FF99CC', '#CC99FF', '#FFCC99',
+  '#3366FF', '#33CCCC', '#99CC00', '#FFCC00', '#FF9900', '#FF6600', '#666699', '#969696',
+  '#003366', '#339966', '#003300', '#333300', '#993300', '#993366', '#333399', '#333333',
+]
 
 function createColorResolver(themeXml: string | undefined): (color: ExcelColor | undefined) => string | undefined {
   const themeColors = extractThemeColors(themeXml)
   return color => {
     if (!color) return undefined
+    const theme = color.theme === undefined ? undefined : Number(color.theme)
+    const indexed = color.indexed === undefined ? undefined : Number(color.indexed)
     const base = color.argb
       ? argbToRgb(color.argb)
-      : typeof color.theme === 'number'
-        ? themeColors[color.theme]
-        : typeof color.indexed === 'number' ? INDEXED_COLORS[color.indexed] : undefined
-    return base ? applyTint(base, color.tint) : undefined
+      : Number.isInteger(theme)
+        ? themeColors[theme!]
+        : Number.isInteger(indexed) ? INDEXED_COLORS[indexed!] : color.auto ? '#000000' : undefined
+    return base ? applyTint(base, color.tint === undefined ? undefined : Number(color.tint)) : undefined
   }
 }
 
@@ -348,7 +380,8 @@ function extractThemeColors(themeXml: string | undefined): string[] {
   const names = ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink']
   return names.map((name, index) => {
     const entry = themeXml.match(new RegExp(`<a:${name}[^>]*>([\\s\\S]*?)</a:${name}>`, 'i'))?.[1]
-    const value = entry?.match(/(?:lastClr|val)="([0-9A-F]{6})"/i)?.[1]
+    const value = entry?.match(/lastClr="([0-9A-F]{6})"/i)?.[1]
+      ?? entry?.match(/<a:srgbClr[^>]*\bval="([0-9A-F]{6})"/i)?.[1]
     return value ? `#${value}` : DEFAULT_THEME_COLORS[index]
   })
 }
@@ -365,6 +398,7 @@ function mapHorizontalAlign(h: string | undefined): HorizontalAlign | undefined 
   switch (h) {
     case 'left': return HorizontalAlign.LEFT
     case 'center': return HorizontalAlign.CENTER
+    case 'centerContinuous': return HorizontalAlign.CENTER
     case 'right': return HorizontalAlign.RIGHT
     case 'justify': return HorizontalAlign.JUSTIFIED
     case 'distributed': return HorizontalAlign.DISTRIBUTED
