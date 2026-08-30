@@ -8,7 +8,8 @@ import {
   RightOutlined,
   CheckOutlined,
 } from '@ant-design/icons'
-import type { ReconciliationReport, BlockConfig, CellRange, ColumnMapping, ColumnType } from '../types'
+import type { ReconciliationReport, BlockConfig, CellRange, ColumnMapping } from '../types'
+import { useI18n } from '../i18n'
 
 const { Text } = Typography
 
@@ -23,15 +24,6 @@ export interface ReconciliationModalProps {
   onReselectRange?: () => void
 }
 
-const statusConfig: Record<string, { color: string; label: string; icon: ReactNode }> = {
-  ok: { color: 'green', label: 'OK', icon: <CheckCircleOutlined /> },
-  'columns-mismatch': { color: 'orange', label: 'Mismatch', icon: <WarningOutlined /> },
-  'rows-mismatch': { color: 'orange', label: 'Mismatch', icon: <WarningOutlined /> },
-  'sheet-missing': { color: 'red', label: 'Error', icon: <CloseCircleOutlined /> },
-  'content-changed': { color: 'orange', label: 'Content Change', icon: <WarningOutlined /> },
-  'columns-reordered': { color: 'orange', label: 'Reordered', icon: <WarningOutlined /> },
-}
-
 interface StepDef {
   stepNumber: number
   title: string
@@ -39,17 +31,17 @@ interface StepDef {
   fixes: ReconciliationReport['suggestedFixes']
 }
 
-function buildSteps(report: ReconciliationReport): StepDef[] {
+function buildSteps(report: ReconciliationReport, t: (key: string) => string): StepDef[] {
   return [
     {
       stepNumber: 1,
-      title: 'Sheet',
+      title: t('reconcile.sheet'),
       issues: report.issues.filter(i => i.type === 'sheet-missing'),
       fixes: report.suggestedFixes.filter(f => f.type === 'sheet-remap'),
     },
     {
       stepNumber: 2,
-      title: 'Range & Content',
+      title: t('reconcile.rangeContent'),
       issues: report.issues.filter(i =>
         ['row-shifted', 'content-changed'].includes(i.type),
       ),
@@ -59,7 +51,7 @@ function buildSteps(report: ReconciliationReport): StepDef[] {
     },
     {
       stepNumber: 3,
-      title: 'Columns',
+      title: t('reconcile.columns'),
       issues: report.issues.filter(i =>
         ['column-added', 'column-removed', 'column-shifted'].includes(i.type),
       ),
@@ -93,9 +85,10 @@ interface StepPanelProps {
   expanded: boolean
   onToggle: () => void
   extra?: ReactNode
+  noIssuesText: string
 }
 
-function StepPanel({ step, expanded, onToggle, extra }: StepPanelProps) {
+function StepPanel({ step, expanded, onToggle, extra, noIssuesText }: StepPanelProps) {
   const status = getStepStatus(step.issues)
   const statusColor =
     status === 'error' ? '#ff4d4f' : status === 'warning' ? '#faad14' : '#52c41a'
@@ -162,7 +155,7 @@ function StepPanel({ step, expanded, onToggle, extra }: StepPanelProps) {
         <div style={{ padding: '12px 16px' }}>
           {step.issues.length === 0 ? (
             <Text type="secondary" style={{ display: 'block', marginBottom: extra ? 12 : 0 }}>
-              No issues detected.
+              {noIssuesText}
             </Text>
           ) : (
             <List
@@ -221,6 +214,7 @@ export function ReconciliationModal({
   onApplyColumns,
   onReselectRange,
 }: ReconciliationModalProps) {
+  const { t } = useI18n()
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set())
   const [blockFixes, setBlockFixes] = useState<Record<string, BlockFixesState>>({})
@@ -239,7 +233,7 @@ export function ReconciliationModal({
 
   useEffect(() => {
     if (selectedReport) {
-      const steps = buildSteps(selectedReport)
+      const steps = buildSteps(selectedReport, t)
       const defaultExpanded = new Set(
         steps.filter(s => s.issues.length > 0).map(s => s.stepNumber),
       )
@@ -251,7 +245,7 @@ export function ReconciliationModal({
         return { ...prev, [selectedReport.blockId]: emptyBlockFixes() }
       })
     }
-  }, [selectedBlockId, reports])
+  }, [selectedBlockId, reports, t])
 
   const toggleStep = (n: number) => {
     setExpandedSteps(prev => {
@@ -266,7 +260,7 @@ export function ReconciliationModal({
     ? blockFixes[selectedBlockId] ?? emptyBlockFixes()
     : emptyBlockFixes()
 
-  const steps = selectedReport ? buildSteps(selectedReport) : []
+  const steps = selectedReport ? buildSteps(selectedReport, t) : []
 
   const okCount = reports.filter(r => r.status === 'ok').length
   const mismatchCount = reports.filter(
@@ -338,7 +332,7 @@ export function ReconciliationModal({
       return (
         <Space>
           <Tag icon={<CheckOutlined />} color="green">
-            Remapped to {appliedSheet}
+            {t('reconcile.remappedTo', { sheet: appliedSheet })}
           </Tag>
         </Space>
       )
@@ -348,7 +342,7 @@ export function ReconciliationModal({
       <Space style={{ width: '100%' }}>
         <Select
           style={{ width: 240 }}
-          placeholder={step.issues.length === 0 ? 'Change bound sheet…' : 'Select a sheet…'}
+          placeholder={step.issues.length === 0 ? t('reconcile.changeBoundSheet') : t('reconcile.selectSheet')}
           onChange={(val: string) => {
             if (selectedBlockId) {
               applyBlockFix(selectedBlockId, { remappedSheet: val })
@@ -358,8 +352,8 @@ export function ReconciliationModal({
         />
         <Text type="secondary" style={{ fontSize: 12 }}>
           {step.issues.length === 0
-            ? 'Manually remap the sheet for this block.'
-            : 'Choose the matching sheet and click Apply All later.'}
+            ? t('reconcile.manualRemap')
+            : t('reconcile.chooseMatch')}
         </Text>
       </Space>
     )
@@ -372,8 +366,7 @@ export function ReconciliationModal({
       contentIssues.length > 0 ? (
         <div style={{ marginBottom: 8 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {contentIssues.length} cell change{contentIssues.length !== 1 ? 's' : ''} detected.
-            Re-parsing will update the snapshot.
+            {t('reconcile.cellsChanged', { count: contentIssues.length, suffix: contentIssues.length !== 1 ? 's' : '' })}
           </Text>
         </div>
       ) : null
@@ -384,7 +377,7 @@ export function ReconciliationModal({
           {contentSummary}
           <Space>
             <Tag icon={<CheckOutlined />} color="green">
-              Range reselect applied
+              {t('reconcile.rangeReselectApplied')}
             </Tag>
           </Space>
         </>
@@ -404,7 +397,7 @@ export function ReconciliationModal({
             }
           }}
         >
-          Reselect Range
+          {t('reconcile.reselect')}
         </Button>
       </>
     )
@@ -415,7 +408,7 @@ export function ReconciliationModal({
       return (
         <Space>
           <Tag icon={<CheckOutlined />} color="green">
-            Column reorder applied
+            {t('reconcile.columnReorderApplied')}
           </Tag>
         </Space>
       )
@@ -431,7 +424,7 @@ export function ReconciliationModal({
           }
         }}
       >
-        Reorder Columns
+        {t('reconcile.reorderColumns')}
       </Button>
     )
   }
@@ -454,17 +447,17 @@ export function ReconciliationModal({
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <Text strong style={{ fontSize: 15 }}>Reconciliation</Text>
-        <Button type="text" onClick={onCancel}>✕</Button>
+        <Text strong style={{ fontSize: 15 }}>{t('reconcile.title')}</Text>
+        <Button type="text" aria-label={t('common.close')} onClick={onCancel}>✕</Button>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
         {/* Summary tags */}
         <Space style={{ marginBottom: 16 }}>
-          <Tag color="green">{okCount} OK</Tag>
-          {mismatchCount > 0 && <Tag color="orange">{mismatchCount} Need Attention</Tag>}
-          {errorCount > 0 && <Tag color="red">{errorCount} Errors</Tag>}
+          <Tag color="green">{okCount} {t('reconcile.statusOk')}</Tag>
+          {mismatchCount > 0 && <Tag color="orange">{mismatchCount} {t('reconcile.needAttention')}</Tag>}
+          {errorCount > 0 && <Tag color="red">{errorCount} {t('reconcile.errors')}</Tag>}
           {contentChangedCount > 0 && (
-            <Tag color="orange">{contentChangedCount} Content Changed</Tag>
+            <Tag color="orange">{contentChangedCount} {t('reconcile.statusContentChanged')}</Tag>
           )}
         </Space>
 
@@ -482,7 +475,6 @@ export function ReconciliationModal({
             <List
               dataSource={reports}
               renderItem={report => {
-                const cfg = statusConfig[report.status] ?? statusConfig.ok
                 const isSelected = selectedBlockId === report.blockId
                 const hasBlockFixes =
                   blockFixes[report.blockId] &&
@@ -503,13 +495,7 @@ export function ReconciliationModal({
                   >
                     <Space>
                       <Badge
-                        status={
-                          cfg.color === 'green'
-                            ? 'success'
-                            : cfg.color === 'orange'
-                              ? 'warning'
-                              : 'error'
-                        }
+                        status={report.status === 'ok' ? 'success' : report.status === 'sheet-missing' ? 'error' : 'warning'}
                       />
                       <Text>{report.label}</Text>
                       {hasBlockFixes && <CheckOutlined style={{ color: '#52c41a', fontSize: 12 }} />}
@@ -522,7 +508,7 @@ export function ReconciliationModal({
 
           {/* Right: 3-step flow */}
           <div style={{ flex: 1, overflowY: 'auto', maxHeight: 440, display: 'flex', flexDirection: 'column' }}>
-            <Select style={{ width: '100%', marginBottom: 16 }} value={selectedBlockId || undefined} placeholder="Select a block to reconcile…" onChange={(val) => { setSelectedBlockId(val); onBlockSelect?.(val) }} options={blocks.filter(b => b.range).map(b => ({ value: b.id, label: `${b.label} — ${b.activeSheet || '(active)'}!${b.range!.a1Notation}` }))} />
+            <Select style={{ width: '100%', marginBottom: 16 }} value={selectedBlockId || undefined} placeholder={t('reconcile.selectBlock')} onChange={(val) => { setSelectedBlockId(val); onBlockSelect?.(val) }} options={blocks.filter(b => b.range).map(b => ({ value: b.id, label: `${b.label} — ${b.activeSheet || t('reconcile.activeSheet')}!${b.range!.a1Notation}` }))} />
             {selectedReport ? (
               steps.length > 0 ? (
                 steps.map(step => (
@@ -538,13 +524,14 @@ export function ReconciliationModal({
                           ? renderStep2Extra(step)
                           : renderStep3Extra(step)
                     }
+                    noIssuesText={t('reconcile.noIssues')}
                   />
                 ))
               ) : (
-                <Empty description="No reconciliation data" />
+                <Empty description={t('reconcile.noData')} />
               )
             ) : (
-              <Empty description="Select a block to see details" />
+              <Empty description={t('reconcile.selectDetails')} />
             )}
           </div>
         </div>
@@ -560,9 +547,9 @@ export function ReconciliationModal({
             marginTop: 16,
           }}
         >
-          <Button onClick={onCancel}>Cancel</Button>
+          <Button onClick={onCancel}>{t('common.cancel')}</Button>
           <Button type="primary" onClick={handleApplyAll} disabled={!hasPendingFixes}>
-            Apply All Fixes
+            {t('reconcile.applyAll')}
           </Button>
         </div>
       </div>

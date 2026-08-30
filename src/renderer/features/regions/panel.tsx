@@ -1,26 +1,27 @@
 import type { WorkspaceFeaturePanelProvider } from '../panel/workspacePanel'
-import { createDefaultRegion, moveRegion, regionsForWorkbook } from './model'
+import { createDefaultRegion, moveRegion } from './model'
+import { ExtractionHeaderActions } from '../extraction/ExtractionHeaderActions'
 import { RegionFeaturePanel } from './RegionFeaturePanel'
 import { RegionResultView } from './RegionResultView'
+import { translate } from '../../i18n'
 
 export const regionPanelProvider: WorkspaceFeaturePanelProvider = {
   featureId: 'builtin.regions',
   isActive: context => context.project.activeRegionId !== null,
   contribute(context) {
-    const regions = regionsForWorkbook(context.project, context.project.activeWorkbookId)
+    const regions = context.project.regions
+    const t = context.t ?? ((key: string, values?: Record<string, string | number>) => translate('en-US', key, values))
+    const activeRegions = regions.filter(region => region.id === context.project.activeRegionId)
     return {
       id: this.featureId,
-      title: 'Region setup',
-      summary: `${regions.filter(region => region.range).length} active`,
-      ariaLabel: 'Region inspector',
+      title: t('extract.title'),
+      summary: t('extract.blocksRegions', { blocks: context.project.blocks.length, regions: regions.length }),
+      ariaLabel: t('extract.title'),
+      headerActions: <ExtractionHeaderActions context={context} />,
       render: () => (
         <RegionFeaturePanel
-          regions={regions}
+          regions={activeRegions}
           activeRegionId={context.project.activeRegionId}
-          onAddRegion={() => context.transactProject(project => {
-            const region = createDefaultRegion(project, project.activeWorkbookId)
-            return { ...project, regions: [...project.regions, region], activeRegionId: region.id, activeBlockId: '' }
-          })}
           onDeleteRegion={regionId => context.transactProject(project => ({
             ...project,
             regions: project.regions.filter(region => region.id !== regionId),
@@ -30,15 +31,21 @@ export const regionPanelProvider: WorkspaceFeaturePanelProvider = {
             ...project,
             regions: project.regions.map(region => region.id === regionId ? { ...region, ...partial } : region),
           }))}
-          onActivateRegion={regionId => context.selectProject(project => ({ ...project, activeRegionId: regionId, activeBlockId: '' }))}
-          onRangeClick={regionId => {
+          onActivateRegion={regionId => {
             const region = context.project.regions.find(item => item.id === regionId)
-            if (!region?.range || region.workbookId !== context.loadedWorkbookId) return
-            if (region.activeSheet) context.spreadsheet.setActiveSheet(region.activeSheet)
-            context.spreadsheet.scrollTo(region.activeSheet, region.range.startRow - 3, region.range.startCol - 1)
+            if (!region) return
+            if (region.workbookId && region.workbookId !== context.loadedWorkbookId) context.activateWorkbook(region.workbookId, region.activeSheet ?? undefined)
+            else if (region.activeSheet) context.spreadsheet.setActiveSheet(region.activeSheet)
             context.selectProject(project => ({ ...project, activeRegionId: regionId, activeBlockId: '' }))
           }}
-          onRun={context.run}
+          onRangeClick={regionId => {
+            const region = context.project.regions.find(item => item.id === regionId)
+            if (!region?.range) return
+            if (region.workbookId && region.workbookId !== context.loadedWorkbookId) context.activateWorkbook(region.workbookId, region.activeSheet ?? undefined)
+            else if (region.activeSheet) context.spreadsheet.setActiveSheet(region.activeSheet)
+            context.focusRange(region.workbookId, region.activeSheet, region.range)
+            context.selectProject(project => ({ ...project, activeRegionId: regionId, activeBlockId: '' }))
+          }}
         />
       ),
     }
@@ -48,7 +55,7 @@ export const regionPanelProvider: WorkspaceFeaturePanelProvider = {
     if (!results.length) return null
     return {
       id: this.featureId,
-      label: 'Regions',
+      label: (context.t ?? ((key: string) => translate('en-US', key)))('workspace.regions'),
       count: results.length,
       render: () => <RegionResultView results={results} />,
     }
@@ -57,15 +64,8 @@ export const regionPanelProvider: WorkspaceFeaturePanelProvider = {
     const regions = context.project.regions
     return {
       id: this.featureId,
-      label: 'Regions',
-      emptyText: 'No regions configured.',
-      addAction: {
-        label: 'Add Region',
-        run: () => context.transactProject(project => {
-          const region = createDefaultRegion(project, project.activeWorkbookId)
-          return { ...project, regions: [...project.regions, region], activeRegionId: region.id, activeBlockId: '' }
-        }),
-      },
+      label: (context.t ?? ((key: string) => translate('en-US', key)))('workspace.regions'),
+      emptyText: (context.t ?? ((key: string) => translate('en-US', key)))('workspace.noRegions'),
       items: regions.map((region, index) => ({
         id: region.id,
         label: region.label || `region_${index + 1}`,
@@ -78,6 +78,7 @@ export const regionPanelProvider: WorkspaceFeaturePanelProvider = {
         avatarClassName: 'workspace-region-avatar',
         select: () => {
           if (region.workbookId) context.activateWorkbook(region.workbookId, region.activeSheet ?? undefined)
+          context.focusRange(region.workbookId, region.activeSheet, region.range)
           context.selectProject(project => ({ ...project, activeRegionId: region.id, activeBlockId: '' }))
         },
         move: direction => context.transactProject(project => moveRegion(project, region.id, direction)),

@@ -1,4 +1,5 @@
 import styles from './ExternalResultReviewPanel.module.css'
+import { useI18n } from '../../i18n'
 
 export interface ExternalReviewFixture {
   sourceName: string
@@ -18,6 +19,7 @@ export const gateBExternalReviewFixture: ExternalReviewFixture = {
 }
 
 export function ExternalResultReviewPanel({ fixture = gateBExternalReviewFixture }: { fixture?: ExternalReviewFixture }) {
+  const { t } = useI18n()
   return (
     <div className={styles.panel} data-testid="external-review-panel">
       <div className={styles.status}>
@@ -25,7 +27,7 @@ export function ExternalResultReviewPanel({ fixture = gateBExternalReviewFixture
         <span>{fixture.status}</span>
       </div>
       <section className={styles.section} aria-labelledby="gate-b-review-differences">
-        <h3 id="gate-b-review-differences">Review queue</h3>
+        <h3 id="gate-b-review-differences">{t('review.queue')}</h3>
         {fixture.differences.map(item => (
           <div className={styles.difference} key={item.id}>
             <strong>{item.owner}</strong>
@@ -34,7 +36,7 @@ export function ExternalResultReviewPanel({ fixture = gateBExternalReviewFixture
         ))}
       </section>
       <section className={styles.section} aria-labelledby="gate-b-review-diagnostics">
-        <h3 id="gate-b-review-diagnostics">Diagnostics</h3>
+        <h3 id="gate-b-review-diagnostics">{t('review.diagnostics')}</h3>
         {fixture.diagnostics.map(item => (
           <div className={styles.diagnostic} key={item.code}>{item.code}: {item.message}</div>
         ))}

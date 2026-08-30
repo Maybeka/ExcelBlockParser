@@ -13,6 +13,7 @@ export function ExtractionResultView({
   const [activeBlockId, setActiveBlockId] = useState(() => {
     return blocks.some(block => block.id === project.activeBlockId) ? project.activeBlockId : blocks[0]?.id ?? ''
   })
+  const activeBlock = blocks.find(block => block.id === activeBlockId)
 
   return (
     <PreviewWindow
@@ -20,6 +21,7 @@ export function ExtractionResultView({
       allBlocks={blocks.map(block => ({ blockId: block.id, label: block.label }))}
       activeBlockId={activeBlockId}
       onBlockChange={setActiveBlockId}
+      rangeText={activeBlock?.range ? `${activeBlock.activeSheet ? `${activeBlock.activeSheet}!` : ''}${activeBlock.range.a1Notation}` : undefined}
     />
   )
 }

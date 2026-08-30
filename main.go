@@ -15,9 +15,10 @@ func main() {
 	app := &App{}
 
 	err := wails.Run(&options.App{
-		Title:  "Excel Block Parser",
-		Width:  1400,
-		Height: 900,
+		Title:     "Excel Block Parser",
+		Frameless:  true,
+		Width:     1400,
+		Height:    900,
 		MinWidth:  1000,
 		MinHeight: 600,
 		AssetServer: &assetserver.Options{

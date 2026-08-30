@@ -1,0 +1,11 @@
+.view { background: var(--m3-surface-container-lowest); height: 100%; overflow: auto; }
+.selectorRow { align-items: center; background: var(--m3-surface-container-low); border-bottom: 1px solid var(--fluent-stroke); display: flex; gap: var(--space-2); min-height: 48px; padding: 0 var(--space-4); }
+.selectorRow > span { color: var(--fluent-text-muted); font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+.selectorIcon { align-items: center; background: var(--fluent-accent-subtle); border-radius: 10px; color: var(--m3-on-secondary-container) !important; display: inline-flex; font-size: 14px !important; height: 30px; justify-content: center; width: 30px; }
+.region { margin: 0; padding: var(--space-3); }
+.regionTitle { color: var(--fluent-text); font-size: 14px; font-weight: 650; margin: 0 0 var(--space-2); }
+.block { margin-bottom: var(--space-3); }
+.blockSummary { color: var(--fluent-text-muted); font-size: 12px; font-weight: 500; margin-bottom: var(--space-1); }
+.table :global(.ant-table-container) { border-color: var(--m3-outline-variant) !important; }
+.table :global(.ant-table-thead > tr > th) { background: var(--m3-surface-container-low) !important; color: var(--fluent-text-muted); }
+.table :global(.ant-table-cell) { border-color: var(--fluent-stroke) !important; }

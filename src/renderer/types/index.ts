@@ -82,6 +82,8 @@ export interface ProjectWorkbook {
   sourcePath?: string
   /** Sheet names last read from this workbook. They are refreshed when opened. */
   sheetNames?: string[]
+  /** Excel worksheet tab colors keyed by sheet name, refreshed when opened. */
+  sheetTabColors?: Record<string, string>
   /** The last selected sheet for this workbook. */
   activeSheetName?: string | null
 }
@@ -211,6 +213,8 @@ export interface RowFilterConfig {
   emptyCellConditions: {
     fullyStruck: boolean
   }
+  /** Whether matching rows are retained or removed. Defaults to retain for existing projects. */
+  matchMode?: 'include' | 'exclude'
   condition: RowFilterCondition | null
 }
 

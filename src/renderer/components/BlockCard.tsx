@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { Input, Button, Tag, Tooltip, Divider } from 'antd'
-import { CaretDownOutlined, CaretRightOutlined, DeleteOutlined, PlusOutlined, TagOutlined, CheckOutlined, EditOutlined } from '@ant-design/icons'
+import { Input, Button, Tag, Tooltip } from 'antd'
+import { AimOutlined, DeleteOutlined, PlusOutlined, InfoCircleOutlined, CheckOutlined, EditOutlined } from '@ant-design/icons'
 import type { Tag as TagType } from '../types'
 import { addTag, removeTag } from '../services/tagUtils'
+import { useI18n } from '../i18n'
 
 interface BlockCardProps {
   isActive: boolean
-  collapsed: boolean
-  onToggle: () => void
   label: string
   onLabelChange: (v: string) => void
   placeholder: string
@@ -21,8 +20,9 @@ interface BlockCardProps {
   onEdit: () => void
   tags?: TagType[]
   onTagsChange: (tags: TagType[]) => void
-  showTags: boolean
-  onToggleTags: () => void
+  showInfo: boolean
+  onToggleInfo: () => void
+  dimensionsText?: string
   onDelete: () => void
   onClick?: () => void
   children: React.ReactNode
@@ -30,98 +30,76 @@ interface BlockCardProps {
 }
 
 export function BlockCard({
-  isActive, collapsed, onToggle, label, onLabelChange, placeholder, status, disabled, labelRef,
+  isActive, label, onLabelChange, placeholder, status, disabled, labelRef,
   rangeText, onRangeClick, selectionLocked, onConfirm, onEdit,
-  tags, onTagsChange, showTags, onToggleTags,   onDelete, onClick,
+  tags, onTagsChange, showInfo, onToggleInfo, dimensionsText, onDelete, onClick,
   children, extra,
 }: BlockCardProps) {
+  const { t } = useI18n()
   const [addingTag, setAddingTag] = useState(false)
   const [tagInput, setTagInput] = useState('')
 
   return (
-    <div className={`telegram-card ${isActive ? 'is-active' : ''}`} onClick={onClick} style={{
-      marginBottom: 8,
-      border: `1px solid ${isActive ? '#1677ff' : '#d9d9d9'}`,
-      borderRadius: 6,
-      borderLeft: isActive ? '3px solid #1677ff' : '3px solid transparent',
-      background: isActive ? '#f0f5ff' : '#fafafa',
-      transition: 'border-color 0.15s, background 0.15s',
-    }}>
-      <div className="telegram-card-header" style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 10px',
-        borderBottom: collapsed ? 'none' : '1px solid #f0f0f0',
-      }}>
-        <span onClick={onToggle}
-          style={{ color: disabled ? '#d9d9d9' : '#999', cursor: disabled ? 'default' : 'pointer', fontSize: 12 }}>
-          {collapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
-        </span>
-        <Input size="small" ref={labelRef} value={label}
-          onChange={e => onLabelChange(e.target.value)} placeholder={placeholder}
-          style={{ flex: 1, fontSize: 13, fontWeight: 600 }}
-          variant="borderless" disabled={disabled} status={status} />
-        {rangeText && (
-          <Tooltip title={`${rangeText} — click to go`}>
-            <span onClick={e => { e.stopPropagation(); onRangeClick?.() }}
-              onMouseDown={e => e.stopPropagation()}
-              style={{ fontSize: 12, color: '#1677ff', fontFamily: 'var(--font-code)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-              {rangeText}
-            </span>
-          </Tooltip>
-        )}
-        {!selectionLocked && rangeText && (
-          <Tooltip title="Confirm">
-            <Button size="small" type="text" icon={<CheckOutlined style={{ color: '#52c41a' }} />}
+    <div className={`extractor-card ${isActive ? 'is-active' : ''}`} onClick={onClick}>
+      <div className="extractor-card-header">
+        <div className="extractor-card-title">
+          <Input size="small" ref={labelRef} value={label}
+            onChange={e => onLabelChange(e.target.value)} placeholder={placeholder}
+            className="card-title-input"
+            variant="borderless" disabled={disabled} status={status} />
+        </div>
+        <div className="extractor-card-actions">
+          {!selectionLocked && rangeText && (
+          <Tooltip title={t('common.confirm')}>
+            <Button className="card-confirm-button" size="small" type="text" icon={<CheckOutlined />}
               onClick={e => { e.stopPropagation(); onConfirm() }} />
           </Tooltip>
-        )}
-        {selectionLocked && (
-          <Tooltip title="Edit">
+          )}
+          {selectionLocked && (
+          <Tooltip title={t('common.edit')}>
             <Button size="small" type="text" icon={<EditOutlined />}
               onClick={e => { e.stopPropagation(); onEdit() }} />
           </Tooltip>
-        )}
-        {extra}
-        <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
-        <Tooltip title={showTags ? 'Hide tags' : 'Show tags'}>
-          <Button size="small" type="text" icon={<TagOutlined />}
-            onClick={e => { e.stopPropagation(); onToggleTags() }}
-            style={{ color: showTags ? '#1677ff' : undefined }}>
-            {tags?.length ? <span style={{ fontSize: 11, marginLeft: 4 }}>{tags.length}</span> : null}
-          </Button>
-        </Tooltip>
-        <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
-        <Button size="small" type="text" danger icon={<DeleteOutlined />}
-          onClick={e => { e.stopPropagation(); onDelete() }}
-          onMouseDown={e => e.stopPropagation()} disabled={disabled} />
+          )}
+          {extra}
+          {rangeText && <Tooltip title={t('common.focusRange')}><Button aria-label={t('common.focusRange')} size="small" type="text" icon={<AimOutlined />} onClick={e => { e.stopPropagation(); onRangeClick?.() }} onMouseDown={e => e.stopPropagation()} /></Tooltip>}
+          <Tooltip title={showInfo ? t('common.hideInfo') : t('common.showInfo')}>
+          <Button className={showInfo ? 'is-active' : ''} aria-label={showInfo ? t('common.hideInfo') : t('common.showInfo')} size="small" type="text" icon={<InfoCircleOutlined />}
+            onClick={e => { e.stopPropagation(); onToggleInfo() }} />
+          </Tooltip>
+          <Button size="small" type="text" danger icon={<DeleteOutlined />}
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            onMouseDown={e => e.stopPropagation()} disabled={disabled} />
+        </div>
       </div>
 
-      {!collapsed && showTags && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px 4px 34px', overflow: 'auto' }}>
+      {showInfo && (
+        <div className="extractor-card-info">
+          <div className="extractor-card-info-row"><span>{t('common.tags')}</span><div className="extractor-card-info-value">
           {(tags || []).map((tag, i) => (
-            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 0, fontSize: 11, color: '#1677ff', whiteSpace: 'nowrap' }}>
-              {i > 0 && <span style={{ color: '#bbb', margin: '0 2px' }}>/</span>}
+            <span key={i} className="card-info-tag">
+              {i > 0 && <span className="card-info-tag-separator">/</span>}
               <Tag closable onClose={() => { const r = removeTag({ tags } as any, tag.key); onTagsChange(r.tags || []) }}
-                style={{ margin: 0, fontSize: 11 }}>
+                className="card-info-tag-value">
                 {tag.type === 'kv' ? `${tag.key}:${tag.value || ''}` : tag.key}
               </Tag>
             </span>
           ))}
-          {tags && tags.length > 0 && <span style={{ color: '#bbb', margin: '0 2px' }}>/</span>}
+          {tags && tags.length > 0 && <span className="card-info-tag-separator">/</span>}
           <Button size="small" type="dashed" icon={<PlusOutlined />}
             onClick={() => setAddingTag(true)}
-            style={{ fontSize: 11, height: 22, padding: '0 6px', flexShrink: 0 }}>Tag</Button>
+            className="card-add-tag">{t('common.tags')}</Button>
           {addingTag && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+            <div className="card-add-tag-editor">
               <Input size="small" value={tagInput} onChange={e => setTagInput(e.target.value)}
-                placeholder="tag or key:value" onPressEnter={() => {
+                placeholder={t('tag.placeholder')} onPressEnter={() => {
                   if (!tagInput.trim()) return
                   const colonIdx = tagInput.indexOf(':')
                   const tag: TagType = colonIdx > 0 ? { type: 'kv', key: tagInput.slice(0, colonIdx).trim(), value: tagInput.slice(colonIdx + 1).trim() || undefined }
                     : { type: 'label', key: tagInput.trim() }
                   onTagsChange(addTag({ tags } as any, tag).tags || [])
                   setAddingTag(false); setTagInput('')
-                }} style={{ width: 130, fontSize: 12 }} />
+                }} className="card-add-tag-input" />
               <Button size="small" type="link" onClick={() => {
                 if (!tagInput.trim()) return
                 const colonIdx = tagInput.indexOf(':')
@@ -133,14 +111,18 @@ export function BlockCard({
               <Button size="small" type="text" onClick={() => { setAddingTag(false); setTagInput('') }}>✗</Button>
             </div>
           )}
+          {!tags?.length && !addingTag && <span className="extractor-card-info-empty">{t('common.noTags')}</span>}
+          </div></div>
+          <div className="extractor-card-info-row"><span>{t('common.range')}</span><div className="extractor-card-info-value">
+            {rangeText ? <span className="extractor-card-range">{rangeText}</span> : <span className="extractor-card-info-empty">{t('common.noRange')}</span>}
+          </div></div>
+          <div className="extractor-card-info-row"><span>{t('common.size')}</span><div className="extractor-card-info-value">{dimensionsText || '—'}</div></div>
         </div>
       )}
 
-      {!collapsed && (
-        <div className="telegram-card-body" style={{ padding: '8px 12px', opacity: selectionLocked ? 0.5 : 1 }}>
+      <div className="extractor-card-body">
           {children}
         </div>
-      )}
     </div>
   )
 }

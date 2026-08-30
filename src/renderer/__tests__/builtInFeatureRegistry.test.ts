@@ -45,6 +45,7 @@ describe('built-in feature registration', () => {
       activeBlockId: '',
     }
     const activations: Array<[string, string | undefined]> = []
+    const focusRequests: Array<[string | null, string | null, string | null]> = []
     const context: WorkspaceFeaturePanelContext = {
       project,
       loadedWorkbookId: 'sales',
@@ -55,6 +56,7 @@ describe('built-in feature registration', () => {
       transactProject: update => { project = update(project) },
       selectProject: update => { project = update(project) },
       activateWorkbook: (workbookId, sheetName) => { activations.push([workbookId, sheetName]) },
+      focusRange: (workbookId, sheetName, range) => { focusRequests.push([workbookId, sheetName, range?.a1Notation ?? null]) },
       run: () => undefined,
       setActiveColumn: () => undefined,
       setReconciliationItem: () => undefined,
@@ -70,8 +72,64 @@ describe('built-in feature registration', () => {
 
     regions?.items[1].select()
     expect(activations).toEqual([['costs', 'Summary']])
+    expect(focusRequests).toEqual([['costs', 'Summary', 'B1:C5']])
     expect(project.activeRegionId).toBe('costs-region')
     expect(project.activeBlockId).toBe('')
+  })
+
+  it('exposes blocks from every workbook and focuses the selected block owner', () => {
+    let project = {
+      ...createProject('Cross-workbook blocks'),
+      workbooks: [
+        { id: 'sales', name: 'sales.xlsx', activeSheetName: 'Orders' },
+        { id: 'costs', name: 'costs.xlsx', activeSheetName: 'Summary' },
+      ],
+      activeWorkbookId: 'sales',
+      blocks: [
+        {
+          id: 'sales-block', label: 'Sales', workbookId: 'sales', activeSheet: 'Orders', range: null,
+          headerRows: [], collapsed: false, selectionLocked: false, columns: [], dataSnapshot: null,
+        },
+        {
+          id: 'costs-block', label: 'Costs', workbookId: 'costs', activeSheet: 'Summary',
+          range: { startRow: 0, startCol: 1, endRow: 4, endCol: 2, a1Notation: 'B1:C5' },
+          headerRows: [], collapsed: false, selectionLocked: true, columns: [], dataSnapshot: null,
+        },
+      ],
+      activeBlockId: 'sales-block',
+      activeRegionId: 'sales-region',
+    }
+    const activations: Array<[string, string | undefined]> = []
+    const focusRequests: Array<[string | null, string | null, string | null]> = []
+    const context: WorkspaceFeaturePanelContext = {
+      project,
+      loadedWorkbookId: 'sales',
+      activeColIndex: null,
+      parseResult: null,
+      spreadsheet: createUnavailableSpreadsheetCapability(['Orders']),
+      requestedFeatureId: null,
+      transactProject: update => { project = update(project) },
+      selectProject: update => { project = update(project) },
+      activateWorkbook: (workbookId, sheetName) => { activations.push([workbookId, sheetName]) },
+      focusRange: (workbookId, sheetName, range) => { focusRequests.push([workbookId, sheetName, range?.a1Notation ?? null]) },
+      run: () => undefined,
+      setActiveColumn: () => undefined,
+      setReconciliationItem: () => undefined,
+      takeReselectedRange: () => undefined,
+      setPreviewSheet: () => undefined,
+    }
+
+    const blocks = builtInFeaturePanelRegistry.navigation(context).find(section => section.id === 'builtin.extraction')
+    expect(blocks?.items.map(item => [item.label, item.detail])).toEqual([
+      ['Sales', 'sales.xlsx'],
+      ['Costs', 'costs.xlsx · Summary!B1:C5'],
+    ])
+
+    blocks?.items[1].select()
+    expect(activations).toEqual([['costs', 'Summary']])
+    expect(focusRequests).toEqual([['costs', 'Summary', 'B1:C5']])
+    expect(project.activeBlockId).toBe('costs-block')
+    expect(project.activeRegionId).toBeNull()
   })
 
   it('routes selection and active canvas state through the active feature only', () => {

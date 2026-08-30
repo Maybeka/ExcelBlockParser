@@ -4,6 +4,7 @@ import { CodeOutlined, CloseOutlined, DatabaseOutlined, FileTextOutlined, Search
 import { PreviewTable } from './PreviewTable'
 import type { PreviewData } from '../types'
 import { JsonTreeView } from './JsonTreeView'
+import { useI18n } from '../i18n'
 
 const { Header, Content } = Layout
 const { Text } = Typography
@@ -23,11 +24,14 @@ interface PreviewWindowProps {
   activeBlockId?: string
   /** Called when user switches block (modal mode) */
   onBlockChange?: (blockId: string) => void
+  /** Source range supplied by the workspace for the selected block. */
+  rangeText?: string
   /** Closes the modal preview when rendered inside the main workspace. */
   onClose?: () => void
 }
 
-export function PreviewWindow({ dataSource, previewData: propData, allBlocks, activeBlockId: propBlockId, onBlockChange, onClose }: PreviewWindowProps = {}) {
+export function PreviewWindow({ dataSource, previewData: propData, allBlocks, activeBlockId: propBlockId, onBlockChange, rangeText, onClose }: PreviewWindowProps = {}) {
+  const { t } = useI18n()
   const isModal = !!propData || !!allBlocks
   const [previewData, setPreviewData] = useState<PreviewData | null>(propData || null)
   const [visibleModes, setVisibleModes] = useState<('raw' | 'parsed')[]>(['raw', 'parsed'])
@@ -53,17 +57,17 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
     if (!silent) setLoading(true)
     setError(null)
     try {
-      if (!dataSource) throw new Error('Preview data source is unavailable')
+      if (!dataSource) throw new Error(t('preview.sourceUnavailable'))
       const data = await dataSource.getData(id)
       if (data) {
         setPreviewData(data)
       }
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to load preview data'))
+      setError(err instanceof Error ? err : new Error(t('preview.loadFailed')))
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [dataSource])
+  }, [dataSource, t])
 
   // Listen for reload events from main process (window mode only)
   useEffect(() => {
@@ -96,7 +100,7 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
     return (
       <Layout style={{ height: '100vh' }}>
         <Content style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <Text type="secondary">Select a block to preview</Text>
+          <Text type="secondary">{t('extract.select')}</Text>
         </Content>
       </Layout>
     )
@@ -108,9 +112,9 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
         <Content style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <Result
             status="error"
-            title="Failed to load"
+            title={t('preview.noData')}
             subTitle={error.message}
-            extra={<Button type="primary" onClick={() => fetchData(blockId)}>Retry</Button>}
+            extra={<Button type="primary" onClick={() => fetchData(blockId)}>{t('common.retry')}</Button>}
           />
         </Content>
       </Layout>
@@ -120,7 +124,7 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
   if (loading || !previewData) {
     return (
       <Layout style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Spin size="large" tip="Loading preview data..." />
+        <Spin size="large" tip={t('common.preview')} />
       </Layout>
     )
   }
@@ -129,7 +133,7 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
     return (
       <Layout style={{ height: '100vh' }}>
         <Content style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <Empty description="No data to preview" />
+          <Empty description={t('preview.noData')} />
         </Content>
       </Layout>
     )
@@ -143,61 +147,70 @@ export function PreviewWindow({ dataSource, previewData: propData, allBlocks, ac
       <Header className="preview-header">
         <div className="preview-title-group">
           <span className="preview-title-icon"><DatabaseOutlined /></span>
-          <div className="preview-title-copy">
-            <span className="preview-kicker">PARSE REVIEW</span>
-            {isModal && allBlocks && allBlocks.length > 1 ? (
+          {isModal && allBlocks && allBlocks.length > 1 ? (
+            <>
+              <span className="preview-kicker preview-kicker-inline">{t('preview.parseReview')}</span>
               <Select className="preview-block-select" size="small" value={blockId} onChange={v => onBlockChange?.(v)} options={allBlocks.map(b => ({ value: b.blockId, label: b.label }))} />
-            ) : <strong>{previewData.label}</strong>}
-          </div>
-          <div className="preview-metrics" aria-label="Preview summary">
-            <span><b>{matchingRows}</b> rows</span>
-            <span><b>{previewData.columns.length}</b> fields</span>
+            </>
+          ) : <div className="preview-title-copy">
+            <span className="preview-kicker">{t('preview.parseReview')}</span>
+            <strong>{previewData.label}</strong>
+          </div>}
+          <div className="preview-metrics" aria-label={t('preview.summary')}>
+            <span><b>{matchingRows}</b> {t('common.rows')}</span>
+            <span><b>{previewData.columns.length}</b> {t('common.cols')}</span>
           </div>
         </div>
         <div className="preview-controls">
           <Segmented
             className={`preview-mode-control preview-mode-${modeValue}`}
             options={[
-              { label: 'Raw', value: 'raw' },
-              { label: 'Parsed', value: 'parsed' },
-              { label: 'Both', value: 'both' },
+              { label: t('preview.raw'), value: 'raw' },
+              { label: t('preview.parsed'), value: 'parsed' },
+              { label: t('preview.both'), value: 'both' },
             ]}
             value={modeValue}
             onChange={handleModeChange}
           />
           <Input.Search
             className="preview-search"
-            placeholder="Filter values"
+            placeholder={t('preview.filter')}
             allowClear
             prefix={<SearchOutlined />}
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
             onSearch={value => setSearchText(value)}
           />
-          <Tooltip title={showJson ? 'Show table' : 'Show JSON'}><Button aria-label={showJson ? 'Show table' : 'Show JSON'} type={showJson ? 'primary' : 'default'} icon={<CodeOutlined />} onClick={() => setShowJson(!showJson)} /></Tooltip>
-          {onClose && <Tooltip title="Close preview"><Button aria-label="Close preview" icon={<CloseOutlined />} onClick={onClose} /></Tooltip>}
+          <Tooltip title={showJson ? t('preview.showTable') : t('preview.showJson')}><Button aria-label={showJson ? t('preview.showTable') : t('preview.showJson')} type={showJson ? 'primary' : 'default'} icon={<CodeOutlined />} onClick={() => setShowJson(!showJson)} /></Tooltip>
+          {onClose && <Tooltip title={t('common.close')}><Button aria-label={t('common.close')} icon={<CloseOutlined />} onClick={onClose} /></Tooltip>}
         </div>
       </Header>
       <div className="preview-context-bar">
-        <span><i className="preview-raw-dot" />Source cells</span>
-        <span><i className="preview-parsed-dot" />Parsed output</span>
-        {searchText && <span className="preview-filter-state">Filtering: {searchText}</span>}
+        <span><i className="preview-raw-dot" />{t('preview.sourceCells')}</span>
+        <span><i className="preview-parsed-dot" />{t('preview.parsedOutput')}</span>
+        {searchText && <span className="preview-filter-state">{t('preview.filtering', { value: searchText })}</span>}
       </div>
       <Content className="preview-content">
         {previewData.rawRows.length > 0 && previewData.parsedRows.length === 0 && (
-          <Alert type="info" message="Parsed data not available — showing raw content only" banner />
+          <Alert type="info" message={t('preview.rawOnly')} banner />
         )}
         {showJson ? (
           <div className="preview-json">
-            <div className="preview-json-heading"><FileTextOutlined /> Parsed output JSON</div>
+            <div className="preview-json-heading"><FileTextOutlined /> {t('preview.outputJson')}</div>
             <JsonTreeView value={previewData.parsedRows} collapsed={1} />
           </div>
         ) : (
-          <PreviewTable
-            previewData={previewData}
-            visibleModes={visibleModes}
-            searchText={searchText}
-          />
+          <>
+            <div className="preview-result-summary">
+              <strong>{previewData.label}{rangeText ? ` · ${rangeText}` : ''}</strong>
+              <span>{previewData.rawRows.length} {t('common.rows')} · {previewData.columns.length} {t('common.cols')}</span>
+            </div>
+            <PreviewTable
+              previewData={previewData}
+              visibleModes={visibleModes}
+              searchText={searchText}
+            />
+          </>
         )}
       </Content>
     </Layout>

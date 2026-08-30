@@ -1,6 +1,6 @@
 import { Suspense, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
-import { Badge, Button, Drawer, Dropdown, Layout, Modal, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ReloadOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
+import { BorderOutlined, CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { PythonProjectDialog } from './components/PythonProjectDialog'
 import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
@@ -43,8 +43,10 @@ import {
 import { decodeProjectDocument, inspectProjectWorkbookSources, projectRecoveryContent, saveProjectDocument } from './services/projectLifecycle'
 import { executeProject, type ProjectExecutionResult } from './services/projectExecution'
 import { orderDiagnostics, type DiagnosticFocusTarget } from './services/diagnostics'
+import { useI18n } from './i18n'
 
 export function WorkspaceApplication() {
+  const { locale, setLocale, t } = useI18n()
   const e2eMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')
   const { univerAPI, sheetNames } = useUniver()
   const spreadsheet = useMemo(() => createUniverSpreadsheetCapability(univerAPI, sheetNames), [sheetNames, univerAPI])
@@ -71,6 +73,7 @@ export function WorkspaceApplication() {
   const [reconcilingPreviewRange, setReconcilingPreviewRange] = useState<CellRange | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [previewExecution, setPreviewExecution] = useState<Extract<ProjectExecutionResult, { status: 'complete' }> | null>(null)
+  const [runningExtraction, setRunningExtraction] = useState(false)
   const [workbookRuntime, setWorkbookRuntime] = useState<WorkbookRuntimeState>(() => createWorkbookRuntimeState())
   const workbookRuntimeRef = useRef(workbookRuntime)
   workbookRuntimeRef.current = workbookRuntime
@@ -85,6 +88,7 @@ export function WorkspaceApplication() {
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false)
   const [pythonProjectOpen, setPythonProjectOpen] = useState(false)
   const [pythonToolbarContainer, setPythonToolbarContainer] = useState<HTMLDivElement | null>(null)
+  const [pythonTabsContainer, setPythonTabsContainer] = useState<HTMLDivElement | null>(null)
   const [pendingProjectRemoval, setPendingProjectRemoval] = useState<string | null>(null)
   const [hasUnsavedChanges, setDirtyState] = useState(false)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
@@ -93,6 +97,7 @@ export function WorkspaceApplication() {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
   const [pendingDiagnosticFocus, setPendingDiagnosticFocus] = useState<DiagnosticFocusTarget | null>(null)
+  const [pendingNavigatorRangeFocus, setPendingNavigatorRangeFocus] = useState<{ workbookId: string; sheetName: string | null; range: CellRange } | null>(null)
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const historyRef = useRef(new WorkspaceStateCoordinator())
 
@@ -224,7 +229,7 @@ export function WorkspaceApplication() {
       ))
       if (availability.unavailableIds.length) {
         setProjectSettingsOpen(true)
-        message.warning(`${availability.unavailableIds.length} workbook source${availability.unavailableIds.length === 1 ? '' : 's'} could not be opened. Reassign or remove them.`)
+        message.warning(t('project.unavailableWorkbooks', { count: availability.unavailableIds.length, suffix: availability.unavailableIds.length === 1 ? '' : 's' }))
       }
     })()
   }, [updateWorkbookRuntime])
@@ -262,7 +267,7 @@ export function WorkspaceApplication() {
 
   const attachWorkbook = useCallback(async () => {
     if (projectRef.current.workbooks.length === 0) {
-      message.info('Add workbook sources in Project settings before opening them.')
+      message.info(t('project.addSourcesFirst'))
       setProjectSettingsOpen(true)
       return
     }
@@ -274,7 +279,7 @@ export function WorkspaceApplication() {
       ?? projectRef.current.workbooks.find(workbook => workbook.name === name)
       ?? projectRef.current.workbooks.find(workbook => !workbookRuntimeRef.current.paths[workbook.id])
     if (!source) {
-      message.error(`"${name}" is not a workbook source in this project. Add it in Project settings.`)
+      message.error(t('project.notWorkbookSource', { name }))
       return
     }
     updateWorkbookRuntime(current => requestWorkbookLoad(current, source.id, path, source.activeSheetName))
@@ -288,7 +293,7 @@ export function WorkspaceApplication() {
     const path = result.value
     const name = path.split(/[/\\]/).pop() ?? 'workbook.xlsx'
     if (projectRef.current.workbooks.some(workbook => workbook.name === name)) {
-      message.warning(`"${name}" is already configured in this project.`)
+      message.warning(t('project.alreadyConfigured', { name }))
       return
     }
     const workbook = createProjectWorkbook(name, undefined, path)
@@ -334,11 +339,11 @@ export function WorkspaceApplication() {
     setHasUnsavedChanges(true)
   }, [detachWorkbook])
 
-  const handleFileLoaded = useCallback((workbookId: string, fileName: string, filePath: string, loadedSheetNames: string[], loadedActiveSheetName: string | null) => {
+  const handleFileLoaded = useCallback((workbookId: string, fileName: string, filePath: string, loadedSheetNames: string[], sheetTabColors: Record<string, string>, loadedActiveSheetName: string | null) => {
     const currentProject = projectRef.current
     const workbook = currentProject.workbooks.find(item => item.id === workbookId)
     if (!workbook) {
-      message.error(`"${fileName}" is not configured as a project workbook.`)
+      message.error(t('project.notConfigured', { name: fileName }))
       return
     }
     updateWorkbookRuntime(current => completeWorkbookLoad(current, workbook.id, filePath))
@@ -347,6 +352,7 @@ export function WorkspaceApplication() {
       fileName,
       filePath,
       sheetNames: loadedSheetNames,
+      sheetTabColors,
       activeSheetName: loadedActiveSheetName,
     }, builtInFeatureRegistry))
     setParseResult(null)
@@ -356,7 +362,7 @@ export function WorkspaceApplication() {
     const path = workbookRuntimeRef.current.paths[workbookId]
     const workbook = projectRef.current.workbooks.find(item => item.id === workbookId)
     if (!path || !workbook) {
-      message.warning(`Open ${workbook?.name ?? 'this workbook'} to attach it to the project.`)
+      message.warning(t('project.openToAttach', { name: workbook?.name ?? t('project.thisWorkbook') }))
       return
     }
     if (!shouldRequestWorkbookLoad(workbookRuntimeRef.current, projectRef.current.activeWorkbookId, workbookId)) {
@@ -427,6 +433,8 @@ export function WorkspaceApplication() {
     const controller = new AbortController()
     executionControllerRef.current = controller
     const generation = ++executionGenerationRef.current
+    setRunningExtraction(true)
+    try {
     const execution = await executeProject(
       projectRef.current,
       workbookRuntimeRef.current.paths,
@@ -455,6 +463,9 @@ export function WorkspaceApplication() {
     setParseResult(result)
     if (showPreview) setPreviewExecution(execution)
     return { project: execution.project, result }
+    } finally {
+      setRunningExtraction(false)
+    }
   }, [rememberWorkspace])
 
   const handleParse = useCallback(() => { void runProjectExtraction(true) }, [runProjectExtraction])
@@ -475,11 +486,11 @@ export function WorkspaceApplication() {
         historyRef.current.markSaved()
         void getBridge().clearRecovery()
       } else if (result.status === 'error') {
-        message.error(result.message || 'Unable to save the project. Your workspace recovery remains available.')
+        message.error(result.message || t('project.saveFailedRecovery'))
         console.error('Save failed:', result.message)
       }
     } catch (err) {
-      message.error(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
+      message.error(t('project.saveFailed', { message: err instanceof Error ? err.message : String(err) }))
       console.error('Save failed:', err)
     }
   }, [parseResult, projectFilePath, spreadsheet])
@@ -593,6 +604,25 @@ export function WorkspaceApplication() {
   const parseDiagnostics = useMemo(() => orderDiagnostics(parseResult?.diagnostics ?? []), [parseResult?.diagnostics])
   const diagnosticCount = configurationDiagnostics.length + parseDiagnostics.length
 
+  useEffect(() => {
+    if (diagnosticCount === 0) setDiagnosticsOpen(false)
+  }, [diagnosticCount])
+
+  const handleNavigatorRangeFocus = useCallback((workbookId: string | null, sheetName: string | null, range: CellRange | null) => {
+    if (!workbookId || !range) return
+    if (workbookId === loadedWorkbookId) {
+      spreadsheet.focusRange(sheetName, range)
+      return
+    }
+    setPendingNavigatorRangeFocus({ workbookId, sheetName, range })
+  }, [loadedWorkbookId, spreadsheet])
+
+  useEffect(() => {
+    if (!pendingNavigatorRangeFocus || pendingNavigatorRangeFocus.workbookId !== loadedWorkbookId) return
+    spreadsheet.focusRange(pendingNavigatorRangeFocus.sheetName, pendingNavigatorRangeFocus.range)
+    setPendingNavigatorRangeFocus(null)
+  }, [loadedWorkbookId, pendingNavigatorRangeFocus, spreadsheet])
+
   const applyDiagnosticFocus = useCallback((target: DiagnosticFocusTarget) => {
     if (target.sheetName) spreadsheet.setActiveSheet(target.sheetName)
     setProject(current => builtInFeatureRegistry.applyDiagnosticFocus(current, target))
@@ -643,6 +673,8 @@ export function WorkspaceApplication() {
     parseResult,
     spreadsheet,
     requestedFeatureId,
+    running: runningExtraction,
+    t,
     transactProject: update => {
       rememberWorkspace()
       setProject(update)
@@ -651,6 +683,7 @@ export function WorkspaceApplication() {
     },
     selectProject: update => setProject(update),
     activateWorkbook: handleSelectWorkbook,
+    focusRange: handleNavigatorRangeFocus,
     run: handleParse,
     setActiveColumn: setActiveColIndex,
     setReconciliationItem: item => {
@@ -666,12 +699,16 @@ export function WorkspaceApplication() {
     takeReselectedRange: handleReconcilingReselectRange,
     setPreviewSheet: setReconcilingPreviewSheet,
   }
-  const featurePanel = gateBPrototypePanel(featurePanelPrototypeSearch) ?? builtInFeaturePanelRegistry.select(featureContext)
+  const prototypePanel = gateBPrototypePanel(featurePanelPrototypeSearch)
+  const featurePanels = prototypePanel
+    ? [prototypePanel]
+    : [builtInFeaturePanelRegistry.select(featureContext)]
   const resultContributions = previewExecution
     ? builtInFeaturePanelRegistry.results({
         project: previewExecution.project,
         result: previewExecution.result,
         previews: previewExecution.previews,
+        t,
       })
     : []
 
@@ -691,10 +728,10 @@ export function WorkspaceApplication() {
     <Layout className="app-shell">
       <Layout.Header className="app-header">
         <div className="app-brand">
-          {!pythonProjectOpen && <Tooltip title={sidebarHidden ? 'Show workspace navigation' : 'Hide workspace navigation'}>
+          {!pythonProjectOpen && <Tooltip title={sidebarHidden ? t('app.showNavigation') : t('app.hideNavigation')}>
             <Button
               className="workspace-sidebar-toggle"
-              aria-label={sidebarHidden ? 'Show workspace navigation' : 'Hide workspace navigation'}
+              aria-label={sidebarHidden ? t('app.showNavigation') : t('app.hideNavigation')}
               size="small"
               type="text"
               icon={sidebarHidden ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -702,14 +739,14 @@ export function WorkspaceApplication() {
             />
           </Tooltip>}
           <span className="app-brand-copy">
-            <strong>{pythonProjectOpen ? 'Project Python' : 'Excel Block Parser'}</strong>
+            <strong>{pythonProjectOpen ? t('app.python') : t('app.name')}</strong>
           </span>
         </div>
-        {!pythonProjectOpen && <Tooltip title="Workspace navigation">
-          <Button className="workspace-mobile-nav" aria-label="Workspace navigation" size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} />
+        {!pythonProjectOpen && <Tooltip title={t('workspace.navigation')}>
+          <Button className="workspace-mobile-nav" aria-label={t('workspace.navigation')} size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} />
         </Tooltip>}
         {!pythonProjectOpen && openWorkbookIds.length > 0 && (
-          <div className="workbook-tabs" role="tablist" aria-label="Project workbooks">
+          <div className="workbook-tabs" role="tablist" aria-label={t('app.projectWorkbooks')}>
             {projectWorkbooks.filter(workbook => openWorkbookIds.includes(workbook.id)).map(workbook => (
               <div key={workbook.id} className={`workbook-tab ${workbook.id === activeWorkbookId ? 'is-active' : ''}`}>
                 <button
@@ -729,16 +766,16 @@ export function WorkspaceApplication() {
         )}
         {!pythonProjectOpen && <Space className="app-actions" size={6}>
           {!pythonProjectOpen && <>
-            <Tooltip title="Undo">
-              <Button aria-keyshortcuts="Control+Z Meta+Z" aria-label="Undo" icon={<UndoOutlined />} onClick={handleUndo} disabled={!historyRef.current.canUndo} />
+            <Tooltip title={t('common.undo')}>
+              <Button aria-keyshortcuts="Control+Z Meta+Z" aria-label={t('common.undo')} icon={<UndoOutlined />} onClick={handleUndo} disabled={!historyRef.current.canUndo} />
             </Tooltip>
-            <Tooltip title="Redo">
-              <Button aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" aria-label="Redo" icon={<RedoOutlined />} onClick={handleRedo} disabled={!historyRef.current.canRedo} />
+            <Tooltip title={t('common.redo')}>
+              <Button aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" aria-label={t('common.redo')} icon={<RedoOutlined />} onClick={handleRedo} disabled={!historyRef.current.canRedo} />
             </Tooltip>
           </>}
           <Space.Compact className="project-command">
             <Button aria-keyshortcuts="Control+O Meta+O" icon={<ImportOutlined />} onClick={handleImportConfig}>
-              Open Project
+              {t('project.open')}
             </Button>
             <Dropdown
               trigger={['click']}
@@ -746,13 +783,13 @@ export function WorkspaceApplication() {
               overlayClassName="project-command-menu"
               menu={{
                 items: [
-                  { key: 'new', icon: <FolderAddOutlined />, label: 'New Project' },
-                  { key: 'save', icon: <SaveOutlined />, label: 'Save Project', extra: <span aria-hidden="true">Ctrl+S</span> },
-                  { key: 'save-as', icon: <SaveOutlined />, label: 'Save Project As...', extra: <span aria-hidden="true">Ctrl+Shift+S</span> },
-                  { key: 'settings', icon: <SettingOutlined />, label: 'Project settings' },
-                  { key: 'project-python', icon: <CodeOutlined />, label: 'Project Python' },
+                  { key: 'new', icon: <FolderAddOutlined />, label: t('project.new') },
+                  { key: 'save', icon: <SaveOutlined />, label: t('project.save'), extra: <span aria-hidden="true">Ctrl+S</span> },
+                  { key: 'save-as', icon: <SaveOutlined />, label: t('project.saveAs'), extra: <span aria-hidden="true">Ctrl+Shift+S</span> },
+                  { key: 'settings', icon: <SettingOutlined />, label: t('project.settings') },
+                  { key: 'project-python', icon: <CodeOutlined />, label: t('project.python') },
                   { type: 'divider' },
-                  { key: 'close', icon: <CloseOutlined />, label: 'Close Project', danger: true, disabled: !projectFilePath && projectWorkbooks.length === 0 && !hasUnsavedChanges },
+                  { key: 'close', icon: <CloseOutlined />, label: t('project.close'), danger: true, disabled: !projectFilePath && projectWorkbooks.length === 0 && !hasUnsavedChanges },
                 ],
                 onClick: ({ key }) => {
                   if (key === 'settings') setProjectSettingsOpen(true)
@@ -763,16 +800,22 @@ export function WorkspaceApplication() {
                 },
               }}
             >
-              <Button aria-label="Project actions" icon={<DownOutlined />} />
+              <Button aria-label={t('project.actions')} icon={<DownOutlined />} />
             </Dropdown>
           </Space.Compact>
-          <Tooltip title="Diagnostics">
+          {diagnosticCount > 0 && <Tooltip title={t('common.diagnostics')}>
             <Badge count={diagnosticCount} size="small" offset={[-2, 3]}>
-              <Button aria-label="Diagnostics" icon={<WarningOutlined />} onClick={() => setDiagnosticsOpen(true)} />
+              <Button aria-label={t('common.diagnostics')} icon={<WarningOutlined />} onClick={() => setDiagnosticsOpen(true)} />
             </Badge>
-          </Tooltip>
+          </Tooltip>}
         </Space>}
+        {pythonProjectOpen && <div ref={setPythonTabsContainer} className="python-header-tabs" aria-label="Python workspace sections" />}
         {pythonProjectOpen && <div ref={setPythonToolbarContainer} className="python-header-actions" aria-label="Python workspace actions" />}
+        <div className="window-controls" aria-label={t('app.windowControls')}>
+          <Tooltip title={t('window.minimize')}><Button aria-label={t('window.minimize')} type="text" icon={<MinusOutlined />} onClick={() => { void getBridge().minimizeWindow() }} /></Tooltip>
+          <Tooltip title={t('window.maximize')}><Button aria-label={t('window.maximize')} type="text" icon={<BorderOutlined />} onClick={() => { void getBridge().toggleWindowMaximize() }} /></Tooltip>
+          <Tooltip title={t('common.close')}><Button className="window-control-close" aria-label={t('common.close')} type="text" icon={<CloseOutlined />} onClick={() => { void getBridge().closeWindow() }} /></Tooltip>
+        </div>
       </Layout.Header>
       {importError && (
         <Alert
@@ -789,7 +832,7 @@ export function WorkspaceApplication() {
             <aside className="workspace-desktop-nav workspace-sidebar" style={{ flexBasis: sidebarWidth, width: sidebarWidth }}>
               {navigator}
             </aside>
-            <div className="workspace-sidebar-resizer" role="separator" aria-label="Resize workspace navigation" aria-orientation="vertical"
+            <div className="workspace-sidebar-resizer" role="separator" aria-label={t('app.resizeNavigation')} aria-orientation="vertical"
               aria-valuemin={210} aria-valuemax={460} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={startSidebarResize}
               onKeyDown={event => {
                 if (event.key === 'ArrowLeft') { event.preventDefault(); adjustSidebarWidth(-12) }
@@ -800,13 +843,13 @@ export function WorkspaceApplication() {
         <div className="workspace-main">
           <Splitter className="workspace-splitter">
             <Splitter.Panel defaultSize="70%" min="45%" max="82%">
-              <section className="workspace-canvas" aria-label="Workbook canvas">
+              <section className="workspace-canvas" aria-label={t('app.workbookCanvas')}>
                 <header className="panel-heading canvas-heading">
-                  <div><strong>Excel Workbook</strong></div>
+                  <div><strong>{t('workbook.title')}</strong></div>
                   <div className="canvas-heading-actions">
                     <span>{currentFileName ?? 'Choose a file to begin'}</span>
-                    <Tooltip title="Refresh workbook from source">
-                      <Button aria-label="Refresh current workbook" size="small" type="text" icon={<ReloadOutlined />}
+                    <Tooltip title={t('workbook.refresh')}>
+                      <Button aria-label={t('app.refreshWorkbook')} size="small" type="text" icon={<ReloadOutlined />}
                         disabled={!activeWorkbookId || !workbookRuntime.paths[activeWorkbookId]} onClick={handleRefreshWorkbook} />
                     </Tooltip>
                   </div>
@@ -822,6 +865,7 @@ export function WorkspaceApplication() {
                   }}
                   loadSignal={loadSignal}
                   requestedWorkbook={requestedWorkbook}
+                  loadedWorkbookId={loadedWorkbookId}
                   openWorkbookIds={openWorkbookIds}
                   onFileLoaded={handleFileLoaded}
                   onLoadedWorkbookChange={workbookId => updateWorkbookRuntime(current => setLoadedWorkbook(current, workbookId))}
@@ -831,22 +875,22 @@ export function WorkspaceApplication() {
                 />
               </section>
             </Splitter.Panel>
-            <Splitter.Panel defaultSize="30%" min="18%">
-              <FeaturePanelHost panel={featurePanel} />
+            <Splitter.Panel defaultSize="30%" min={360}>
+              <FeaturePanelHost panels={featurePanels} />
             </Splitter.Panel>
           </Splitter>
         </div>
       </Layout.Content>
-      <Drawer title="Workspace" open={workspaceNavOpen} onClose={() => setWorkspaceNavOpen(false)} placement="left" width={300} destroyOnClose styles={{ body: { padding: 0 } }}>
+      <Drawer title={t('workspace.title')} open={workspaceNavOpen} onClose={() => setWorkspaceNavOpen(false)} placement="left" width={300} destroyOnClose styles={{ body: { padding: 0 } }}>
         {navigator}
       </Drawer>
-      <DiagnosticsDrawer
+      {diagnosticCount > 0 && <DiagnosticsDrawer
         open={diagnosticsOpen}
         onClose={() => setDiagnosticsOpen(false)}
         parseDiagnostics={parseDiagnostics}
         validationErrors={configurationDiagnostics}
         onFocus={handleFocusDiagnostic}
-      />
+      />}
       <Modal
         className="preview-modal"
         title={null}
@@ -861,10 +905,10 @@ export function WorkspaceApplication() {
         maskClosable={false}
       >
         {previewExecution && (
-          <Tooltip title="Close preview">
+          <Tooltip title={t('preview.close')}>
             <Button
               className="preview-host-close"
-              aria-label="Close preview"
+              aria-label={t('preview.close')}
               icon={<CloseOutlined />}
               onClick={() => setPreviewExecution(null)}
             />
@@ -887,21 +931,21 @@ export function WorkspaceApplication() {
         )}
       </Modal>
       <Modal
-        title="Open another project?"
+        title={t('dialog.openProject.title')}
         open={showImportWarning}
         onCancel={() => { setShowImportWarning(false); setPendingImportContent(null); setPendingImportProjectName(null); setPendingImportProjectPath(null) }}
         onOk={handleConfirmImport}
-        okText="Open Project"
+        okText={t('project.open')}
         okButtonProps={{ danger: true }}
-        cancelText="Cancel"
+        cancelText={t('common.cancel')}
       >
         <p>
-          Opening another project will replace the current project configuration and detach all attached workbooks.
+          {t('dialog.openProject.body')}
         </p>
-        <p>This action cannot be undone.</p>
+        <p>{t('dialog.irreversible')}</p>
       </Modal>
       <Modal
-        title={pendingProjectReset === 'new' ? 'Create a new project?' : 'Close project?'}
+        title={pendingProjectReset === 'new' ? t('dialog.newProject.title') : t('dialog.closeProject.title')}
         open={pendingProjectReset !== null}
         onCancel={() => setPendingProjectReset(null)}
         onOk={() => {
@@ -909,51 +953,72 @@ export function WorkspaceApplication() {
           setPendingProjectReset(null)
           if (action) resetProject(action === 'new')
         }}
-        okText={pendingProjectReset === 'new' ? 'New Project' : 'Close Project'}
+        okText={pendingProjectReset === 'new' ? t('project.new') : t('project.close')}
         okButtonProps={{ danger: pendingProjectReset === 'close' }}
-        cancelText="Cancel"
+        cancelText={t('common.cancel')}
       >
         <p>{pendingProjectReset === 'new'
-          ? 'This replaces the current project with a new empty project and detaches all workbooks.'
-          : 'This closes the current project and detaches all workbooks.'}</p>
-        {hasUnsavedChanges && <p>Unsaved project changes will be discarded.</p>}
+          ? t('dialog.newProject.body') : t('dialog.closeProject.body')}</p>
+        {hasUnsavedChanges && <p>{t('dialog.unsavedDiscarded')}</p>}
       </Modal>
       <Modal
-        title="Project settings"
+        title={t('project.settings')}
         open={projectSettingsOpen}
         onCancel={() => setProjectSettingsOpen(false)}
-        footer={<Button onClick={() => setProjectSettingsOpen(false)}>Done</Button>}
+        footer={<Button onClick={() => setProjectSettingsOpen(false)}>{t('settings.done')}</Button>}
       >
-        <div className="project-workbook-settings">
-          {projectWorkbooks.map(workbook => (
-            <div className="project-workbook-setting" key={workbook.id}>
-              <span><FileExcelOutlined /> {workbook.name}<small>{openWorkbookIds.includes(workbook.id) ? 'Available' : 'Unavailable'}</small></span>
-              <Space size={6}>
-                <Button size="small" onClick={() => void handleReassignProjectWorkbook(workbook.id)}>Reassign</Button>
-                <Button danger size="small" onClick={() => setPendingProjectRemoval(workbook.id)}>Remove</Button>
-              </Space>
+        <div className="project-settings">
+          <section className="project-settings-section">
+            <h3>{t('settings.project')}</h3>
+            <label className="project-settings-field">
+              <span>{t('project.name')}</span>
+              <Input value={project.name} onChange={event => { setProject(current => ({ ...current, name: event.target.value })); setHasUnsavedChanges(true) }} />
+            </label>
+          </section>
+          <section className="project-settings-section">
+            <h3>{t('settings.workbookSources')}</h3>
+            <div className="project-workbook-settings">
+              {projectWorkbooks.map(workbook => (
+                <div className="project-workbook-setting" key={workbook.id}>
+                  <span><FileExcelOutlined /> {workbook.name}<small>{openWorkbookIds.includes(workbook.id) ? t('settings.available') : t('settings.unavailable')}</small></span>
+                  <Space size={6}>
+                    <Button size="small" onClick={() => void handleReassignProjectWorkbook(workbook.id)}>{t('settings.reassign')}</Button>
+                    <Button danger size="small" onClick={() => setPendingProjectRemoval(workbook.id)}>{t('settings.remove')}</Button>
+                  </Space>
+                </div>
+              ))}
+              <Button icon={<FolderOpenOutlined />} onClick={() => void handleAddProjectWorkbook()}>{t('settings.addWorkbook')}</Button>
             </div>
-          ))}
-          <Button icon={<FolderOpenOutlined />} onClick={() => void handleAddProjectWorkbook()}>Add workbook source</Button>
+          </section>
+          <section className="project-settings-section">
+            <h3>{t('settings.interface')}</h3>
+            <label className="project-settings-field">
+              <span>{t('language')}</span>
+              <Select value={locale} onChange={value => setLocale(value)} options={[
+                { value: 'en-US', label: t('language.english') },
+                { value: 'zh-CN', label: t('language.chinese') },
+              ]} />
+            </label>
+          </section>
         </div>
       </Modal>
       <Modal
-        title="Remove project workbook?"
+        title={t('dialog.removeWorkbook.title')}
         open={pendingProjectRemoval !== null}
         onCancel={() => setPendingProjectRemoval(null)}
         onOk={() => { if (pendingProjectRemoval) handleRemoveProjectWorkbook(pendingProjectRemoval) }}
-        okText="Remove source"
+        okText={t('settings.remove')}
         okButtonProps={{ danger: true }}
       >
-        <p>This removes the workbook source and all feature configuration mapped to it.</p>
+        <p>{t('dialog.removeWorkbook.body')}</p>
       </Modal>
       <Modal
-        title="Recover unsaved workspace?"
+        title={t('dialog.recover.title')}
         open={recoveryContent !== null}
         closable={false}
         maskClosable={false}
-        okText="Recover"
-        cancelText="Discard"
+        okText={t('dialog.recover')}
+        cancelText={t('dialog.discard')}
         onOk={() => {
           if (recoveryContent) applyImportContent(recoveryContent)
           setRecoveryContent(null)
@@ -963,20 +1028,20 @@ export function WorkspaceApplication() {
           void getBridge().clearRecovery()
         }}
       >
-        <p>An unsaved project from the previous app session is available.</p>
-        <p>Recover it to continue where you left off, or discard it to start fresh.</p>
+        <p>{t('dialog.recover.body1')}</p>
+        <p>{t('dialog.recover.body2')}</p>
       </Modal>
       <Modal
-        title="Validation errors"
+        title={t('dialog.validation')}
         open={validationErrors !== null}
         onCancel={() => setValidationErrors(null)}
         onOk={() => { setValidationErrors(null); void saveProjectRef.current(pendingSaveAs) }}
-        okText="Save anyway"
-        cancelText="Cancel"
+        okText={t('dialog.saveAnyway')}
+        cancelText={t('common.cancel')}
       >
         <div style={{ maxHeight: 200, overflow: 'auto', fontSize: 13 }}>
           {(validationErrors || []).slice(0, 10).map((e, i) => <div key={i} style={{ marginBottom: 4 }}>{e}</div>)}
-          {(validationErrors || []).length > 10 && <div style={{ color: '#999' }}>...and {(validationErrors || []).length - 10} more</div>}
+          {(validationErrors || []).length > 10 && <div style={{ color: '#999' }}>{t('dialog.moreValidation', { count: (validationErrors || []).length - 10 })}</div>}
         </div>
       </Modal>
       <PythonProjectDialog
@@ -987,6 +1052,7 @@ export function WorkspaceApplication() {
         onSourceChange={handlePythonPackageChange}
         onClose={() => setPythonProjectOpen(false)}
         toolbarContainer={pythonToolbarContainer}
+        tabBarContainer={pythonTabsContainer}
       />
     </Layout>
   )

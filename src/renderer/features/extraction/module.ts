@@ -1,43 +1,19 @@
 import type { ProjectFeatureModule } from '../core/projectFeature'
 import type { ProjectConfig } from '../../types'
-import { blocksForWorkbook, createDefaultBlock } from './model'
+import { blocksForWorkbook } from './model'
 import { validateBlocks } from './validation'
 import { generateColumnMappings, parseProjectWorkbooks, suggestMappingsForWorkbook } from '../../services/extraction'
 import { captureExtractionSnapshots } from '../../services/extractionPersistence'
 import { adaptPreviewData } from '../../services/previewDataAdapter'
 
-function nextBlockNumber(project: ProjectConfig): number {
-  return project.blocks.reduce((max, block) => {
-    const match = block.label.match(/^block_(\d+)$/)
-    return match ? Math.max(max, Number(match[1])) : max
-  }, 0)
-}
-
 export const extractionFeatureModule: ProjectFeatureModule = {
   id: 'builtin.extraction',
   schemaVersion: 1,
-  initialize(project) {
-    if (project.blocks.length) return project
-    const block = createDefaultBlock(0, null)
-    return { ...project, blocks: [block], activeBlockId: block.id }
-  },
+  initialize: project => project,
   activateWorkbook(project, workbookId) {
     return { ...project, activeBlockId: blocksForWorkbook(project, workbookId)[0]?.id ?? '' }
   },
-  workbookLoaded(project, event) {
-    const scoped = blocksForWorkbook(project, event.workbookId)
-    if (scoped.length) return { ...project, activeBlockId: scoped[0].id }
-    const drafts = project.blocks.filter(block => block.workbookId === null)
-    if (drafts.length) {
-      return {
-        ...project,
-        blocks: project.blocks.map(block => block.workbookId === null ? { ...block, workbookId: event.workbookId } : block),
-        activeBlockId: drafts[0].id,
-      }
-    }
-    const block = createDefaultBlock(nextBlockNumber(project), event.workbookId)
-    return { ...project, blocks: [...project.blocks, block], activeBlockId: block.id }
-  },
+  workbookLoaded: project => project,
   removeWorkbook(project, workbookId) {
     const blocks = project.blocks.filter(block => block.workbookId !== workbookId)
     const activeBlockId = blocks.some(block => block.id === project.activeBlockId) ? project.activeBlockId : ''

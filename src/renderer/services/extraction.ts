@@ -39,16 +39,20 @@ export function parseWorkbookRegions(workbook: WorkbookReader, regions: RegionCo
     const values = sheet.getValues(region.range!)
     const strings = values.map(row => row.map(value => value == null ? '' : String(value)))
     const ranges = detectBlocks(region.range!, region.splitRules, (row, col) => strings[row - region.range!.startRow]?.[col - region.range!.startCol] ?? '')
-    const resultBlocks: RegionBlockResult[] = ranges.map((range, index) => ({
-      blockLabel: `block_${index + 1}`,
-      range: {
-        ...range,
-        a1Notation: `${colIndexToLetter(range.startCol)}${range.startRow + 1}:${colIndexToLetter(range.endCol)}${range.endRow + 1}`,
-      },
+    const regionLabel = (region.label || region.id || 'Region').trim() || 'Region'
+    const resultBlocks: RegionBlockResult[] = ranges.map(range => {
+      const a1Notation = `${colIndexToLetter(range.startCol)}${range.startRow + 1}:${colIndexToLetter(range.endCol)}${range.endRow + 1}`
+      return {
+        blockLabel: `${regionLabel} · ${a1Notation}`,
+        range: {
+          ...range,
+          a1Notation,
+        },
       rows: strings
         .slice(range.startRow - region.range!.startRow, range.endRow - region.range!.startRow + 1)
         .map(row => row.slice(range.startCol - region.range!.startCol, range.endCol - region.range!.startCol + 1)),
-    }))
+      }
+    })
     regionResults.push({ regionId: region.id, label: region.label, blocks: resultBlocks })
   }
   return { regionResults, diagnostics }

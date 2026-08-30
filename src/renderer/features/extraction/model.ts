@@ -38,14 +38,11 @@ export function moveBlock(project: ProjectConfig, blockId: string, direction: -1
 
 export function removeBlock(project: ProjectConfig, blockId: string): ProjectConfig {
   const removed = project.blocks.find(block => block.id === blockId)
-  if (!removed?.workbookId) return project
+  if (!removed) return project
   const blocks = project.blocks.filter(block => block.id !== blockId)
-  const scoped = blocks.filter(block => block.workbookId === removed.workbookId)
-  if (scoped.length) return {
+  return {
     ...project,
     blocks,
-    activeBlockId: project.activeBlockId === blockId ? scoped[0].id : project.activeBlockId,
+    activeBlockId: project.activeBlockId === blockId ? '' : project.activeBlockId,
   }
-  const fallback = createDefaultBlock(0, removed.workbookId)
-  return { ...project, blocks: [...blocks, fallback], activeBlockId: fallback.id }
 }

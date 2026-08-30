@@ -1,6 +1,6 @@
 import { useRef } from 'react'
-import { Button, Divider, Input, Tag, Tooltip } from 'antd'
-import { CaretDownOutlined, CaretRightOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined, TagOutlined } from '@ant-design/icons'
+import { Button, Input, Tag, Tooltip } from 'antd'
+import { AimOutlined, CaretDownOutlined, CaretRightOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import type { BlockConfig, CellRange, ReconciliationReport, Tag as TagType } from '../../types'
 import type { SpreadsheetCapability } from '../../services/spreadsheetCapability'
 import { addTag, removeTag } from '../../services/tagUtils'
@@ -12,6 +12,7 @@ import { ReconciliationTabs } from './ReconciliationTabs'
 import { ColumnEditor } from './ColumnEditor'
 import { DownstreamPropertiesEditor } from './DownstreamPropertiesEditor'
 import type { ColumnConfigurationController } from './useColumnConfiguration'
+import { useI18n } from '../../i18n'
 
 export interface BlockInspectorProps {
   block: BlockConfig
@@ -26,7 +27,7 @@ export interface BlockInspectorProps {
   duplicateLabel: boolean
   rowFilterExpanded: boolean
   computedPropertiesExpanded: boolean
-  tagsVisible: boolean
+  infoVisible: boolean
   addingTag: boolean
   newTagInput: string
   spreadsheet: SpreadsheetCapability
@@ -37,7 +38,7 @@ export interface BlockInspectorProps {
   onColumnFocus: (colIndex: number | null) => void
   onToggleRowFilter: () => void
   onToggleComputedProperties: () => void
-  onToggleTags: () => void
+  onToggleInfo: () => void
   onStartAddingTag: () => void
   onNewTagInputChange: (value: string) => void
   onCancelAddingTag: () => void
@@ -46,22 +47,24 @@ export interface BlockInspectorProps {
   onReconcilingChange?: (blockId: string | null) => void
   onReselectRange?: (onRange: (range: CellRange) => void) => void
   onPreviewSheet?: (sheetName: string | null) => void
+  onFocusRange: () => void
   setContainerRef: (element: HTMLDivElement | null) => void
   setInputRef: (element: { focus: () => void; select: () => void } | null) => void
 }
 
 export function BlockInspector(props: BlockInspectorProps) {
+  const { t } = useI18n()
   const {
     block, blockIndex, active, activeColIndex, controlsLocked, otherBlockReconciling, reconciling,
     reconciliationReport, reconciliationHeight, duplicateLabel, rowFilterExpanded, computedPropertiesExpanded,
-    tagsVisible, addingTag, newTagInput, spreadsheet, columnController, onActivate, onChange, onDelete,
-    onColumnFocus, onToggleRowFilter, onToggleComputedProperties, onToggleTags, onStartAddingTag,
+    infoVisible, addingTag, newTagInput, spreadsheet, columnController, onActivate, onChange, onDelete,
+    onColumnFocus, onToggleRowFilter, onToggleComputedProperties, onToggleInfo, onStartAddingTag,
     onNewTagInputChange, onCancelAddingTag, onStartReconciliation, onEndReconciliation,
-    onReconcilingChange, onReselectRange, onPreviewSheet, setContainerRef, setInputRef,
+    onReconcilingChange, onReselectRange, onPreviewSheet, onFocusRange, setContainerRef, setInputRef,
   } = props
 
   const normalContentRef = useRef<HTMLDivElement | null>(null)
-  const effectivelyCollapsed = block.collapsed || otherBlockReconciling
+  const effectivelyCollapsed = otherBlockReconciling
   const headerLabel = block.label?.trim() || `block_${blockIndex + 1}`
 
   const duplicateKeys = new Set<string>()
@@ -88,54 +91,30 @@ export function BlockInspector(props: BlockInspectorProps) {
 
   return (
     <div
-      className={`extractor-card ${active ? 'is-active' : ''}`}
+      className={`extractor-card ${effectivelyCollapsed ? 'is-collapsed' : ''}`}
       ref={setContainerRef}
       onMouseDown={() => { if (!otherBlockReconciling) onActivate() }}
-      style={{
-        marginBottom: 8,
-        border: `1px solid ${active ? '#1677ff' : '#d9d9d9'}`,
-        borderRadius: 6,
-        borderLeft: active ? '3px solid #1677ff' : '3px solid transparent',
-        background: active ? '#f0f5ff' : '#fafafa',
-        transition: 'border-color 0.15s, background 0.15s',
-      }}
     >
-      <div className="extractor-card-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: effectivelyCollapsed ? 'none' : '1px solid #f0f0f0' }}>
-        <span
-          onClick={() => { if (!otherBlockReconciling) onChange({ collapsed: !block.collapsed }) }}
-          style={{ color: otherBlockReconciling ? '#d9d9d9' : '#999', cursor: otherBlockReconciling ? 'default' : 'pointer', fontSize: 12 }}
-        >{effectivelyCollapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}</span>
-        <Input
-          size="small"
-          ref={setInputRef}
-          value={block.label}
-          onChange={event => onChange({ label: event.target.value })}
-          placeholder={headerLabel}
-          style={{ flex: 1, fontSize: 13, fontWeight: 600 }}
-          variant="borderless"
-          disabled={controlsLocked || otherBlockReconciling}
-          status={(block.label && !isValidVariableName(block.label)) || duplicateLabel ? 'error' : undefined}
-        />
-        {block.range && (
-          <Tooltip title={`${block.activeSheet || '(active sheet)'}!${block.range.a1Notation} — click to go`}>
-            <span
-              onClick={event => {
-                event.stopPropagation()
-                if (otherBlockReconciling) return
-                onActivate()
-                if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
-                spreadsheet.scrollTo(block.activeSheet, block.range!.startRow - 3, block.range!.startCol - 1)
-              }}
-              onMouseDown={event => event.stopPropagation()}
-              style={{ fontSize: 12, color: '#1677ff', fontFamily: 'var(--font-code)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
-            >{block.activeSheet ? `${block.activeSheet}!` : ''}{block.range.a1Notation}</span>
-          </Tooltip>
-        )}
-        {!block.selectionLocked && block.range && !otherBlockReconciling && (
-          <Tooltip title="Confirm block"><Button aria-label="Confirm block" size="small" type="text" icon={<CheckOutlined style={{ color: '#52c41a' }} />} onClick={() => onChange({ selectionLocked: true })} onMouseDown={event => event.stopPropagation()} /></Tooltip>
-        )}
-        {block.selectionLocked && (
-          <Tooltip title={reconciling ? 'Discard editing' : 'Edit block'}>
+      <div className="extractor-card-header">
+        <div className="extractor-card-title">
+          <Input
+            size="small"
+            ref={setInputRef}
+            value={block.label}
+            onChange={event => onChange({ label: event.target.value })}
+            placeholder={headerLabel}
+            className="card-title-input"
+            variant="borderless"
+            disabled={controlsLocked || otherBlockReconciling}
+            status={(block.label && !isValidVariableName(block.label)) || duplicateLabel ? 'error' : undefined}
+          />
+        </div>
+        <div className="extractor-card-actions">
+          {!block.selectionLocked && block.range && !otherBlockReconciling && (
+          <Tooltip title={t('block.confirm')}><Button className="card-confirm-button" aria-label={t('block.confirm')} size="small" type="text" icon={<CheckOutlined />} onClick={() => onChange({ selectionLocked: true })} onMouseDown={event => event.stopPropagation()} /></Tooltip>
+          )}
+          {block.selectionLocked && (
+          <Tooltip title={reconciling ? t('common.cancel') : t('block.edit')}>
             <Button
               aria-label={reconciling ? 'Discard block editing' : 'Edit block'}
               size="small" type="text" icon={reconciling ? <CloseOutlined /> : <EditOutlined />}
@@ -158,46 +137,52 @@ export function BlockInspector(props: BlockInspectorProps) {
                 onReconcilingChange?.(block.id)
               }}
               disabled={controlsLocked || !block.range || otherBlockReconciling}
-              style={{ opacity: block.range ? 1 : 0.3, color: reconciling ? '#1677ff' : undefined }}
+              className={reconciling ? 'is-active' : ''}
             />
           </Tooltip>
-        )}
-        <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
-        <Tooltip title={tagsVisible ? 'Hide tags' : 'Show tags'}>
+          )}
+          {block.range && !otherBlockReconciling && <Tooltip title={t('common.focusRange')}><Button aria-label={t('common.focusRange')} size="small" type="text" icon={<AimOutlined />} onClick={event => { event.stopPropagation(); onFocusRange() }} onMouseDown={event => event.stopPropagation()} /></Tooltip>}
+          <Tooltip title={infoVisible ? t('common.hideInfo') : t('common.showInfo')}>
           <Button
-            aria-label={tagsVisible ? 'Hide block tags' : 'Show block tags'} size="small" type="text" icon={<TagOutlined />}
-            onClick={event => { event.stopPropagation(); onToggleTags() }} onMouseDown={event => event.stopPropagation()}
-            style={{ color: tagsVisible ? '#1677ff' : undefined }}
-          >{block.tags?.length ? <span style={{ fontSize: 11, marginLeft: 4 }}>{block.tags.length}</span> : null}</Button>
-        </Tooltip>
-        <Divider type="vertical" style={{ margin: '0 2px', borderColor: '#d9d9d9' }} />
-        <Button aria-label="Delete block" size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => onDelete(headerLabel)} onMouseDown={event => event.stopPropagation()} disabled={controlsLocked} />
+            aria-label={infoVisible ? 'Hide block info' : 'Show block info'} size="small" type="text" icon={<InfoCircleOutlined />}
+            onClick={event => { event.stopPropagation(); onToggleInfo() }} onMouseDown={event => event.stopPropagation()}
+            className={infoVisible ? 'is-active' : ''} />
+          </Tooltip>
+          <Button aria-label={t('block.delete')} size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => onDelete(headerLabel)} onMouseDown={event => event.stopPropagation()} disabled={controlsLocked} />
+        </div>
       </div>
 
-      {!effectivelyCollapsed && tagsVisible && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px 4px 34px', overflow: 'auto' }}>
+      {!effectivelyCollapsed && infoVisible && (
+        <div className="extractor-card-info">
+          <div className="extractor-card-info-row"><span>{t('common.tags')}</span><div className="extractor-card-info-value">
           {(block.tags || []).map((tag, index) => (
-            <span key={index} style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11, color: '#1677ff', whiteSpace: 'nowrap' }}>
-              {index > 0 && <span style={{ color: '#bbb', margin: '0 2px' }}>/</span>}
-              <Tag closable onClose={() => onChange({ tags: removeTag({ ...block, tags: block.tags }, tag.key).tags || [] })} style={{ margin: 0, fontSize: 11 }}>
+            <span key={index} className="card-info-tag">
+              {index > 0 && <span className="card-info-tag-separator">/</span>}
+              <Tag closable onClose={() => onChange({ tags: removeTag({ ...block, tags: block.tags }, tag.key).tags || [] })} className="card-info-tag-value">
                 {tag.type === 'kv' ? `${tag.key}:${tag.value || ''}` : tag.key}
               </Tag>
             </span>
           ))}
-          {!!block.tags?.length && <span style={{ color: '#bbb', margin: '0 2px' }}>/</span>}
-          <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={onStartAddingTag} style={{ fontSize: 11, height: 22, padding: '0 6px', flexShrink: 0 }}>Tag</Button>
+          {!!block.tags?.length && <span className="card-info-tag-separator">/</span>}
+          <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={onStartAddingTag} className="card-add-tag">{t('block.addTag')}</Button>
           {addingTag && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-              <Input size="small" value={newTagInput} onChange={event => onNewTagInputChange(event.target.value)} placeholder="tag or key:value" onPressEnter={submitTag} style={{ width: 130, fontSize: 12 }} />
+            <div className="card-add-tag-editor">
+              <Input size="small" value={newTagInput} onChange={event => onNewTagInputChange(event.target.value)} placeholder={t('tag.placeholder')} onPressEnter={submitTag} className="card-add-tag-input" />
               <Button size="small" type="link" onClick={submitTag}>✓</Button>
               <Button size="small" type="text" onClick={onCancelAddingTag}>✗</Button>
             </div>
           )}
+          {!block.tags?.length && !addingTag && <span className="extractor-card-info-empty">{t('common.noTags')}</span>}
+          </div></div>
+          <div className="extractor-card-info-row"><span>{t('common.range')}</span><div className="extractor-card-info-value">
+            {block.range ? <span className="extractor-card-range">{block.activeSheet ? `${block.activeSheet}!` : ''}{block.range.a1Notation}</span> : <span className="extractor-card-info-empty">{t('common.noRange')}</span>}
+          </div></div>
+          <div className="extractor-card-info-row"><span>{t('common.size')}</span><div className="extractor-card-info-value">{block.range ? <>{block.range.endRow - block.range.startRow + 1} {t('common.rows')} × {block.range.endCol - block.range.startCol + 1} {t('common.cols')}{!!block.headerRows.length && <> <span className="extractor-card-info-arrow">→</span> {Math.max(0, block.range.endRow - block.range.startRow + 1 - block.headerRows.length)} {t('block.dataRows')} × {block.range.endCol - block.range.startCol + 1} {t('common.cols')}</>}</> : '—'}</div></div>
         </div>
       )}
 
-      {block.label && !isValidVariableName(block.label) && <div style={{ padding: '0 10px 6px', fontSize: 10, color: '#ff4d4f' }}>Invalid variable name</div>}
-      {block.label?.trim() && duplicateLabel && <div style={{ padding: '0 10px 6px', fontSize: 10, color: '#ff4d4f' }}>Duplicate block name</div>}
+      {block.label && !isValidVariableName(block.label) && <div className="card-validation-error">{t('block.invalidName')}</div>}
+      {block.label?.trim() && duplicateLabel && <div className="card-validation-error">{t('block.duplicateName')}</div>}
 
       {reconciling && reconciliationReport ? (
         <div style={{ overflow: 'auto', height: reconciliationHeight || 'auto' }}>
@@ -209,13 +194,9 @@ export function BlockInspector(props: BlockInspectorProps) {
           />
         </div>
       ) : !effectivelyCollapsed && (
-        <div className="extractor-card-body" ref={normalContentRef} style={{ padding: '8px 12px', opacity: controlsLocked ? 0.5 : 1 }}>
-          {!block.range ? <div style={{ color: '#999', fontSize: 13, padding: '8px 0' }}>Click and drag in the spreadsheet to select a data range.</div> : (
+        <div className={`extractor-card-body ${controlsLocked ? 'is-locked' : ''}`} ref={normalContentRef}>
+          {!block.range ? <div className="card-range-empty">{t('block.selectRange')}</div> : (
             <>
-              <div style={{ background: '#f5f5f5', padding: '6px 10px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-code)', marginBottom: 8 }}>
-                {block.range.endRow - block.range.startRow + 1} rows × {block.range.endCol - block.range.startCol + 1} cols
-                {!!block.headerRows.length && <span style={{ fontSize: 12, color: '#999' }}> → {Math.max(0, block.range.endRow - block.range.startRow + 1 - block.headerRows.length)} data rows</span>}
-              </div>
               <HeaderRowsEditor block={block} onChange={headerRows => onChange({ headerRows })} />
               <ColumnEditor
                 block={block} active={active} activeColIndex={activeColIndex} controlsLocked={controlsLocked}
@@ -225,7 +206,7 @@ export function BlockInspector(props: BlockInspectorProps) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <span style={{ fontSize: 11, color: '#999', cursor: 'pointer', userSelect: 'none' }} onClick={onToggleRowFilter}>
                     {rowFilterExpanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
-                    {' '}Row Filter {countRowFilterRules(block.rowFilter?.condition) ? `(${countRowFilterRules(block.rowFilter?.condition)})` : ''}
+                    {' '}{t('filter.title')} {countRowFilterRules(block.rowFilter?.condition) ? `(${countRowFilterRules(block.rowFilter?.condition)})` : ''}
                   </span>
                 </div>
                 {rowFilterExpanded && <RowFilterEditor config={block.rowFilter} columnKeys={block.columns.filter(column => !column.skip).map(column => column.key || column.suggestedKey)} onChange={rowFilter => onChange({ rowFilter })} />}

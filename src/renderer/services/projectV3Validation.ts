@@ -83,9 +83,10 @@ function validateRowFilterCondition(value: unknown, depth = 0): boolean {
 }
 
 function validateRowFilter(value: unknown): boolean {
-  if (!isRecord(value) || unknownKey(value, new Set(['removeEmptyRows', 'emptyCellConditions', 'condition']))) return false
+  if (!isRecord(value) || unknownKey(value, new Set(['removeEmptyRows', 'emptyCellConditions', 'matchMode', 'condition']))) return false
   if (typeof value.removeEmptyRows !== 'boolean' || !isRecord(value.emptyCellConditions)) return false
   if (unknownKey(value.emptyCellConditions, new Set(['fullyStruck'])) || typeof value.emptyCellConditions.fullyStruck !== 'boolean') return false
+  if (value.matchMode !== undefined && value.matchMode !== 'include' && value.matchMode !== 'exclude') return false
   return value.condition === null || validateRowFilterCondition(value.condition)
 }
 
@@ -151,11 +152,12 @@ function validateRegion(value: unknown, index: number): string | null {
 
 function validateWorkbook(value: unknown, index: number): string | null {
   if (!isRecord(value)) return `Invalid project workbook at index ${index}.`
-  const extra = unknownKey(value, new Set(['id', 'name', 'sourcePath', 'sheetNames', 'activeSheetName']))
+  const extra = unknownKey(value, new Set(['id', 'name', 'sourcePath', 'sheetNames', 'sheetTabColors', 'activeSheetName']))
   if (extra) return `Invalid project workbook at index ${index}: unknown field "${extra}".`
   if (typeof value.id !== 'string' || !value.id || typeof value.name !== 'string' || !value.name) return `Invalid project workbook at index ${index}.`
   if (value.sourcePath !== undefined && (typeof value.sourcePath !== 'string' || !value.sourcePath)) return `Invalid project workbook at index ${index}: sourcePath is invalid.`
   if (value.sheetNames !== undefined && (!Array.isArray(value.sheetNames) || value.sheetNames.some(name => typeof name !== 'string') || new Set(value.sheetNames).size !== value.sheetNames.length)) return `Invalid project workbook at index ${index}: sheetNames are invalid.`
+  if (value.sheetTabColors !== undefined && (!isRecord(value.sheetTabColors) || Object.entries(value.sheetTabColors).some(([sheet, color]) => typeof sheet !== 'string' || typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)))) return `Invalid project workbook at index ${index}: sheetTabColors are invalid.`
   if (value.activeSheetName !== undefined && value.activeSheetName !== null && typeof value.activeSheetName !== 'string') return `Invalid project workbook at index ${index}: activeSheetName is invalid.`
   return null
 }

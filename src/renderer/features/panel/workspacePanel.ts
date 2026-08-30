@@ -10,9 +10,12 @@ export interface WorkspaceFeaturePanelContext {
   parseResult: ParseResult | null
   spreadsheet: SpreadsheetCapability
   requestedFeatureId: string | null
+  running?: boolean
+  t?: (key: string, values?: Record<string, string | number>) => string
   transactProject(update: (project: ProjectConfig) => ProjectConfig): void
   selectProject(update: (project: ProjectConfig) => ProjectConfig): void
   activateWorkbook(workbookId: string, sheetName?: string): void
+  focusRange(workbookId: string | null, sheetName: string | null, range: CellRange | null): void
   run(): void
   setActiveColumn(colIndex: number | null): void
   setReconciliationItem(item: WorkspaceReconciliationItem | null): void
@@ -30,6 +33,7 @@ export interface WorkspaceFeatureResultContext {
   project: ProjectConfig
   result: ParseResult
   previews: ReadonlyMap<string, PreviewData>
+  t?: (key: string, values?: Record<string, string | number>) => string
 }
 
 export interface WorkspaceFeatureResultContribution {

@@ -6,6 +6,7 @@ import { remapColumns } from '../../services/columnMapper'
 import { applyRowAdjustFix } from '../../services/reconciliation'
 import type { SpreadsheetCapability } from '../../services/spreadsheetCapability'
 import { isValidVariableName } from '../../features/extraction/validation'
+import { useI18n } from '../../i18n'
 
 export interface ReconciliationTabsProps {
   report: ReconciliationReport
@@ -45,6 +46,7 @@ export function ReconciliationTabs({
   onPreviewSheet,
   onColumnFocus,
 }: ReconciliationTabsProps) {
+  const { t } = useI18n()
   const [step, setStep] = useState(0)
   const [columns, setColumns] = useState(block.columns)
   const [selectedSheet, setSelectedSheet] = useState(block.activeSheet || '')
@@ -65,7 +67,7 @@ export function ReconciliationTabs({
   }, [block.columns, block.range, selectedRange])
 
   const existingKeys = block.columns.filter(column => !column.skip).map(column => ({ value: column.key }))
-  const steps = ['Sheet', 'Range', 'Columns']
+  const steps = [t('reconcile.sheet'), t('reconcile.range'), t('reconcile.columns')]
   const circled = ['①', '②', '③']
 
   const cancel = () => {
@@ -106,13 +108,13 @@ export function ReconciliationTabs({
         {step === 0 && (
           <div style={{ padding: '8px 12px' }}>
             <Typography.Text style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
-              Choose which sheet this block should reference.
+              {t('reconcile.chooseSheet')}
             </Typography.Text>
             <Select
               size="small"
               style={{ width: '100%' }}
               value={selectedSheet || undefined}
-              placeholder="Auto (active sheet)"
+              placeholder={t('reconcile.autoSheet')}
               onChange={sheetName => {
                 setSelectedSheet(sheetName || '')
                 onPreviewSheet?.(sheetName || null)
@@ -128,12 +130,12 @@ export function ReconciliationTabs({
         {step === 1 && (
           <div style={{ padding: '8px 12px' }}>
             <Typography.Text style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
-              Current range: <span style={{ fontFamily: 'var(--font-code)', color: '#1677ff' }}>
+              {t('reconcile.currentRange')} <span style={{ fontFamily: 'var(--font-code)', color: '#1677ff' }}>
                 {selectedRange?.a1Notation || block.range?.a1Notation}
               </span>
             </Typography.Text>
             <Typography.Text style={{ fontSize: 12, color: '#999', display: 'block', marginBottom: 8 }}>
-              {report.issues.filter(issue => ['row-shifted', 'content-changed'].includes(issue.type)).map(issue => issue.message).join('; ') || 'No range issues detected.'}
+              {report.issues.filter(issue => ['row-shifted', 'content-changed'].includes(issue.type)).map(issue => issue.message).join('; ') || t('reconcile.noRangeIssues')}
             </Typography.Text>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(() => {
@@ -145,11 +147,11 @@ export function ReconciliationTabs({
                     const adjusted = applyRowAdjustFix(range, fix)
                     if (adjusted) setSelectedRange(adjusted)
                   }}>
-                    Apply suggested row shift
+                    {t('reconcile.applyShift')}
                   </Button>
                 )
               })()}
-              <Button size="small" onClick={() => onReselectRange?.(setSelectedRange)}>Reselect Range</Button>
+              <Button size="small" onClick={() => onReselectRange?.(setSelectedRange)}>{t('reconcile.reselect')}</Button>
             </div>
           </div>
         )}
@@ -157,7 +159,7 @@ export function ReconciliationTabs({
         {step === 2 && (
           <div style={{ padding: '8px 12px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 36px', gap: '4px 6px', alignItems: 'center', padding: '2px 0', fontSize: 11, color: '#999' }}>
-              <span>Col</span><span>Key</span><span>Type</span><span>Skip</span>
+              <span>{t('column.column')}</span><span>{t('column.key')}</span><span>{t('column.type')}</span><span>{t('column.skip')}</span>
             </div>
             {columns.map(column => (
               <div
@@ -184,8 +186,8 @@ export function ReconciliationTabs({
                   style={{ fontSize: 13 }}
                   status={duplicateKeys.has(column.key || column.suggestedKey) || (column.key && !isValidVariableName(column.key)) ? 'error' : undefined}
                 />
-                {duplicateKeys.has(column.key || column.suggestedKey) && <div style={{ gridColumn: '2', fontSize: 10, color: '#ff4d4f' }}>Duplicate key</div>}
-                {column.key && !isValidVariableName(column.key) && <div style={{ gridColumn: '2', fontSize: 10, color: '#ff4d4f' }}>Invalid variable name</div>}
+                {duplicateKeys.has(column.key || column.suggestedKey) && <div style={{ gridColumn: '2', fontSize: 10, color: '#ff4d4f' }}>{t('column.duplicate')}</div>}
+                {column.key && !isValidVariableName(column.key) && <div style={{ gridColumn: '2', fontSize: 10, color: '#ff4d4f' }}>{t('block.invalidName')}</div>}
                 <Select
                   size="small"
                   value={column.type}
@@ -202,15 +204,15 @@ export function ReconciliationTabs({
       </div>
 
       <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderTop: '1px solid #f0f0f0' }}>
-        {step > 0 && <Button size="small" onClick={() => setStep(step - 1)}>Prev: {steps[step - 1]}</Button>}
-        {step < 2 && <Button type="primary" size="small" onClick={() => setStep(step + 1)}>Next: {steps[step + 1]}</Button>}
+        {step > 0 && <Button size="small" onClick={() => setStep(step - 1)}>{t('reconcile.previous')} {steps[step - 1]}</Button>}
+        {step < 2 && <Button type="primary" size="small" onClick={() => setStep(step + 1)}>{t('reconcile.next')} {steps[step + 1]}</Button>}
         <Button type="primary" size="small" onClick={() => onApply({
           ...block,
           columns,
           activeSheet: selectedSheet || block.activeSheet,
           range: selectedRange || block.range,
-        })}>Apply & Close</Button>
-        <Button size="small" onClick={cancel}>Cancel</Button>
+        })}>{t('reconcile.applyClose')}</Button>
+        <Button size="small" onClick={cancel}>{t('common.cancel')}</Button>
       </div>
     </div>
   )

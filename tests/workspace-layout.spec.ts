@@ -38,6 +38,17 @@ test.describe('M3 workspace layout', () => {
     await expect(page.getByRole('dialog').getByRole('navigation', { name: 'Workspace navigator' })).toBeVisible()
   })
 
+  test('keeps the active configuration section reachable at compact widths', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 })
+    await page.goto('/')
+
+    const inspector = page.getByRole('complementary', { name: 'Workspace configuration' })
+    await expect(inspector.locator('[data-feature-id="builtin.extraction"]')).toBeVisible()
+    await expect(inspector.getByRole('button', { name: 'Add Block' })).toBeVisible()
+    await inspector.getByRole('button', { name: 'Add Region' }).click()
+    await expect(inspector.locator('[data-feature-id="builtin.regions"]')).toBeVisible()
+  })
+
   test('allows desktop navigation to be hidden and restored', async ({ page }) => {
     await page.goto('/')
 
@@ -72,6 +83,7 @@ test.describe('M3 workspace layout', () => {
     const workbooks = navigator.getByRole('button', { name: 'Workbooks' })
     const extractors = navigator.getByRole('button', { name: 'Extractors' })
     const regions = navigator.getByRole('button', { name: 'Regions' })
+    await expect(navigator.getByRole('button', { name: 'Add Region' })).toHaveCount(0)
     await expect(workbooks).toHaveAttribute('aria-expanded', 'true')
     await expect(extractors).toHaveAttribute('aria-expanded', 'true')
     await expect(regions).toHaveAttribute('aria-expanded', 'true')

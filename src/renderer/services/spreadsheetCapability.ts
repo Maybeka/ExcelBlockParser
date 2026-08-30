@@ -7,6 +7,7 @@ export interface SpreadsheetCapability {
   setActiveSheet(sheetName: string): boolean
   readRange(sheetName: string | null, range: CellRange): unknown[][] | null
   scrollTo(sheetName: string | null, row: number, column: number): boolean
+  focusRange(sheetName: string | null, range: CellRange): boolean
   workbookReader(): WorkbookReader | null
 }
 
@@ -17,6 +18,7 @@ export function createUnavailableSpreadsheetCapability(sheetNames: string[] = []
     setActiveSheet: () => false,
     readRange: () => null,
     scrollTo: () => false,
+    focusRange: () => false,
     workbookReader: () => null,
   }
 }
@@ -52,6 +54,11 @@ export function createUniverSpreadsheetCapability(api: any, fallbackSheetNames: 
       if (!target) return false
       target.scrollToCell(Math.max(0, row), Math.max(0, column))
       return true
+    },
+    focusRange: (sheetName, range) => {
+      if (sheetName && !workbook()?.getSheetByName?.(sheetName)) return false
+      if (sheetName) workbook()?.setActiveSheet(sheetName)
+      return sheet(sheetName)?.scrollToCell(Math.max(0, range.startRow - 3), Math.max(0, range.startCol - 1)) !== undefined
     },
     workbookReader: () => {
       const activeWorkbook = workbook()

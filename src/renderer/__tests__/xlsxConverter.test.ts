@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs'
-import { WrapStrategy } from '@univerjs/core'
+import { HorizontalAlign, WrapStrategy } from '@univerjs/core'
 import { describe, expect, it } from 'vitest'
 import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
 
@@ -9,6 +9,7 @@ describe('XLSX workbook conversion', () => {
     const sheet = workbook.addWorksheet('Data')
     const cell = sheet.getCell('A1')
     cell.value = 'first line\nsecond line'
+    cell.alignment = { horizontal: 'centerContinuous', wrapText: true }
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
@@ -23,7 +24,13 @@ describe('XLSX workbook conversion', () => {
     expect(style.bg?.rgb).toMatch(/^#[0-9a-f]{6}$/i)
     expect(style.bg?.rgb).not.toBe('#FFFFFF')
     expect(style.tb).toBe(WrapStrategy.WRAP)
-    expect(data.v).toBe('first line\r\nsecond line')
-    expect((data.p as { body: { dataStream: string } }).body.dataStream).toBe('first line\r\nsecond line\r\n')
+    expect(style.ht).toBe(HorizontalAlign.CENTER)
+    expect(data.v).toBe('first line\rsecond line')
+    expect((data.p as { body: { dataStream: string; paragraphs: Array<{ startIndex: number }>; sectionBreaks: Array<{ startIndex: number }> } }).body).toEqual({
+      dataStream: 'first line\rsecond line\r\n',
+      paragraphs: [{ startIndex: 10 }, { startIndex: 22 }],
+      sectionBreaks: [{ startIndex: 23 }],
+      textRuns: expect.any(Array),
+    })
   })
 })

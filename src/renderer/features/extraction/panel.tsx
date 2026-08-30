@@ -1,7 +1,9 @@
 import { lazy } from 'react'
 import { ConfigPanel } from '../../components/ConfigPanel'
 import type { WorkspaceFeaturePanelProvider } from '../panel/workspacePanel'
-import { blocksForWorkbook, createDefaultBlock, moveBlock, removeBlock } from './model'
+import { createDefaultBlock, moveBlock, removeBlock } from './model'
+import { ExtractionHeaderActions } from './ExtractionHeaderActions'
+import { translate } from '../../i18n'
 
 const ExtractionResultView = lazy(async () => ({
   default: (await import('./ExtractionResultView')).ExtractionResultView,
@@ -12,25 +14,30 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
   isActive: context => context.project.activeRegionId === null,
   contribute(context) {
     const { project } = context
-    const blocks = blocksForWorkbook(project, project.activeWorkbookId)
+    const t = context.t ?? ((key: string, values?: Record<string, string | number>) => translate('en-US', key, values))
+    const blocks = project.blocks
+    const activeBlocks = blocks.filter(block => block.id === project.activeBlockId)
     return {
       id: this.featureId,
-      title: 'Extraction setup',
-      summary: `${blocks.filter(block => block.range).length} active`,
-      ariaLabel: 'Extraction inspector',
+      title: t('extract.title'),
+      summary: t('extract.blocksRegions', { blocks: blocks.length, regions: project.regions.length }),
+      ariaLabel: t('extract.title'),
+      headerActions: <ExtractionHeaderActions context={context} />,
       render: () => (
         <ConfigPanel
           spreadsheet={context.spreadsheet}
-          blocks={blocks}
+          blocks={activeBlocks}
           activeBlockId={project.activeBlockId}
           activeColIndex={context.activeColIndex}
           focusMode={project.focusMode}
           parseResult={context.parseResult}
-          onActivateBlock={blockId => context.selectProject(current => {
-            const block = current.blocks.find(item => item.id === blockId)
-            if (block?.workbookId === context.loadedWorkbookId && block.activeSheet) context.spreadsheet.setActiveSheet(block.activeSheet)
-            return { ...current, activeBlockId: blockId, activeRegionId: null }
-          })}
+          onActivateBlock={blockId => {
+            const block = context.project.blocks.find(item => item.id === blockId)
+            if (!block) return
+            if (block.workbookId && block.workbookId !== context.loadedWorkbookId) context.activateWorkbook(block.workbookId, block.activeSheet ?? undefined)
+            else if (block.activeSheet) context.spreadsheet.setActiveSheet(block.activeSheet)
+            context.selectProject(current => ({ ...current, activeBlockId: blockId, activeRegionId: null }))
+          }}
           onBlockChange={(blockId, partial) => context.transactProject(current => ({
             ...current,
             blocks: current.blocks.map(block => block.id === blockId ? { ...block, ...partial } : block),
@@ -46,13 +53,17 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
           onDeleteBlock={blockId => context.transactProject(current => removeBlock(current, blockId))}
           onFocusModeChange={focusMode => context.transactProject(current => ({ ...current, focusMode }))}
           onColumnFocus={context.setActiveColumn}
-          onParse={context.run}
           onReconcilingChange={blockId => {
             const block = context.project.blocks.find(item => item.id === blockId)
             context.setReconciliationItem(block ? { id: block.id, range: block.range, activeSheet: block.activeSheet } : null)
           }}
           onReselectRange={context.takeReselectedRange}
           onPreviewSheet={context.setPreviewSheet}
+          onFocusRange={blockId => {
+            const block = context.project.blocks.find(item => item.id === blockId)
+            if (block) context.focusRange(block.workbookId, block.activeSheet, block.range)
+          }}
+          canAddBlock={Boolean(project.activeWorkbookId)}
         />
       ),
     }
@@ -62,7 +73,7 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
     if (!previews.size) return null
     return {
       id: this.featureId,
-      label: 'Blocks',
+      label: (context.t ?? ((key: string) => translate('en-US', key)))('workspace.blocks'),
       count: previews.size,
       render: () => <ExtractionResultView project={context.project} previews={previews} />,
     }
@@ -71,8 +82,8 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
     const blocks = context.project.blocks
     return {
       id: this.featureId,
-      label: 'Extractors',
-      emptyText: 'No extractors configured.',
+      label: (context.t ?? ((key: string) => translate('en-US', key)))('workspace.blocks'),
+      emptyText: (context.t ?? ((key: string) => translate('en-US', key)))('workspace.noBlocks'),
       items: blocks.map((block, index) => ({
         id: block.id,
         label: block.label || `block_${index + 1}`,
@@ -85,6 +96,7 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
         avatarClassName: 'workspace-extractor-avatar',
         select: () => {
           if (block.workbookId) context.activateWorkbook(block.workbookId, block.activeSheet ?? undefined)
+          context.focusRange(block.workbookId, block.activeSheet, block.range)
           context.selectProject(project => ({ ...project, activeBlockId: block.id, activeRegionId: null }))
         },
         move: direction => context.transactProject(project => moveBlock(project, block.id, direction)),

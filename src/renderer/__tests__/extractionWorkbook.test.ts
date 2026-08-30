@@ -61,6 +61,7 @@ describe('real Excel workbook extraction', () => {
     const regions: RegionConfig[] = [{ id: 'groups', label: 'groups', activeSheet: 'Regions', range: range('A1:B5', 0, 0, 4, 1), splitRules: [{ type: 'emptyRow' }], blocks: [], collapsed: false, selectionLocked: false }]
     const regionExecution = parseWorkbook(await workbook('m2_integration.xlsx'), [block()], regions)
     expect(regionExecution.result.regionResults?.[0].blocks).toHaveLength(2)
+    expect(regionExecution.result.regionResults?.[0].blocks.map(block => block.blockLabel)).toEqual(['groups · A1:B2', 'groups · A4:B5'])
   })
 
   it('infers date columns and emits no rows when every column is skipped', async () => {

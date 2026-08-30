@@ -1,16 +1,18 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode, useState } from 'react'
 import { Alert, Button } from 'antd'
+import { useI18n } from '../../i18n'
 
 export interface FeaturePanelContribution {
   id: string
   title: string
   summary?: string
   ariaLabel: string
-  render(): ReactNode
+  headerActions?: ReactNode | ((target: HTMLElement | null) => ReactNode)
+  render(headerActionsTarget?: HTMLElement | null): ReactNode
 }
 
 interface FeaturePanelHostProps {
-  panel: FeaturePanelContribution
+  panels: readonly FeaturePanelContribution[]
   onRenderError?: (featureId: string, error: Error) => void
 }
 
@@ -21,6 +23,16 @@ interface BoundaryProps {
 }
 
 interface BoundaryState { error: Error | null; retryKey: number }
+
+function FeaturePanelError({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const { t } = useI18n()
+  return (
+    <div className="feature-panel-error" role="alert" data-testid="feature-panel-error">
+      <Alert type="error" showIcon message={t('panel.unavailable')} description={error.message} />
+      <Button onClick={onRetry}>{t('panel.retry')}</Button>
+    </div>
+  )
+}
 
 class FeaturePanelErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   state: BoundaryState = { error: null, retryKey: 0 }
@@ -37,17 +49,7 @@ class FeaturePanelErrorBoundary extends Component<BoundaryProps, BoundaryState> 
 
   render(): ReactNode {
     if (this.state.error) {
-      return (
-        <div className="feature-panel-error" role="alert" data-testid="feature-panel-error">
-          <Alert
-            type="error"
-            showIcon
-            message="This feature panel could not be displayed"
-            description={this.state.error.message}
-          />
-          <Button onClick={this.retry}>Retry panel</Button>
-        </div>
-      )
+      return <FeaturePanelError error={this.state.error} onRetry={this.retry} />
     }
     return <div key={this.state.retryKey} className="feature-panel-view">{this.props.children}</div>
   }
@@ -57,19 +59,36 @@ function PanelRenderer({ render }: { render: () => ReactNode }) {
   return <>{render()}</>
 }
 
-/** Host-owned mount point. Feature content cannot replace the shell boundary. */
-export function FeaturePanelHost({ panel, onRenderError }: FeaturePanelHostProps) {
+function FeaturePanelSection({ panel, onRenderError }: { panel: FeaturePanelContribution; onRenderError?: (featureId: string, error: Error) => void }) {
+  const [headerActionsTarget, setHeaderActionsTarget] = useState<HTMLElement | null>(null)
+  const actions = typeof panel.headerActions === 'function'
+    ? panel.headerActions(headerActionsTarget)
+    : panel.headerActions
   return (
-    <aside className="inspector-panel feature-panel-host" aria-label={panel.ariaLabel} data-feature-id={panel.id}>
-      <header className="panel-heading inspector-heading">
-        <div><strong>{panel.title}</strong></div>
-        {panel.summary && <span>{panel.summary}</span>}
+    <section className="feature-panel-section" aria-label={panel.ariaLabel} data-feature-id={panel.id}>
+      <header className="panel-heading inspector-heading inspector-heading-stacked">
+        <div className="panel-heading-title"><strong>{panel.title}</strong>{panel.summary && <span>{panel.summary}</span>}</div>
+        <div ref={setHeaderActionsTarget} className="panel-heading-actions">{actions}</div>
       </header>
       <div className="feature-panel-scroll" tabIndex={0} aria-label={`${panel.title} content`}>
-        <FeaturePanelErrorBoundary key={panel.id} featureId={panel.id} onError={onRenderError}>
-          <PanelRenderer render={panel.render} />
+        <FeaturePanelErrorBoundary featureId={panel.id} onError={onRenderError}>
+          <PanelRenderer render={() => panel.render(headerActionsTarget)} />
         </FeaturePanelErrorBoundary>
       </div>
+    </section>
+  )
+}
+
+/** Host-owned mount point. Feature content cannot replace shell-owned section boundaries. */
+export function FeaturePanelHost({ panels, onRenderError }: FeaturePanelHostProps) {
+  const singlePanel = panels.length === 1 ? panels[0] : null
+  return (
+    <aside
+      className={`inspector-panel feature-panel-host feature-panel-host-${Math.max(1, panels.length)}`}
+      aria-label={singlePanel?.ariaLabel ?? 'Workspace configuration'}
+      {...(singlePanel ? { 'data-feature-id': singlePanel.id } : {})}
+    >
+      {panels.map(panel => <FeaturePanelSection key={panel.id} panel={panel} onRenderError={onRenderError} />)}
     </aside>
   )
 }

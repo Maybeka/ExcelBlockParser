@@ -21,6 +21,7 @@ export interface LoadedWorkbookMetadata {
   fileName: string
   filePath: string
   sheetNames: string[]
+  sheetTabColors: Record<string, string>
   activeSheetName: string | null
 }
 
@@ -97,7 +98,7 @@ export function recordProjectWorkbookLoaded(
   const workbook = project.workbooks.find(item => item.id === metadata.workbookId)
   if (!workbook) return project
 
-  const nextWorkbook: ProjectWorkbook = { ...workbook, sourcePath: metadata.filePath, sheetNames: metadata.sheetNames, activeSheetName: metadata.activeSheetName }
+  const nextWorkbook: ProjectWorkbook = { ...workbook, sourcePath: metadata.filePath, sheetNames: metadata.sheetNames, sheetTabColors: metadata.sheetTabColors, activeSheetName: metadata.activeSheetName }
   const workbooks = project.workbooks.map(item => item.id === workbook.id ? nextWorkbook : item)
   const event: WorkbookLoadedEvent = metadata
   return features.workbookLoaded({ ...project, workbooks, activeWorkbookId: workbook.id }, event)

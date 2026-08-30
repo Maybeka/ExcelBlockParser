@@ -19,6 +19,9 @@ export interface BridgeAPI {
   saveRecovery: (jsonData: string) => Promise<BridgeResult<void>>
   loadRecovery: () => Promise<BridgeResult<string | null>>
   clearRecovery: () => Promise<BridgeResult<void>>
+  minimizeWindow: () => Promise<void>
+  toggleWindowMaximize: () => Promise<boolean>
+  closeWindow: () => Promise<void>
   log: (level: string, ...args: unknown[]) => void
   openPreviewWindow: (blockId: string) => Promise<void>
   setPreviewData: (blockId: string, data: unknown) => Promise<void>
@@ -54,10 +57,17 @@ export interface WailsGoAPI {
   }
 }
 
+interface WailsRuntimeAPI {
+  WindowMinimise?: () => void
+  WindowToggleMaximise?: () => void
+  Quit?: () => void
+}
+
 declare global {
   interface Window {
     electronAPI?: BridgeAPI
     go?: WailsGoAPI
+    runtime?: WailsRuntimeAPI
   }
 }
 
@@ -73,6 +83,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
   if (requiredMethods.some(method => typeof App[method] !== 'function')) {
     throw new Error('Wails runtime is missing a required desktop capability')
   }
+  const runtime = typeof window === 'undefined' ? undefined : window.runtime
 
   return {
     openXlsx: async () => {
@@ -121,6 +132,9 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     saveRecovery: async (jsonData) => { try { await App.SaveRecovery(jsonData); return bridgeOk(undefined) } catch (error) { return bridgeError(error) } },
     loadRecovery: async () => { try { return bridgeOk(await App.LoadRecovery()) } catch (error) { return bridgeError(error) } },
     clearRecovery: async () => { try { await App.ClearRecovery(); return bridgeOk(undefined) } catch (error) { return bridgeError(error) } },
+    minimizeWindow: async () => { runtime?.WindowMinimise?.() },
+    toggleWindowMaximize: async () => { runtime?.WindowToggleMaximise?.(); return false },
+    closeWindow: async () => { runtime?.Quit?.() },
     log: (level: string, ...args: unknown[]) => {
       console.log(`[${level}]`, ...args)
     },
@@ -168,6 +182,9 @@ function createBrowserBridge(): BridgeAPI {
     saveRecovery: async (jsonData) => { localStorage.setItem('excel-block-parser.recovery', jsonData); return bridgeOk(undefined) },
     loadRecovery: async () => bridgeOk(localStorage.getItem('excel-block-parser.recovery')),
     clearRecovery: async () => { localStorage.removeItem('excel-block-parser.recovery'); return bridgeOk(undefined) },
+    minimizeWindow: async () => undefined,
+    toggleWindowMaximize: async () => false,
+    closeWindow: async () => undefined,
     log: (level, ...args) => { console.log(`[${level}]`, ...args) },
     openPreviewWindow: async () => { console.warn('openPreviewWindow requires Electron or Wails') },
     setPreviewData: async () => { console.warn('setPreviewData requires Electron or Wails') },

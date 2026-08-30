@@ -1,5 +1,6 @@
 import { Input } from 'antd'
 import type { BlockConfig } from '../../types'
+import { useI18n } from '../../i18n'
 
 export interface HeaderRowsEditorProps {
   block: BlockConfig
@@ -32,6 +33,7 @@ export function parseHeaderRowsInput(input: string): number[] | null {
 }
 
 export function HeaderRowsEditor({ block, onChange }: HeaderRowsEditorProps) {
+  const { t } = useI18n()
   const commit = (value: string) => {
     const parsed = parseHeaderRowsInput(value)
     if (parsed) onChange(parsed)
@@ -41,17 +43,17 @@ export function HeaderRowsEditor({ block, onChange }: HeaderRowsEditorProps) {
   const count = block.headerRows.length || 1
   return (
     <div style={{ marginTop: 8, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap' }}>Header Rows</span>
+      <span style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap' }}>{t('block.headerRows')}</span>
       <Input
         size="small"
         defaultValue={block.headerRows.length ? block.headerRows.map(row => row + 1).join(', ') : ''}
         onBlur={event => commit(event.target.value)}
         onPressEnter={event => commit(event.currentTarget.value)}
-        placeholder="e.g. 1-3, 5"
+        placeholder={t('block.headerRowsExample')}
         style={{ flex: 1, fontSize: 13 }}
       />
       <span style={{ fontSize: 11, color: '#8c8c8c', whiteSpace: 'nowrap' }}>
-        → {count} header {count === 1 ? 'row' : 'rows'}
+        → {t('block.headerRowsSummary', { count, unit: count === 1 ? t('block.headerRow') : t('block.headerRowsUnit') })}
       </span>
     </div>
   )

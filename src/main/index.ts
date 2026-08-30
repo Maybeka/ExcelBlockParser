@@ -70,6 +70,7 @@ async function authorizeProjectSources(content: string, projectPath?: string): P
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
+    frame: false,
     width: 1400,
     height: 900,
     minWidth: 1000,
@@ -98,6 +99,24 @@ ipcMain.handle('log', (_event, level: string, ...args: unknown[]) => {
   if (level === 'error') console.error(prefix, ...args)
   else if (level === 'warn') console.warn(prefix, ...args)
   else console.log(prefix, ...args)
+})
+
+ipcMain.handle('window:minimize', (event) => {
+  assertMainWindowSender(event)
+  mainWindow?.minimize()
+})
+
+ipcMain.handle('window:toggleMaximize', (event) => {
+  assertMainWindowSender(event)
+  if (!mainWindow) return false
+  if (mainWindow.isMaximized()) mainWindow.unmaximize()
+  else mainWindow.maximize()
+  return mainWindow.isMaximized()
+})
+
+ipcMain.handle('window:close', (event) => {
+  assertMainWindowSender(event)
+  mainWindow?.close()
 })
 
 ipcMain.handle('file:open', async (event) => {

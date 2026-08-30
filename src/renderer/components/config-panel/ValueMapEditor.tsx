@@ -2,6 +2,7 @@ import { Button, Input, Segmented, Select, Tooltip } from 'antd'
 import { CaretDownOutlined, CaretRightOutlined, ClearOutlined, DeleteOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { BlockConfig, ColumnMapping, ValueMapFallbackType } from '../../types'
 import type { ColumnConfigurationController } from './useColumnConfiguration'
+import { useI18n } from '../../i18n'
 
 const FALLBACK_TYPE_OPTIONS: Array<{ value: ValueMapFallbackType; label: string }> = [
   { value: 'auto', label: 'auto' },
@@ -20,6 +21,7 @@ export interface ValueMapEditorProps {
 }
 
 export function ValueMapEditor({ block, column, controlsLocked, controller }: ValueMapEditorProps) {
+  const { t } = useI18n()
   const mapKey = `${block.id}-${column.colIndex}`
   const expanded = controller.expandedMaps.has(mapKey)
   const table = controller.columnTables[mapKey]
@@ -37,14 +39,14 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
           }}
         >
           {expanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
-          {' '}Value Map{hasMappings ? ` (${column.valueMap.length})` : ''}
+          {' '}{t('valueMap.title')}{hasMappings ? ` (${column.valueMap.length})` : ''}
         </span>
         {expanded && (
           <Segmented
             size="small"
             value={table?.active ? 'table' : 'kv'}
             onChange={() => controller.toggleTableView(mapKey, block.id, column.colIndex)}
-            options={[{ label: 'KV', value: 'kv' }, { label: 'Table', value: 'table' }]}
+            options={[{ label: 'KV', value: 'kv' }, { label: t('valueMap.table'), value: 'table' }]}
             disabled={controlsLocked}
             style={{ fontSize: 11 }}
           />
@@ -56,7 +58,7 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
           <div style={{ marginTop: 4, display: 'flex', gap: 4, marginBottom: 4 }}>
             <Input
               size="small"
-              placeholder="Search values..."
+              placeholder={t('valueMap.search')}
               prefix={<SearchOutlined style={{ color: '#bbb', fontSize: 11 }} />}
               value={table.search || ''}
               onChange={event => controller.setColumnSearch(mapKey, event.target.value)}
@@ -64,10 +66,10 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
               allowClear
               style={{ fontSize: 11, flex: 1 }}
             />
-            <Tooltip title="Add all unmapped as entries">
+            <Tooltip title={t('valueMap.addAll')}>
               <Button size="small" icon={<PlusOutlined />} onClick={() => controller.addAllUnmapped(block.id, column.colIndex)} disabled={controlsLocked || !table.values?.length} />
             </Tooltip>
-            <Tooltip title="Clear all mappings">
+            <Tooltip title={t('valueMap.clearAll')}>
               <Button size="small" danger icon={<ClearOutlined />} onClick={() => controller.clearAllMappings(block.id, column.colIndex)} disabled={controlsLocked || !hasMappings} />
             </Tooltip>
           </div>
@@ -76,9 +78,9 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
                 <tr style={{ background: '#fafafa', position: 'sticky', top: 0, zIndex: 1 }}>
-                  <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 500, color: '#666', borderBottom: '1px solid #f0f0f0' }}>Value</th>
+                  <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 500, color: '#666', borderBottom: '1px solid #f0f0f0' }}>{t('valueMap.value')}</th>
                   <th style={{ padding: '4px 8px', textAlign: 'center', fontWeight: 500, color: '#666', borderBottom: '1px solid #f0f0f0', width: 48 }}>#</th>
-                  <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 500, color: '#666', borderBottom: '1px solid #f0f0f0' }}>Maps to</th>
+                  <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 500, color: '#666', borderBottom: '1px solid #f0f0f0' }}>{t('valueMap.mapsTo')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -88,7 +90,7 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
                     const mappedEntry = column.valueMap.find(entry => entry.from === item.value)
                     return (
                       <tr key={item.value} style={{ background: index % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        <td style={{ padding: '2px 8px', borderBottom: '1px solid #f5f5f5', fontFamily: 'var(--font-code)' }}>{item.value || <span style={{ color: '#ccc' }}>(empty)</span>}</td>
+                        <td style={{ padding: '2px 8px', borderBottom: '1px solid #f5f5f5', fontFamily: 'var(--font-code)' }}>{item.value || <span style={{ color: '#ccc' }}>{t('valueMap.empty')}</span>}</td>
                         <td style={{ padding: '2px 8px', textAlign: 'center', borderBottom: '1px solid #f5f5f5', color: '#999' }}>{item.count}</td>
                         <td style={{ padding: '2px 8px', borderBottom: '1px solid #f5f5f5' }}>
                           {mappedEntry ? (
@@ -113,15 +115,15 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
                             </div>
                           ) : (
                             <Button size="small" type="link" onClick={() => controller.addMappingForValue(block.id, column.colIndex, item.value)} disabled={controlsLocked} style={{ padding: 0, fontSize: 11, height: 20 }}>
-                              + add mapping
+                              + {t('valueMap.add')}
                             </Button>
                           )}
                         </td>
                       </tr>
                     )
                   })}
-                {!table.values?.length && !table.loading && <tr><td colSpan={3} style={{ padding: 12, textAlign: 'center', color: '#bbb', fontSize: 11 }}>No data in column</td></tr>}
-                {table.loading && <tr><td colSpan={3} style={{ padding: 12, textAlign: 'center', color: '#bbb', fontSize: 11 }}>Loading...</td></tr>}
+                {!table.values?.length && !table.loading && <tr><td colSpan={3} style={{ padding: 12, textAlign: 'center', color: '#bbb', fontSize: 11 }}>{t('valueMap.noData')}</td></tr>}
+                {table.loading && <tr><td colSpan={3} style={{ padding: 12, textAlign: 'center', color: '#bbb', fontSize: 11 }}>{t('common.loading')}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -132,21 +134,21 @@ export function ValueMapEditor({ block, column, controlsLocked, controller }: Va
         <div style={{ marginTop: 4 }}>
           {column.valueMap.map((entry, index) => (
             <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 18px 1fr 24px', gap: '4px 6px', alignItems: 'center', marginBottom: 2 }}>
-              <Input size="small" placeholder="match" value={entry.from} onChange={event => controller.updateValueMapEntry(block.id, column.colIndex, index, 'from', event.target.value)} style={{ fontSize: 12 }} disabled={controlsLocked} />
+              <Input size="small" placeholder={t('valueMap.match')} value={entry.from} onChange={event => controller.updateValueMapEntry(block.id, column.colIndex, index, 'from', event.target.value)} style={{ fontSize: 12 }} disabled={controlsLocked} />
               <span style={{ textAlign: 'center', color: '#999' }}>→</span>
-              <Input size="small" placeholder="output" value={String(entry.to ?? '')} onChange={event => controller.updateValueMapEntry(block.id, column.colIndex, index, 'to', event.target.value)} style={{ fontSize: 12 }} disabled={controlsLocked} />
+              <Input size="small" placeholder={t('valueMap.output')} value={String(entry.to ?? '')} onChange={event => controller.updateValueMapEntry(block.id, column.colIndex, index, 'to', event.target.value)} style={{ fontSize: 12 }} disabled={controlsLocked} />
               <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => controller.removeValueMapEntry(block.id, column.colIndex, index)} style={{ padding: 0, minWidth: 20 }} disabled={controlsLocked} />
             </div>
           ))}
           <Button size="small" type="dashed" block icon={<PlusOutlined />} onClick={() => controller.addValueMapEntry(block.id, column.colIndex)} style={{ fontSize: 12, marginTop: 2 }} disabled={controlsLocked}>
-            Add mapping
+            {t('valueMap.add')}
           </Button>
         </div>
       )}
 
       {expanded && (
         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap' }}>Default:</span>
+          <span style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap' }}>{t('valueMap.default')}</span>
           <Select
             size="small"
             value={column.valueMapFallbackType || 'auto'}

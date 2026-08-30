@@ -11,6 +11,9 @@ export interface ElectronAPI {
   saveRecovery: (jsonData: string) => Promise<BridgeResult<void>>
   loadRecovery: () => Promise<BridgeResult<string | null>>
   clearRecovery: () => Promise<BridgeResult<void>>
+  minimizeWindow: () => Promise<void>
+  toggleWindowMaximize: () => Promise<boolean>
+  closeWindow: () => Promise<void>
   log: (level: string, ...args: unknown[]) => void
   openPreviewWindow: (blockId: string) => Promise<void>
   setPreviewData: (blockId: string, data: unknown) => Promise<void>
@@ -61,6 +64,9 @@ const api: ElectronAPI = {
   clearRecovery: async () => {
     try { await ipcRenderer.invoke('recovery:clear'); return bridgeOk(undefined) } catch (error) { return bridgeError(error) }
   },
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  toggleWindowMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
   log: (level: string, ...args: unknown[]) => ipcRenderer.invoke('log', level, ...args),
   openPreviewWindow: (blockId) => ipcRenderer.invoke('preview:open', blockId),
   setPreviewData: (blockId, data) => ipcRenderer.invoke('preview:setData', blockId, data),

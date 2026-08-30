@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Table, Empty } from 'antd'
 import type { PreviewData } from '../types'
+import { useI18n } from '../i18n'
 
 function formatTypedValue(val: unknown): string {
   if (val === null) return 'null'
@@ -27,6 +28,7 @@ interface FlatRow {
 }
 
 export function PreviewTable({ previewData, visibleModes, searchText }: PreviewTableProps) {
+  const { t } = useI18n()
   const { columns, rawRows, parsedRows, rawColIndices } = previewData
   const parsedRowIndices = previewData.parsedRowIndices ?? parsedRows.map((_, index) => index)
 
@@ -111,17 +113,17 @@ export function PreviewTable({ previewData, visibleModes, searchText }: PreviewT
         ),
       },
       {
-        title: 'Type',
+        title: t('preview.type'),
         key: 'type',
         width: 62,
-        render: (_: unknown, record: FlatRow) => <span className={`preview-source-tag preview-source-${record.type}`}>{record.type === 'raw' ? 'RAW' : 'PARSED'}</span>,
+        render: (_: unknown, record: FlatRow) => <span className={`preview-source-tag preview-source-${record.type}`}>{record.type === 'raw' ? t('preview.rawLabel') : t('preview.parsedLabel')}</span>,
       },
       ...dataColumns,
     ]
-  }, [dataColumns, visibleModes])
+  }, [dataColumns, t])
 
   if (flatRows.length === 0) {
-    return <Empty description="No data to preview" />
+    return <Empty description={t('preview.noData')} />
   }
 
   return (
@@ -135,7 +137,7 @@ export function PreviewTable({ previewData, visibleModes, searchText }: PreviewT
         bordered
         pagination={false}
         locale={{
-          emptyText: <Empty description="No data to preview" />,
+          emptyText: <Empty description={t('preview.noData')} />,
         }}
         onRow={() => ({})}
         rowClassName={(record: FlatRow) => {

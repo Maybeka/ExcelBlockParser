@@ -5,16 +5,19 @@ import type { SpreadsheetCapability } from '../../services/spreadsheetCapability
 import { isValidVariableName } from '../../features/extraction/validation'
 import type { ColumnConfigurationController } from './useColumnConfiguration'
 import { ValueMapEditor } from './ValueMapEditor'
+import { useI18n } from '../../i18n'
 
-const TYPE_OPTIONS: Array<{ value: ColumnType; label: string }> = [
-  { value: 'auto', label: 'auto' },
-  { value: 'string', label: 'string' },
-  { value: 'integer', label: 'integer' },
-  { value: 'float', label: 'float' },
-  { value: 'boolean', label: 'boolean' },
-  { value: 'date', label: 'date' },
-  { value: 'valueMapping', label: 'value mapping' },
-]
+function typeOptions(t: (key: string) => string): Array<{ value: ColumnType; label: string }> {
+  return [
+    { value: 'auto', label: t('column.typeAuto') },
+    { value: 'string', label: t('column.typeString') },
+    { value: 'integer', label: t('column.typeInteger') },
+    { value: 'float', label: t('column.typeFloat') },
+    { value: 'boolean', label: t('column.typeBoolean') },
+    { value: 'date', label: t('column.typeDate') },
+    { value: 'valueMapping', label: t('column.typeValueMapping') },
+  ]
+}
 
 export interface ColumnEditorProps {
   block: BlockConfig
@@ -37,13 +40,14 @@ export function ColumnEditor({
   onColumnFocus,
   controller,
 }: ColumnEditorProps) {
+  const { t } = useI18n()
   return (
     <div style={{ marginBottom: 4 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 100px 36px', gap: '4px 6px', alignItems: 'center', padding: '2px 6px', fontSize: 11, color: '#999' }}>
-        <span>Col</span>
+        <span>{t('column.column')}</span>
         <span>
-          Key
-          <Tooltip title="Regenerate all keys from header rows">
+          {t('column.key')}
+          <Tooltip title={t('column.regenerateAll')}>
             <ReloadOutlined
               style={{ cursor: controlsLocked || !block.range ? 'not-allowed' : 'pointer', color: controlsLocked || !block.range ? '#d9d9d9' : '#999', fontSize: 11, marginLeft: 4 }}
               onClick={event => {
@@ -53,11 +57,11 @@ export function ColumnEditor({
             />
           </Tooltip>
         </span>
-        <span>Type</span>
-        <span>Skip</span>
+        <span>{t('column.type')}</span>
+        <span>{t('column.skip')}</span>
       </div>
 
-      {!block.columns.length && <div style={{ fontSize: 12, color: '#bbb', padding: '4px 6px' }}>No columns in range</div>}
+      {!block.columns.length && <div style={{ fontSize: 12, color: '#bbb', padding: '4px 6px' }}>{t('column.none')}</div>}
 
       {block.columns.map(column => (
         <div
@@ -84,7 +88,7 @@ export function ColumnEditor({
               status={duplicateKeys.has(column.key || column.suggestedKey) || (column.key && !isValidVariableName(column.key)) ? 'error' : undefined}
               onFocus={() => { if (active) onColumnFocus(column.colIndex) }}
               onBlur={() => onColumnFocus(null)}
-              suffix={<Tooltip title="Regenerate from header rows"><ReloadOutlined
+              suffix={<Tooltip title={t('column.regenerate')}><ReloadOutlined
                 style={{ cursor: controlsLocked || column.skip || !block.range ? 'not-allowed' : 'pointer', color: controlsLocked || column.skip || !block.range ? '#d9d9d9' : '#999', fontSize: 11 }}
                 onClick={event => {
                   event.stopPropagation()
@@ -97,7 +101,7 @@ export function ColumnEditor({
               size="small"
               value={column.type}
               onChange={type => controller.updateColumn(block.id, column.colIndex, { type })}
-              options={TYPE_OPTIONS}
+              options={typeOptions(t)}
               disabled={controlsLocked || column.skip}
               style={{ fontSize: 13 }}
               onFocus={() => { if (active) onColumnFocus(column.colIndex) }}
@@ -112,8 +116,8 @@ export function ColumnEditor({
             />
           </div>
 
-          {duplicateKeys.has(column.key || column.suggestedKey) && <div style={{ fontSize: 10, color: '#ff4d4f', padding: '0 6px 4px' }}>Duplicate key</div>}
-          {column.key && !isValidVariableName(column.key) && <div style={{ fontSize: 10, color: '#ff4d4f', padding: '0 6px 4px' }}>Invalid variable name</div>}
+          {duplicateKeys.has(column.key || column.suggestedKey) && <div style={{ fontSize: 10, color: '#ff4d4f', padding: '0 6px 4px' }}>{t('column.duplicate')}</div>}
+          {column.key && !isValidVariableName(column.key) && <div style={{ fontSize: 10, color: '#ff4d4f', padding: '0 6px 4px' }}>{t('block.invalidName')}</div>}
           {column.type === 'valueMapping' && <ValueMapEditor block={block} column={column} controlsLocked={controlsLocked} controller={controller} />}
         </div>
       ))}

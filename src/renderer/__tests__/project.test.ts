@@ -34,12 +34,11 @@ function workbook(value: string): WorkbookReader {
 }
 
 describe('project workspace', () => {
-  it('creates an unsaved project through registered feature initialization', () => {
+  it('keeps a new project free of extraction items', () => {
     const project = builtInFeatureRegistry.initialize(createProject())
     expect(project.workbooks).toEqual([])
-    expect(project.blocks).toHaveLength(1)
-    expect(project.blocks[0]).toMatchObject({ label: 'block_1', workbookId: null })
-    expect(project.activeBlockId).toBe(project.blocks[0].id)
+    expect(project.blocks).toEqual([])
+    expect(project.activeBlockId).toBe('')
     expect(project.activeWorkbookId).toBeNull()
   })
 
@@ -128,8 +127,8 @@ describe('project workspace', () => {
     const project = { ...createProject(), workbooks: [{ id: 'sales', name: 'sales.xlsx' }, { id: 'costs', name: 'costs.xlsx' }], activeWorkbookId: 'sales', blocks: [sales, costs], activeBlockId: sales.id }
     const result = removeBlock(project, sales.id)
     expect(result.blocks[0]).toBe(costs)
-    expect(blocksForWorkbook(result, 'sales')).toHaveLength(1)
-    expect(result.activeBlockId).toBe(blocksForWorkbook(result, 'sales')[0].id)
+    expect(blocksForWorkbook(result, 'sales')).toHaveLength(0)
+    expect(result.activeBlockId).toBe('')
   })
 
   it('preserves the active block when deleting a different block', () => {
@@ -150,7 +149,7 @@ describe('project workspace', () => {
     expect(reassigned.blocks).toEqual(initial.blocks)
   })
 
-  it('records workbook loading and claims only unowned draft blocks', () => {
+  it('records workbook loading without changing configured blocks', () => {
     const draft = { ...block('draft', 'placeholder'), workbookId: null }
     const costs = block('costs-block', 'costs')
     const project: ProjectConfig = {
@@ -169,13 +168,32 @@ describe('project workspace', () => {
       sheetNames: ['Orders', 'Summary'], activeSheetName: 'Summary',
     })
     expect(loaded.blocks.map(item => [item.id, item.workbookId])).toEqual([
-      ['draft', 'sales'], ['costs-block', 'costs'],
+      ['draft', null], ['costs-block', 'costs'],
     ])
     expect(loaded.activeWorkbookId).toBe('sales')
     expect(loaded.activeBlockId).toBe('draft')
   })
 
-  it('creates one owned block when a loaded workbook has no draft or existing block', () => {
+  it('preserves a cross-workbook block selection when the target workbook finishes loading', () => {
+    const sales = block('sales-block', 'sales')
+    const costs = block('costs-block', 'costs')
+    const project: ProjectConfig = {
+      id: 'project-1', name: 'Cross workbook selection',
+      workbooks: [{ id: 'sales', name: 'sales.xlsx' }, { id: 'costs', name: 'costs.xlsx' }],
+      activeWorkbookId: 'costs', blocks: [sales, costs], regions: [], activeBlockId: costs.id, activeRegionId: null,
+      focusMode: 'always-editable',
+    }
+
+    const loaded = recordProjectWorkbookLoaded(project, {
+      workbookId: 'costs', fileName: 'costs.xlsx', filePath: '/data/costs.xlsx',
+      sheetNames: ['Sheet1'], activeSheetName: 'Sheet1',
+    }, builtInFeatureRegistry)
+
+    expect(loaded.activeWorkbookId).toBe('costs')
+    expect(loaded.activeBlockId).toBe(costs.id)
+  })
+
+  it('does not create a block when a workbook is loaded', () => {
     const project: ProjectConfig = {
       id: 'project-1', name: 'Loading', workbooks: [{ id: 'sales', name: 'sales.xlsx' }],
       activeWorkbookId: null, blocks: [], regions: [], activeBlockId: '', activeRegionId: null,
@@ -185,9 +203,8 @@ describe('project workspace', () => {
       workbookId: 'sales', fileName: 'sales.xlsx', filePath: '/data/sales.xlsx',
       sheetNames: ['Sheet1'], activeSheetName: 'Sheet1',
     }, builtInFeatureRegistry)
-    expect(loaded.blocks).toHaveLength(1)
-    expect(loaded.blocks[0]).toMatchObject({ label: 'block_1', workbookId: 'sales' })
-    expect(loaded.activeBlockId).toBe(loaded.blocks[0].id)
+    expect(loaded.blocks).toEqual([])
+    expect(loaded.activeBlockId).toBe('')
   })
 
   it('switches workbook and sheet atomically with workbook-scoped active state', () => {
