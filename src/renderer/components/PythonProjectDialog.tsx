@@ -25,6 +25,7 @@ export interface PythonProjectDialogProps {
   onSourceChange: (pythonScript: PythonScriptConfig) => void
   onClose: () => void
   toolbarContainer: HTMLElement | null
+  tabBarContainer: HTMLElement | null
 }
 
 function jsonDisplay(value: string): string {
@@ -183,7 +184,7 @@ function artifactTreeData(artifacts: PythonArtifact[]): PackageTreeNode[] {
   return root.children.map(strip)
 }
 
-export function PythonProjectDialog({ open, project, parseResult, onPrepareInput, onSourceChange, onClose, toolbarContainer }: PythonProjectDialogProps) {
+export function PythonProjectDialog({ open, project, parseResult, onPrepareInput, onSourceChange, onClose, toolbarContainer, tabBarContainer }: PythonProjectDialogProps) {
   const [result, setResult] = useState<PythonProjectResult | null>(null)
   const [bridgeError, setBridgeError] = useState('')
   const [running, setRunning] = useState(false)
@@ -511,6 +512,43 @@ export function PythonProjectDialog({ open, project, parseResult, onPrepareInput
     </Space>
   )
 
+  const headerTabs = (
+    <div className="python-header-tab-list" role="tablist" aria-label="Python workspace sections">
+      {items.map(item => (
+        <button
+          key={item.key}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === item.key}
+          className={activeTab === item.key ? 'is-active' : ''}
+          onClick={() => setActiveTab(item.key)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  const toolbarExtras = activeTab === 'script' ? (
+    <TreeSelect
+      aria-label="Python symbols"
+      className="python-project-symbols"
+      size="small"
+      placeholder="Symbols"
+      suffixIcon={<FunctionOutlined />}
+      treeData={symbolTreeData(symbolNodes, draftSource)}
+      treeDefaultExpandAll
+      treeLine
+      getPopupContainer={trigger => trigger.parentElement ?? document.body}
+      onSelect={value => {
+        if (editorRef.current) jumpToPythonOffset(editorRef.current, Number(value))
+      }}
+      value={null}
+    />
+  ) : activeTab === 'input' ? (
+    <Button size="small" icon={<ReloadOutlined />} loading={preparingInput} disabled={running || exporting} onClick={() => void prepareInput()}>Refresh Input</Button>
+  ) : null
+
   if (!open) return null
 
   return (
@@ -525,25 +563,6 @@ export function PythonProjectDialog({ open, project, parseResult, onPrepareInput
         activeKey={activeTab}
         onChange={setActiveTab}
         items={items}
-        tabBarExtraContent={activeTab === 'script' ? (
-          <TreeSelect
-            aria-label="Python symbols"
-            className="python-project-symbols"
-            size="small"
-            placeholder="Symbols"
-            suffixIcon={<FunctionOutlined />}
-            treeData={symbolTreeData(symbolNodes, draftSource)}
-            treeDefaultExpandAll
-            treeLine
-            getPopupContainer={trigger => trigger.parentElement ?? document.body}
-            onSelect={value => {
-              if (editorRef.current) jumpToPythonOffset(editorRef.current, Number(value))
-            }}
-            value={null}
-          />
-        ) : activeTab === 'input' && !context ? (
-          <Button size="small" type="primary" icon={<ReloadOutlined />} loading={preparingInput} disabled={running || exporting} onClick={() => void prepareInput()}>Prepare input</Button>
-        ) : null}
       />
         </div>
         <Modal
@@ -564,7 +583,8 @@ export function PythonProjectDialog({ open, project, parseResult, onPrepareInput
         />
         </Modal>
       </section>
-      {toolbarContainer && createPortal(toolbar, toolbarContainer)}
+      {toolbarContainer && createPortal(<>{toolbarExtras}{toolbar}</>, toolbarContainer)}
+      {tabBarContainer && createPortal(headerTabs, tabBarContainer)}
     </>
   )
 }

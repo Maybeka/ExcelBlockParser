@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button, Divider, Input, Modal, Select, Switch, Tooltip } from 'antd'
-import { CompressOutlined, ExpandOutlined, PlayCircleOutlined, PlusOutlined, SearchOutlined, SettingOutlined } from '@ant-design/icons'
+import { CompressOutlined, ExpandOutlined, PlusOutlined, SearchOutlined, SettingOutlined } from '@ant-design/icons'
 import type { BlockConfig, CellRange, ParseResult, ReconciliationReport } from '../types'
 import type { SpreadsheetCapability } from '../services/spreadsheetCapability'
 import { filterBlocksByTag, getAllTags } from '../services/tagUtils'
 import { BlockInspector } from './config-panel/BlockInspector'
 import { useColumnConfiguration } from './config-panel/useColumnConfiguration'
+import { useI18n } from '../i18n'
 
 export type FocusMode = 'always-editable' | 'activate-first'
 
@@ -22,10 +24,12 @@ export interface ConfigPanelProps {
   onDeleteBlock: (blockId: string) => void
   onFocusModeChange: (mode: FocusMode) => void
   onColumnFocus: (colIndex: number | null) => void
-  onParse: () => void
   onReconcilingChange?: (blockId: string | null) => void
   onReselectRange?: (onRange: (range: CellRange) => void) => void
   onPreviewSheet?: (sheetName: string | null) => void
+  onFocusRange: (blockId: string) => void
+  canAddBlock?: boolean
+  toolbarTarget?: HTMLElement | null
 }
 
 type SearchTarget = 'all' | 'title' | 'columnName' | 'tag'
@@ -53,11 +57,14 @@ export function ConfigPanel({
   onDeleteBlock,
   onFocusModeChange,
   onColumnFocus,
-  onParse,
   onReconcilingChange,
   onReselectRange,
   onPreviewSheet,
+  onFocusRange,
+  canAddBlock = true,
+  toolbarTarget,
 }: ConfigPanelProps) {
+  const { t } = useI18n()
   const [showSettings, setShowSettings] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [searchText, setSearchText] = useState('')
@@ -127,48 +134,41 @@ export function ConfigPanel({
     setNewTagInput('')
   }
 
+  const headerToolbar = (
+    <>
+      {searchText && <span className="config-panel-filter-count">{filteredBlocks.length}/{blocks.length}</span>}
+      <Tooltip title={t('config.collapseAll')}>
+        <Button aria-label={t('config.collapseAll')} size="small" type="text" icon={<CompressOutlined />} onClick={() => blocks.forEach(block => { if (!block.collapsed) onBlockChange(block.id, { collapsed: true }) })} />
+      </Tooltip>
+      <Tooltip title={t('config.expandAll')}>
+        <Button aria-label={t('config.expandAll')} size="small" type="text" icon={<ExpandOutlined />} onClick={() => blocks.forEach(block => { if (block.collapsed) onBlockChange(block.id, { collapsed: false }) })} />
+      </Tooltip>
+      <Divider type="vertical" style={{ margin: '0 4px' }} />
+      <Tooltip title={showSearch ? t('config.hideSearch') : t('config.search')}>
+        <Button aria-label={showSearch ? t('config.hideSearch') : t('config.search')} size="small" type="text" icon={<SearchOutlined />} onClick={() => {
+          setShowSearch(current => {
+            if (current) setSearchText('')
+            return !current
+          })
+        }} style={{ color: showSearch ? 'var(--fluent-accent)' : undefined }} />
+      </Tooltip>
+      <Tooltip title={t('config.settings')}>
+        <Button aria-label={t('config.settings')} size="small" type="text" icon={<SettingOutlined />} onClick={() => setShowSettings(current => !current)} style={{ color: showSettings ? 'var(--fluent-accent)' : undefined }} />
+      </Tooltip>
+    </>
+  )
+
   if (!blocks.length) {
-    return <div style={{ padding: 16 }}><Button block icon={<PlusOutlined />} onClick={handleAdd}>Add Block</Button></div>
+    return <div style={{ padding: 16 }}><Button block icon={<PlusOutlined />} disabled={!canAddBlock} onClick={handleAdd}>{t('config.addBlock')}</Button></div>
   }
 
   return (
     <div className="config-panel" style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div className="config-panel-toolbar">
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 16, flex: 1 }}>
-            Blocks
-            <span style={{ fontSize: 12, color: '#999', marginLeft: 8, fontWeight: 400 }}>
-              {searchText ? `${filteredBlocks.length}/${blocks.length}` : blocks.length}
-            </span>
-          </h3>
-          <Tooltip title="Collapse all">
-            <Button size="small" type="text" icon={<CompressOutlined />} onClick={() => blocks.forEach(block => { if (!block.collapsed) onBlockChange(block.id, { collapsed: true }) })} />
-          </Tooltip>
-          <Tooltip title="Expand all">
-            <Button size="small" type="text" icon={<ExpandOutlined />} onClick={() => blocks.forEach(block => { if (block.collapsed) onBlockChange(block.id, { collapsed: false }) })} />
-          </Tooltip>
-          <Divider type="vertical" style={{ margin: '0 4px' }} />
-          <Tooltip title={showSearch ? 'Hide search' : 'Search blocks'}>
-            <Button size="small" type="text" icon={<SearchOutlined />} onClick={() => {
-              setShowSearch(current => {
-                if (current) setSearchText('')
-                return !current
-              })
-            }} style={{ color: showSearch ? '#1677ff' : undefined }} />
-          </Tooltip>
-          <Tooltip title="Settings">
-            <Button size="small" type="text" icon={<SettingOutlined />} onClick={() => setShowSettings(current => !current)} style={{ color: showSettings ? '#1677ff' : undefined }} />
-          </Tooltip>
-          <Tooltip title="Run configured extractors and review the result">
-            <Button aria-keyshortcuts="Control+Enter Meta+Enter" aria-label="Run & Preview" size="small" type="text" icon={<PlayCircleOutlined />} disabled={!blocks.some(block => block.range)} onClick={onParse} />
-          </Tooltip>
-          <span style={{ marginLeft: 12, flexShrink: 0 }}><Button size="small" icon={<PlusOutlined />} onClick={handleAdd}>Add Block</Button></span>
-        </div>
-
-        <Divider style={{ margin: '0 0 8px' }} />
+      {toolbarTarget && createPortal(<div className="config-panel-header-toolbar">{headerToolbar}</div>, toolbarTarget)}
+      <div className="config-panel-content-controls">
         {showSettings && (
           <div style={{ marginBottom: 12, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>Lock controls in inactive blocks</span>
+            <span>{t('config.lockInactive')}</span>
             <Switch size="small" checked={focusMode === 'activate-first'} onChange={checked => onFocusModeChange(checked ? 'activate-first' : 'always-editable')} />
           </div>
         )}
@@ -178,15 +178,15 @@ export function ConfigPanel({
             <div style={{ marginBottom: 12, display: 'flex', gap: 6 }}>
               <Select
                 size="small" value={searchTarget} onChange={setSearchTarget} style={{ width: 96, flexShrink: 0 }}
-                options={[{ value: 'all', label: 'All' }, { value: 'title', label: 'Title' }, { value: 'columnName', label: 'Key' }, { value: 'tag', label: 'Tag' }]}
+                options={[{ value: 'all', label: t('config.searchAll') }, { value: 'title', label: t('config.searchTitle') }, { value: 'columnName', label: t('config.searchKey') }, { value: 'tag', label: t('config.searchTag') }]}
                 optionRender={renderOption}
               />
-              <Input size="small" placeholder="Search blocks..." prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />} value={searchText} onChange={event => setSearchText(event.target.value)} allowClear style={{ flex: 1 }} />
+              <Input size="small" placeholder={t('config.searchPlaceholder')} prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />} value={searchText} onChange={event => setSearchText(event.target.value)} allowClear style={{ flex: 1 }} />
             </div>
             {!!allTags.length && (
               <div style={{ marginBottom: 12 }}>
                 <Select
-                  size="small" value={tagFilter} onChange={setTagFilter} allowClear placeholder="Filter by tag..." style={{ width: '100%' }}
+                  size="small" value={tagFilter} onChange={setTagFilter} allowClear placeholder={t('config.filterTag')} style={{ width: '100%' }}
                   options={allTags.map(tag => ({ value: tag.key, label: tag.type === 'kv' ? `${tag.key}:${tag.value || ''}` : tag.key }))}
                 />
               </div>
@@ -215,7 +215,7 @@ export function ConfigPanel({
               duplicateLabel={duplicateLabels.has(block.label?.trim() || '')}
               rowFilterExpanded={expandedRowFilters.has(block.id)}
               computedPropertiesExpanded={expandedComputedProperties.has(block.id)}
-              tagsVisible={visibleTags.has(block.id)}
+              infoVisible={visibleTags.has(block.id)}
               addingTag={addingTagForBlock === block.id}
               newTagInput={newTagInput}
               spreadsheet={spreadsheet}
@@ -226,7 +226,7 @@ export function ConfigPanel({
               onColumnFocus={onColumnFocus}
               onToggleRowFilter={() => setExpandedRowFilters(current => toggleSetValue(current, block.id))}
               onToggleComputedProperties={() => setExpandedComputedProperties(current => toggleSetValue(current, block.id))}
-              onToggleTags={() => setVisibleTags(current => toggleSetValue(current, block.id))}
+              onToggleInfo={() => setVisibleTags(current => toggleSetValue(current, block.id))}
               onStartAddingTag={() => setAddingTagForBlock(block.id)}
               onNewTagInputChange={setNewTagInput}
               onCancelAddingTag={cancelTagEntry}
@@ -239,20 +239,21 @@ export function ConfigPanel({
               onReconcilingChange={onReconcilingChange}
               onReselectRange={onReselectRange}
               onPreviewSheet={onPreviewSheet}
+              onFocusRange={() => onFocusRange(block.id)}
               setContainerRef={element => { blockContainerRefs.current[block.id] = element }}
               setInputRef={element => { blockInputRefs.current[block.id] = element }}
             />
           )
         })}
 
-        {searchText && !filteredBlocks.length && <div style={{ textAlign: 'center', color: '#999', fontSize: 13, padding: '16px 0' }}>No blocks matching "{searchText}"</div>}
+        {searchText && !filteredBlocks.length && <div style={{ textAlign: 'center', color: '#999', fontSize: 13, padding: '16px 0' }}>{t('config.noMatches', { value: searchText })}</div>}
       </div>
 
       <Modal
-        title="Delete block" open={!!deleteTarget}
+        title={t('config.deleteBlock')} open={!!deleteTarget}
         onOk={() => { if (deleteTarget) onDeleteBlock(deleteTarget.id); setDeleteTarget(null) }}
-        onCancel={() => setDeleteTarget(null)} okText="Delete" okType="danger" cancelText="Cancel"
-      >Delete "{deleteTarget?.label}"? This cannot be undone.</Modal>
+        onCancel={() => setDeleteTarget(null)} okText={t('common.delete')} okType="danger" cancelText={t('common.cancel')}
+      >{t('config.deleteConfirm', { label: deleteTarget?.label ?? '' })}</Modal>
     </div>
   )
 }

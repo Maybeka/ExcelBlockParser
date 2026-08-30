@@ -1,6 +1,6 @@
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import type { Extension } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { drawSelection, EditorView } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 
 const projectPythonHighlightStyle = HighlightStyle.define([
@@ -19,6 +19,7 @@ const projectPythonHighlightStyle = HighlightStyle.define([
 ])
 
 export const projectPythonEditorTheme: Extension = [
+  drawSelection(),
   EditorView.theme({
     '&': {
       backgroundColor: '#eff1f5',
@@ -35,8 +36,12 @@ export const projectPythonEditorTheme: Extension = [
       borderLeftColor: '#1e66f5',
       borderLeftWidth: '2px',
     },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-      backgroundColor: '#bcc0cc !important',
+    '.cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: '#7aa2f7 !important',
+      color: '#ffffff !important',
+    },
+    '&.cm-focused .cm-selectionBackground': {
+      backgroundColor: '#1e66f5 !important',
     },
     '.cm-activeLine': {
       backgroundColor: '#e6e9ef',
