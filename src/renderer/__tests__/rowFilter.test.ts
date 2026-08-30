@@ -60,6 +60,19 @@ describe('applyRowFilter', () => {
     expect(applyRowFilter(ROWS, config(rule('name', 'neq', 'ALICE')), COLUMNS)).toHaveLength(4)
   })
 
+  it('can remove matching rows while retaining the existing include default', () => {
+    const condition = rule('status', 'eq', 'active')
+    expect(applyRowFilter(ROWS, config(condition), COLUMNS).map(row => row[0].value)).toEqual(['alice', 'CAROL', 'eve'])
+    expect(applyRowFilter(ROWS, config(condition, { matchMode: 'exclude' }), COLUMNS).map(row => row[0].value)).toEqual(['bob', 'dave'])
+  })
+
+  it('matches Chinese column keys and values', () => {
+    const rows = cells([['通过', '第一项'], ['未通过', '第二项'], ['通过', '第三项']])
+    const condition = rule('状态', 'eq', '通过')
+    expect(applyRowFilter(rows, config(condition), ['状态', '名称']).map(row => row[1].value)).toEqual(['第一项', '第三项'])
+    expect(applyRowFilter(rows, config(condition, { matchMode: 'exclude' }), ['状态', '名称']).map(row => row[1].value)).toEqual(['第二项'])
+  })
+
   it('supports in and not in value lists', () => {
     const inRule: RowFilterCondition = { type: 'rule', column: 'status', operator: 'in', values: ['ACTIVE', 'pending'] }
     const notInRule: RowFilterCondition = { type: 'rule', column: 'status', operator: 'notIn', values: ['cancelled', 'pending'] }

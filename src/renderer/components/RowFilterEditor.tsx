@@ -2,6 +2,7 @@ import { Button, Checkbox, Input, Popconfirm, Segmented, Select, Tooltip } from 
 import { DeleteOutlined, FolderAddOutlined, PlusOutlined } from '@ant-design/icons'
 import type { RowFilterCondition, RowFilterConfig, RowFilterGroup, RowFilterOperator, RowFilterRule } from '../types'
 import { DEFAULT_ROW_FILTER, MAX_ROW_FILTER_DEPTH } from '../services/rowFilter'
+import { useI18n } from '../i18n'
 
 interface RowFilterEditorProps {
   config?: RowFilterConfig
@@ -9,18 +10,15 @@ interface RowFilterEditorProps {
   onChange: (config: RowFilterConfig) => void
 }
 
-const OPERATOR_OPTIONS: Array<{ value: RowFilterOperator; label: string }> = [
-  { value: 'eq', label: 'equals' },
-  { value: 'neq', label: 'not equals' },
-  { value: 'in', label: 'in' },
-  { value: 'notIn', label: 'not in' },
-  { value: 'contains', label: 'contains' },
-  { value: 'notContains', label: 'not contains' },
-  { value: 'empty', label: 'empty' },
-  { value: 'notEmpty', label: 'not empty' },
-  { value: 'regex', label: 'regex' },
-  { value: 'notRegex', label: 'not regex' },
-]
+function operatorOptions(t: (key: string) => string): Array<{ value: RowFilterOperator; label: string }> {
+  return [
+    { value: 'eq', label: t('filter.eq') }, { value: 'neq', label: t('filter.neq') },
+    { value: 'in', label: t('filter.in') }, { value: 'notIn', label: t('filter.notIn') },
+    { value: 'contains', label: t('filter.contains') }, { value: 'notContains', label: t('filter.notContains') },
+    { value: 'empty', label: t('filter.empty') }, { value: 'notEmpty', label: t('filter.notEmpty') },
+    { value: 'regex', label: t('filter.regex') }, { value: 'notRegex', label: t('filter.notRegex') },
+  ]
+}
 
 function newRule(columnKeys: string[]): RowFilterRule {
   return { type: 'rule', column: columnKeys[0] ?? '$row', operator: 'eq', value: '' }
@@ -50,6 +48,7 @@ function ConditionEditor({ condition, columnKeys, depth, onChange, onDelete }: {
   onChange: (condition: RowFilterCondition) => void
   onDelete: () => void
 }) {
+  const { t } = useI18n()
   if (condition.type === 'rule') {
     const usesValues = condition.operator === 'in' || condition.operator === 'notIn'
     const noValue = condition.operator === 'empty' || condition.operator === 'notEmpty'
@@ -57,19 +56,19 @@ function ConditionEditor({ condition, columnKeys, depth, onChange, onDelete }: {
       <div className="row-filter-rule">
         <Select size="small" value={condition.column} className="row-filter-column"
           onChange={column => onChange({ ...condition, column })}
-          options={[{ value: '$row', label: '$row (index)' }, ...columnKeys.map(key => ({ value: key, label: key }))]} />
+          options={[{ value: '$row', label: t('filter.rowIndex') }, ...columnKeys.map(key => ({ value: key, label: key }))]} />
         <Select size="small" value={condition.operator} className="row-filter-operator"
           popupMatchSelectWidth={140}
           onChange={operator => onChange(normalizeOperator(condition, operator))}
-          options={OPERATOR_OPTIONS} />
+          options={operatorOptions(t)} />
         {usesValues ? (
           <Select size="small" mode="tags" value={condition.values ?? []} className="row-filter-value"
             tokenSeparators={[',']} onChange={values => onChange({ ...condition, values })} />
         ) : !noValue ? (
-          <Input size="small" value={condition.value ?? ''} className="row-filter-value" placeholder="value"
+          <Input size="small" value={condition.value ?? ''} className="row-filter-value" placeholder={t('filter.value')}
             onChange={event => onChange({ ...condition, value: event.target.value })} />
         ) : <span className="row-filter-value" />}
-        <Button size="small" type="text" danger aria-label="Delete row condition" icon={<DeleteOutlined />} onClick={onDelete} />
+        <Button size="small" type="text" danger aria-label={t('filter.deleteCondition')} icon={<DeleteOutlined />} onClick={onDelete} />
       </div>
     )
   }
@@ -77,14 +76,14 @@ function ConditionEditor({ condition, columnKeys, depth, onChange, onDelete }: {
   return (
     <div className={`row-filter-group depth-${Math.min(depth, 3)}`}>
       <div className="row-filter-group-heading">
-        <Segmented size="small" value={condition.type} options={[{ value: 'all', label: 'All' }, { value: 'any', label: 'Any' }]}
+        <Segmented size="small" value={condition.type} options={[{ value: 'all', label: t('common.all') }, { value: 'any', label: t('common.any') }]}
           onChange={type => onChange({ ...condition, type: type as 'all' | 'any' })} />
-        <Tooltip title="Add condition"><Button size="small" type="text" aria-label="Add row condition" icon={<PlusOutlined />}
+        <Tooltip title={t('filter.add')}><Button size="small" type="text" aria-label={t('filter.add')} icon={<PlusOutlined />}
           onClick={() => onChange({ ...condition, conditions: [...condition.conditions, newRule(columnKeys)] })} /></Tooltip>
-        <Tooltip title={depth >= MAX_ROW_FILTER_DEPTH - 1 ? 'Maximum nesting reached' : 'Add group'}><Button size="small" type="text"
-          disabled={depth >= MAX_ROW_FILTER_DEPTH - 1} aria-label="Add row condition group" icon={<FolderAddOutlined />}
+        <Tooltip title={depth >= MAX_ROW_FILTER_DEPTH - 1 ? t('filter.maxDepth') : t('filter.addGroup')}><Button size="small" type="text"
+          disabled={depth >= MAX_ROW_FILTER_DEPTH - 1} aria-label={t('filter.addGroup')} icon={<FolderAddOutlined />}
           onClick={() => onChange({ ...condition, conditions: [...condition.conditions, newGroup(columnKeys)] })} /></Tooltip>
-        {depth > 0 && <Button size="small" type="text" danger aria-label="Delete row condition group" icon={<DeleteOutlined />} onClick={onDelete} />}
+        {depth > 0 && <Button size="small" type="text" danger aria-label={t('filter.deleteGroup')} icon={<DeleteOutlined />} onClick={onDelete} />}
       </div>
       <div className="row-filter-group-body">
         {condition.conditions.map((child, index) => (
@@ -102,22 +101,30 @@ function ConditionEditor({ condition, columnKeys, depth, onChange, onDelete }: {
 }
 
 export function RowFilterEditor({ config: configured, columnKeys, onChange }: RowFilterEditorProps) {
+  const { t } = useI18n()
   const config = configured ?? DEFAULT_ROW_FILTER
   const condition = config.condition
   return (
     <div className="row-filter-editor">
       <div className="row-filter-checkbox">
-        <Checkbox aria-label="Remove empty rows" checked={config.removeEmptyRows}
+        <Checkbox aria-label={t('filter.removeEmpty')} checked={config.removeEmptyRows}
           onChange={event => onChange({ ...config, removeEmptyRows: event.target.checked })} />
-        <span>Remove empty rows</span>
+        <span>{t('filter.removeEmpty')}</span>
+      </div>
+      <div className="row-filter-match-mode">
+        <span>{t('filter.matchingRows')}</span>
+        <Segmented size="small" value={config.matchMode ?? 'include'} options={[
+          { value: 'include', label: t('filter.includeMatches') },
+          { value: 'exclude', label: t('filter.excludeMatches') },
+        ]} onChange={matchMode => onChange({ ...config, matchMode: matchMode as 'include' | 'exclude' })} />
       </div>
       <div className="row-filter-checkbox">
-        <Checkbox aria-label="Treat fully struck-through cells as empty" checked={config.emptyCellConditions.fullyStruck} disabled={!config.removeEmptyRows}
+        <Checkbox aria-label={t('filter.struckEmpty')} checked={config.emptyCellConditions.fullyStruck} disabled={!config.removeEmptyRows}
           onChange={event => onChange({
             ...config,
             emptyCellConditions: { ...config.emptyCellConditions, fullyStruck: event.target.checked },
           })} />
-        <span>Treat fully struck-through cells as empty</span>
+        <span>{t('filter.struckEmpty')}</span>
       </div>
       {condition ? (
         <ConditionEditor condition={condition.type === 'rule' ? { type: 'all', conditions: [condition] } : condition}
@@ -125,13 +132,13 @@ export function RowFilterEditor({ config: configured, columnKeys, onChange }: Ro
           onDelete={() => onChange({ ...config, condition: null })} />
       ) : (
         <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => onChange({ ...config, condition: newGroup(columnKeys) })}>
-          Add condition
+          {t('filter.add')}
         </Button>
       )}
       {condition && (
-        <Popconfirm title="Clear all row filter conditions?" okText="Clear" cancelText="Cancel"
+        <Popconfirm title={t('filter.clearConfirm')} okText={t('filter.clear')} cancelText={t('common.cancel')}
           onConfirm={() => onChange({ ...config, condition: null })}>
-          <Button size="small" type="link" danger icon={<DeleteOutlined />} className="row-filter-clear-button">Clear conditions</Button>
+          <Button size="small" type="link" danger icon={<DeleteOutlined />} className="row-filter-clear-button">{t('filter.clear')}</Button>
         </Popconfirm>
       )}
     </div>

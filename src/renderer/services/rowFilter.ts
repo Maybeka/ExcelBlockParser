@@ -6,6 +6,7 @@ export const MAX_ROW_FILTER_DEPTH = 10
 export const DEFAULT_ROW_FILTER: RowFilterConfig = {
   removeEmptyRows: true,
   emptyCellConditions: { fullyStruck: true },
+  matchMode: 'include',
   condition: null,
 }
 
@@ -78,8 +79,8 @@ export function applyRowFilter(
       const empty = sourceColumnOffsets.every(offset => isCellConsideredEmpty(row[offset] ?? { value: null, fullyStruck: false }, config))
       if (empty) return false
     }
-    return config.condition
-      ? conditionMatches(config.condition, row, rowIndex, columnKeys, sourceColumnOffsets, config)
-      : true
+    if (!config.condition) return true
+    const matches = conditionMatches(config.condition, row, rowIndex, columnKeys, sourceColumnOffsets, config)
+    return (config.matchMode ?? 'include') === 'include' ? matches : !matches
   })
 }
