@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode, useState } from 'react'
-import { Alert, Button } from 'antd'
+import { Alert, Button, Tooltip } from 'antd'
+import { MenuFoldOutlined } from '@ant-design/icons'
 import { useI18n } from '../../i18n'
 
 export interface FeaturePanelContribution {
@@ -14,6 +15,7 @@ export interface FeaturePanelContribution {
 interface FeaturePanelHostProps {
   panels: readonly FeaturePanelContribution[]
   onRenderError?: (featureId: string, error: Error) => void
+  onCollapse?: () => void
 }
 
 interface BoundaryProps {
@@ -59,7 +61,8 @@ function PanelRenderer({ render }: { render: () => ReactNode }) {
   return <>{render()}</>
 }
 
-function FeaturePanelSection({ panel, onRenderError }: { panel: FeaturePanelContribution; onRenderError?: (featureId: string, error: Error) => void }) {
+function FeaturePanelSection({ panel, onRenderError, onCollapse }: { panel: FeaturePanelContribution; onRenderError?: (featureId: string, error: Error) => void; onCollapse?: () => void }) {
+  const { t } = useI18n()
   const [headerActionsTarget, setHeaderActionsTarget] = useState<HTMLElement | null>(null)
   const actions = typeof panel.headerActions === 'function'
     ? panel.headerActions(headerActionsTarget)
@@ -68,7 +71,10 @@ function FeaturePanelSection({ panel, onRenderError }: { panel: FeaturePanelCont
     <section className="feature-panel-section" aria-label={panel.ariaLabel} data-feature-id={panel.id}>
       <header className="panel-heading inspector-heading inspector-heading-stacked">
         <div className="panel-heading-title"><strong>{panel.title}</strong>{panel.summary && <span>{panel.summary}</span>}</div>
-        <div ref={setHeaderActionsTarget} className="panel-heading-actions">{actions}</div>
+        <div ref={setHeaderActionsTarget} className="panel-heading-actions">
+          {actions}
+          {onCollapse && <Tooltip title={t('app.hideInspector')}><Button aria-label={t('app.hideInspector')} size="small" type="text" icon={<MenuFoldOutlined />} onClick={onCollapse} /></Tooltip>}
+        </div>
       </header>
       <div className="feature-panel-scroll" tabIndex={0} aria-label={`${panel.title} content`}>
         <FeaturePanelErrorBoundary featureId={panel.id} onError={onRenderError}>
@@ -80,7 +86,7 @@ function FeaturePanelSection({ panel, onRenderError }: { panel: FeaturePanelCont
 }
 
 /** Host-owned mount point. Feature content cannot replace shell-owned section boundaries. */
-export function FeaturePanelHost({ panels, onRenderError }: FeaturePanelHostProps) {
+export function FeaturePanelHost({ panels, onRenderError, onCollapse }: FeaturePanelHostProps) {
   const singlePanel = panels.length === 1 ? panels[0] : null
   return (
     <aside
@@ -88,7 +94,7 @@ export function FeaturePanelHost({ panels, onRenderError }: FeaturePanelHostProp
       aria-label={singlePanel?.ariaLabel ?? 'Workspace configuration'}
       {...(singlePanel ? { 'data-feature-id': singlePanel.id } : {})}
     >
-      {panels.map(panel => <FeaturePanelSection key={panel.id} panel={panel} onRenderError={onRenderError} />)}
+      {panels.map((panel, index) => <FeaturePanelSection key={panel.id} panel={panel} onRenderError={onRenderError} onCollapse={index === 0 ? onCollapse : undefined} />)}
     </aside>
   )
 }

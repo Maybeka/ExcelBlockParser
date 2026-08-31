@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1 - 2026-08-31
+
+- Added a persistent Extractions-panel collapse control so the workbook canvas
+  can use the full workspace width without rebuilding the active workbook.
+- Added read-only selected-cell copy and workbook search with case-sensitive
+  and whole-cell matching options. Search only reads and focuses matching cells.
+
 ## 1.4.0 - 2026-08-31
 
 - Refined project workflows: saving now confirms success, switching workbooks

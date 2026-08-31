@@ -93,6 +93,7 @@ export function WorkspaceApplication() {
   const [hasUnsavedChanges, setDirtyState] = useState(false)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
   const [sidebarHidden, setSidebarHidden] = useState(true)
+  const [inspectorHidden, setInspectorHidden] = useState(() => localStorage.getItem('excel-block-parser.inspector-hidden') === 'true')
   const [sidebarWidth, setSidebarWidth] = useState(272)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
@@ -100,6 +101,10 @@ export function WorkspaceApplication() {
   const [pendingNavigatorRangeFocus, setPendingNavigatorRangeFocus] = useState<{ workbookId: string; sheetName: string | null; range: CellRange } | null>(null)
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const historyRef = useRef(new WorkspaceStateCoordinator())
+
+  useEffect(() => {
+    localStorage.setItem('excel-block-parser.inspector-hidden', String(inspectorHidden))
+  }, [inspectorHidden])
 
   useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
@@ -842,7 +847,7 @@ export function WorkspaceApplication() {
           </>
         )}
         <div className="workspace-main">
-          <Splitter className="workspace-splitter">
+          <Splitter className={`workspace-splitter ${inspectorHidden ? 'is-inspector-collapsed' : ''}`}>
             <Splitter.Panel defaultSize="70%" min="45%" max="82%">
               <section className="workspace-canvas" aria-label={t('app.workbookCanvas')}>
                 <header className="panel-heading canvas-heading">
@@ -855,6 +860,9 @@ export function WorkspaceApplication() {
                     </Tooltip>
                   </div>
                 </header>
+                {inspectorHidden && <Tooltip title={t('app.showInspector')}>
+                  <Button className="workspace-inspector-restore" aria-label={t('app.showInspector')} type="primary" shape="circle" icon={<MenuUnfoldOutlined />} onClick={() => setInspectorHidden(false)} />
+                </Tooltip>}
                 <SpreadsheetPanel
                   activeSheet={activeSheetName}
                   activeItemIds={activeCanvasItemIds}
@@ -877,7 +885,7 @@ export function WorkspaceApplication() {
               </section>
             </Splitter.Panel>
             <Splitter.Panel defaultSize="30%" min={360}>
-              <FeaturePanelHost panels={featurePanels} />
+              <FeaturePanelHost panels={featurePanels} onCollapse={() => setInspectorHidden(true)} />
             </Splitter.Panel>
           </Splitter>
         </div>

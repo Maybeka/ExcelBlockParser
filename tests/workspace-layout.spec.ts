@@ -52,6 +52,19 @@ test.describe('M3 workspace layout', () => {
     await expect(navigation).toBeVisible()
   })
 
+  test('collapses Extractions without unmounting the workbook canvas', async ({ page }) => {
+    await page.addInitScript(() => localStorage.removeItem('excel-block-parser.inspector-hidden'))
+    await page.goto('/?e2e=1')
+
+    const inspector = page.getByRole('complementary', { name: 'Extractions' })
+    await expect(inspector).toBeVisible()
+    await page.getByRole('button', { name: 'Hide Extractions' }).click()
+    await expect(inspector).not.toBeVisible()
+    await expect(page.getByRole('button', { name: 'Show Extractions' })).toBeVisible()
+    await page.getByRole('button', { name: 'Show Extractions' }).click()
+    await expect(inspector).toBeVisible()
+  })
+
   test('allows desktop navigation width to be adjusted from its separator', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Show workspace navigation' }).click()

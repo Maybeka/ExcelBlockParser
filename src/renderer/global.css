@@ -112,6 +112,9 @@ html, body, #root {
 .workspace-splitter .ant-splitter-bar { background: transparent; width: 6px; }
 .workspace-splitter .ant-splitter-panel:first-child { border-radius: var(--fluent-panel-radius); overflow: hidden; }
 .workspace-splitter .ant-splitter-panel:last-child { background: var(--m3-surface-container-low); border-left: 0; border-radius: var(--fluent-panel-radius); box-shadow: none; overflow: hidden; }
+.workspace-splitter.is-inspector-collapsed .ant-splitter-bar,
+.workspace-splitter.is-inspector-collapsed .ant-splitter-panel:last-child { display: none; }
+.workspace-splitter.is-inspector-collapsed .ant-splitter-panel:first-child { flex: 1 1 auto !important; width: 100% !important; }
 .workspace-canvas, .inspector-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .workspace-canvas { background: var(--m3-surface-container-lowest); border-radius: var(--fluent-panel-radius); box-shadow: none; overflow: hidden; }
 .workspace-canvas > :last-child { flex: 1; min-height: 0; }
@@ -143,6 +146,7 @@ html, body, #root {
 .canvas-heading { background: var(--m3-surface-container-lowest); border-bottom: 1px solid var(--fluent-stroke); box-shadow: none; min-height: 42px; padding-block: 5px; }
 .canvas-heading-actions { align-items: center; gap: 4px; justify-content: flex-end; max-width: 55%; }
 .canvas-heading-actions .ant-btn { flex: 0 0 auto; }
+.workspace-inspector-restore.ant-btn { bottom: 14px; box-shadow: var(--fluent-elevation); position: absolute; right: 14px; z-index: 7; }
 .inspector-heading { background: transparent; }
 .feature-panel-host-1 .inspector-heading {
   background: var(--m3-surface-container);
@@ -162,6 +166,12 @@ html, body, #root {
 .workbook-empty-state strong { color: #2b3c4a; font-size: 16px; }
 .workbook-empty-state span { font-size: 12px; line-height: 1.55; max-width: 330px; }
 .workbook-empty-state .ant-btn-primary { background: #3390ec; box-shadow: none; }
+.workbook-readonly-tools { align-items: center; background: var(--m3-surface-container-lowest); border: 1px solid var(--fluent-stroke); border-radius: 8px; box-shadow: var(--fluent-elevation); display: flex; gap: 2px; padding: 2px; position: absolute; right: 14px; top: 12px; z-index: 8; }
+.workbook-readonly-tools .ant-btn { color: var(--fluent-accent); }
+.workbook-search { background: var(--m3-surface-container-lowest); border: 1px solid var(--fluent-stroke); border-radius: 8px; box-shadow: var(--fluent-elevation); display: flex; flex-direction: column; gap: 6px; padding: 8px; position: absolute; right: 14px; top: 48px; width: min(340px, calc(100% - 28px)); z-index: 8; }
+.workbook-search-options { align-items: center; display: flex; gap: 8px; }
+.workbook-search-options .ant-checkbox-wrapper { color: var(--fluent-text-muted); font-size: 11px; }
+.workbook-search-count { color: var(--fluent-text-muted); font-size: 11px; margin-left: auto; min-width: 32px; text-align: right; }
 
 .workspace-mobile-nav { display: none; }
 .workspace-nav { background: transparent; height: 100%; overflow: auto; padding: 0 10px 14px; }

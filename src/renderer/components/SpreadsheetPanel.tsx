@@ -1,11 +1,13 @@
 import { useRef, useEffect, useState } from 'react'
-import { Button, Spin } from 'antd'
+import { Button, Checkbox, Input, Spin, Tooltip, message } from 'antd'
+import { CopyOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
 import type { CellRange } from '../types'
 import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
 import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
+import { findWorkbookMatches, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
 import type { WorkbookLoadRequest } from '../services/workbookRuntime'
 import { useI18n } from '../i18n'
 
@@ -40,6 +42,10 @@ interface CachedWorkbook {
   sheetNames: string[]
 }
 
+interface SearchMatch extends WorkbookSearchMatch {
+  sheetName: string
+}
+
 export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook }: SpreadsheetPanelProps) {
   const { locale, t } = useI18n()
   const initialLocaleRef = useRef(locale)
@@ -72,6 +78,13 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   const [error, setError] = useState<string | null>(null)
   const [hasFile, setHasFile] = useState(false)
   const [retrySignal, setRetrySignal] = useState(0)
+  const [selection, setSelection] = useState<{ range: CellRange; sheetName: string } | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false)
+  const [searchWholeCell, setSearchWholeCell] = useState(false)
+  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
+  const [searchIndex, setSearchIndex] = useState(-1)
   const initializedRef = useRef(false)
   const requestedWorkbookRef = useRef<number | null>(null)
   const handledLoadSignalRef = useRef(0)
@@ -82,6 +95,58 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   const renameObserverRef = useRef<MutationObserver | null>(null)
   const highlightDisposablesRef = useRef<Array<{ dispose: () => void }>>([])
   const workbookCacheRef = useRef<Map<string, CachedWorkbook>>(new Map())
+
+  const copySelection = async () => {
+    const api = univerAPIRef.current
+    const workbook = api?.getActiveWorkbook()
+    const sheet = selection?.sheetName ? workbook?.getSheetByName(selection.sheetName) : workbook?.getActiveSheet()
+    if (!sheet || !selection) return
+    try {
+      const range = sheet.getRange(selection.range.a1Notation)
+      const text = formatCellsAsTsv(range.getDisplayValues?.() ?? range.getValues())
+      await copyText(text)
+      message.success(t('workbook.copySuccess'))
+    } catch {
+      message.error(t('workbook.copyFailed'))
+    }
+  }
+
+  const focusSearchMatch = (matches: SearchMatch[], index: number) => {
+    const match = matches[index]
+    const workbook = univerAPIRef.current?.getActiveWorkbook()
+    if (!match || !workbook) return
+    const sheet = workbook.getSheetByName(match.sheetName)
+    if (!sheet) return
+    sheet.activate()
+    const range = sheet.getRange(match.range.a1Notation)
+    sheet.setActiveSelection?.(range)
+    range.activate?.()
+    range.scrollTo?.()
+    setSearchIndex(index)
+  }
+
+  const runSearch = () => {
+    const workbook = univerAPIRef.current?.getActiveWorkbook()
+    const query = searchQuery.trim()
+    if (!workbook || !query) {
+      setSearchMatches([])
+      setSearchIndex(-1)
+      return
+    }
+    const matches: SearchMatch[] = []
+    for (const sheet of workbook.getSheets()) {
+      const rowCount = sheet.getMaxRows()
+      const columnCount = sheet.getMaxColumns()
+      const values = sheet.getRange(0, 0, rowCount, columnCount).getDisplayValues?.() ?? sheet.getRange(0, 0, rowCount, columnCount).getValues()
+      for (const match of findWorkbookMatches(values, query, { caseSensitive: searchCaseSensitive, wholeCell: searchWholeCell, maxResults: 250 - matches.length })) {
+        matches.push({ ...match, sheetName: sheet.getSheetName() })
+      }
+      if (matches.length >= 250) break
+    }
+    setSearchMatches(matches)
+    if (matches.length) focusSearchMatch(matches, 0)
+    else setSearchIndex(-1)
+  }
 
   useEffect(() => {
     highlightDisposablesRef.current.forEach(d => { try { d.dispose() } catch { /* ignore */ } })
@@ -168,6 +233,7 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
         const sheetName = currentSheet?.getSheetName() ?? null
 
         if (!selections.length || !currentSheet) {
+          setSelection(null)
           onSelectionChangeRef.current(sourceWorkbookId, null, sheetName)
           return
         }
@@ -179,6 +245,7 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
           endCol: sel.endColumn,
           a1Notation: `${colToA1(sel.startColumn)}${sel.startRow + 1}:${colToA1(sel.endColumn)}${sel.endRow + 1}`,
         }
+        setSelection({ range, sheetName: sheetName ?? '' })
         onSelectionChangeRef.current(sourceWorkbookId, range, sheetName)
       })
 
@@ -399,6 +466,9 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
     for (const cached of workbookCacheRef.current.values()) api.disposeUnit(cached.unitId)
     workbookCacheRef.current.clear()
     setHasFile(false)
+    setSelection(null)
+    setSearchMatches([])
+    setSearchIndex(-1)
     setSheetNames([])
     onLoadedWorkbookChange(null)
     setError(null)
@@ -407,6 +477,31 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {hasFile && (
+        <div className="workbook-readonly-tools" aria-label={t('workbook.readonlyTools')}>
+          <Tooltip title={t('workbook.copySelection')}>
+            <Button aria-label={t('workbook.copySelection')} type="text" size="small" icon={<CopyOutlined />} disabled={!selection} onClick={() => void copySelection()} />
+          </Tooltip>
+          <Tooltip title={t('workbook.search')}>
+            <Button aria-label={t('workbook.search')} type="text" size="small" icon={<SearchOutlined />} onClick={() => setSearchOpen(current => !current)} />
+          </Tooltip>
+        </div>
+      )}
+      {hasFile && searchOpen && (
+        <div className="workbook-search" role="search">
+          <Input size="small" autoFocus value={searchQuery} placeholder={t('workbook.searchPlaceholder')}
+            onChange={event => setSearchQuery(event.target.value)} onPressEnter={runSearch} suffix={<SearchOutlined />} />
+          <div className="workbook-search-options">
+            <Checkbox checked={searchCaseSensitive} onChange={event => setSearchCaseSensitive(event.target.checked)}>{t('workbook.searchCaseSensitive')}</Checkbox>
+            <Checkbox checked={searchWholeCell} onChange={event => setSearchWholeCell(event.target.checked)}>{t('workbook.searchWholeCell')}</Checkbox>
+            <span className="workbook-search-count">{searchMatches.length ? `${searchIndex + 1}/${searchMatches.length}` : ''}</span>
+            <Button aria-label={t('workbook.searchPrevious')} type="text" size="small" icon={<LeftOutlined />} disabled={!searchMatches.length}
+              onClick={() => focusSearchMatch(searchMatches, (searchIndex - 1 + searchMatches.length) % searchMatches.length)} />
+            <Button aria-label={t('workbook.searchNext')} type="text" size="small" icon={<RightOutlined />} disabled={!searchMatches.length}
+              onClick={() => focusSearchMatch(searchMatches, (searchIndex + 1) % searchMatches.length)} />
+          </div>
+        </div>
+      )}
       {!hasFile && !error && !loading && (
         <div className="workbook-empty-state">
           <div className="workbook-empty-icon">XLSX</div>
@@ -428,6 +523,22 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
       )}
     </div>
   )
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.append(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  if (!copied) throw new Error('Clipboard access was denied')
 }
 
 function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
