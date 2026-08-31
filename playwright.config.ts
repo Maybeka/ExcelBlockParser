@@ -17,11 +17,12 @@ export default defineConfig({
     headless: true,
     viewport: { width: 1400, height: 900 },
     actionTimeout: 10000,
+    launchOptions: process.env.CI ? { args: ['--disable-dev-shm-usage'] } : undefined,
   },
   webServer: {
     command: 'npm run dev:vite -- --host 127.0.0.1 --port 4173 --strictPort',
     url: 'http://127.0.0.1:4173',
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 60000,
   },
 })

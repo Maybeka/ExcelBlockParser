@@ -3,9 +3,15 @@ import { resolve } from 'node:path'
 
 const root = process.cwd()
 
-export function electronTestEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  const env = { ...process.env, ELECTRON_E2E: '1', ...extra }
-  delete env.ELECTRON_RUN_AS_NODE
+export function electronTestEnv(extra: Record<string, string> = {}): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === 'string') env[key] = value
+  }
+  Object.assign(env, { ELECTRON_E2E: '1' }, extra)
+  // Cursor injects this and makes Electron start as Node. Windows CI must keep the
+  // unmodified host environment that previously launched the GUI successfully.
+  if (process.platform === 'darwin') delete env.ELECTRON_RUN_AS_NODE
   return env
 }
 

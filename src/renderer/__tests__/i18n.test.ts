@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { translate } from '../i18n'
+import { translate, resolveAppLocale } from '../i18n'
 
 describe('interface translations', () => {
   it('provides localized workspace copy and interpolates values', () => {
@@ -10,5 +10,11 @@ describe('interface translations', () => {
 
   it('falls back to English for a locale-specific missing key', () => {
     expect(translate('zh-CN', 'not.a.translation')).toBe('not.a.translation')
+  })
+
+  it('defaults to English when no saved locale or language is available', () => {
+    expect(resolveAppLocale(null, undefined)).toBe('en-US')
+    expect(resolveAppLocale(null, '')).toBe('en-US')
+    expect(resolveAppLocale('zh-CN', undefined)).toBe('zh-CN')
   })
 })
