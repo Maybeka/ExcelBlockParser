@@ -1,7 +1,8 @@
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
+import { closeElectronApp, launchElectronApp } from './electronLaunch'
 
 const root = process.cwd()
 const salesPath = resolve(root, 'examples', 'test_data.xlsx')
@@ -54,18 +55,12 @@ function projectFixture() {
 }
 
 async function launch(userDataDirectory: string, importPath: string, outputPath: string): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
-    args: [resolve(root, 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      ELECTRON_E2E: '1',
-      ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
-      ELECTRON_E2E_IMPORT_PATH: importPath,
-      ELECTRON_E2E_SAVE_PATH: outputPath,
-      ELECTRON_E2E_OPEN_PATHS: JSON.stringify([salesPath, catalogPath]),
-    },
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_IMPORT_PATH: importPath,
+    ELECTRON_E2E_SAVE_PATH: outputPath,
+    ELECTRON_E2E_OPEN_PATHS: JSON.stringify([salesPath, catalogPath]),
   })
-  const page = await app.firstWindow()
   await page.getByText('Excel Block Parser').waitFor()
   await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
   await page.reload()
@@ -157,7 +152,7 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
       blockLabel: 'block_1', range: { a1Notation: 'A1:C3' },
     })
   } finally {
-    await app.close()
+    await closeElectronApp(app, page)
     await rm(directory, { recursive: true, force: true })
   }
 })

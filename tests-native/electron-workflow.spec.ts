@@ -1,7 +1,8 @@
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { access, copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
+import { closeElectronApp, launchElectronApp } from './electronLaunch'
 
 const root = process.cwd()
 const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
@@ -11,12 +12,10 @@ const completeProjectV3FixturePath = resolve(root, 'src', 'renderer', '__tests__
 let userDataDirectory = ''
 
 async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = false): Promise<{ app: ElectronApplication; page: Page }> {
-  const executablePath = process.env.ELECTRON_E2E_EXECUTABLE
-  const app = await electron.launch({
-    ...(executablePath ? { executablePath, args: [] } : { args: [resolve(root, 'out', 'main', 'index.js')] }),
-    env: { ...process.env, ELECTRON_E2E: '1', ELECTRON_E2E_USER_DATA_DIR: userDataDirectory, ...extraEnv },
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ...extraEnv,
   })
-  const page = await app.firstWindow()
   await page.getByText('Excel Block Parser').waitFor()
   await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
   await page.reload()
@@ -101,7 +100,7 @@ test.describe('Electron native workflow', () => {
       await page.getByRole('button', { name: 'Show workspace navigation' }).click()
       await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByText('Sheet1', { exact: true })).toBeVisible()
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -118,7 +117,7 @@ test.describe('Electron native workflow', () => {
       await page.getByRole('tab', { name: 'Orders', exact: true }).click()
       await expect(orders).toHaveClass(/is-active/)
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -140,7 +139,7 @@ test.describe('Electron native workflow', () => {
       await page.getByRole('button', { name: 'Run & Preview' }).click()
       await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -151,7 +150,7 @@ test.describe('Electron native workflow', () => {
       await expect(page.getByRole('tab', { name: 'test_data.xlsx' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Close test_data.xlsx' })).toHaveCount(0)
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -166,7 +165,7 @@ test.describe('Electron native workflow', () => {
       await confirmation.getByRole('button', { name: 'Remove source' }).click()
       await expect(settings.getByText('test_data.xlsx', { exact: true })).toBeHidden()
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -185,7 +184,7 @@ test.describe('Electron native workflow', () => {
       await expect(page.getByRole('menuitem', { name: 'Close Project' })).toHaveAttribute('aria-disabled', 'true')
       await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -203,7 +202,7 @@ test.describe('Electron native workflow', () => {
       await expect(settings.getByText('test_data.xlsx', { exact: true })).toHaveCount(0)
       await expect(page.getByRole('tab', { name: 'test_data.xlsx' })).toHaveCount(0)
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -221,7 +220,7 @@ test.describe('Electron native workflow', () => {
       await expect.poll(async () => { try { await access(output); return true } catch { return false } }).toBe(true)
       expect(JSON.parse(await readFile(output, 'utf8')).version).toBe(3)
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
       await rm(directory, { recursive: true, force: true })
     }
   })
@@ -258,7 +257,7 @@ test.describe('Electron native workflow', () => {
       expect(saved).toEqual(source)
       expect(savedPaths).toEqual(expect.arrayContaining([expect.any(String), expect.any(String)]))
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
       await rm(directory, { recursive: true, force: true })
     }
   })
@@ -282,7 +281,7 @@ test.describe('Electron native workflow', () => {
         return saved.version === 3 ? saved.project?.name : null
       }).toBe('Current project')
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
       await rm(directory, { recursive: true, force: true })
     }
   })
@@ -298,7 +297,7 @@ test.describe('Electron native workflow', () => {
         try { return JSON.parse(await readFile(projectPath, 'utf8')) } catch { return null }
       }).toMatchObject({ version: 3, project: { name: 'New analysis', blocks: [], regions: [] } })
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
       await rm(directory, { recursive: true, force: true })
     }
   })
@@ -316,7 +315,7 @@ test.describe('Electron native workflow', () => {
       await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
       await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
       await rm(directory, { recursive: true, force: true })
     }
   })
@@ -339,7 +338,7 @@ test.describe('Electron native workflow', () => {
       await expect(preview.getByRole('button', { name: 'Show JSON' })).toBeVisible()
       await expect(preview.getByRole('cell', { name: 'Alice', exact: true })).toBeVisible()
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -353,7 +352,7 @@ test.describe('Electron native workflow', () => {
       await page.getByRole('button', { name: 'Open Project' }).click()
       await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -376,7 +375,7 @@ test.describe('Electron native workflow', () => {
       await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
       await expect.poll(() => page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toEqual({ status: 'ok', value: null })
     } finally {
-      await app.close()
+      await closeElectronApp(app, page)
     }
   })
 
@@ -390,7 +389,7 @@ test.describe('Electron native workflow', () => {
         await api.saveRecovery(content)
       }, recovery)
     } finally {
-      await first.app.close()
+      await closeElectronApp(first.app, first.page)
     }
 
     const second = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath }, true)
@@ -405,7 +404,7 @@ test.describe('Electron native workflow', () => {
       await expect(second.page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
       await second.page.evaluate(async () => (window as any).electronAPI.clearRecovery())
     } finally {
-      await second.app.close()
+      await closeElectronApp(second.app, second.page)
     }
   })
 
@@ -419,7 +418,7 @@ test.describe('Electron native workflow', () => {
         await api.saveRecovery(content)
       }, recovery)
     } finally {
-      await first.app.close()
+      await closeElectronApp(first.app, first.page)
     }
 
     const second = await launch({}, true)
@@ -430,7 +429,7 @@ test.describe('Electron native workflow', () => {
       await expect(second.page.getByText('Select an Excel file, then choose the ranges you want to turn into structured data.', { exact: true })).toBeVisible()
       await expect.poll(() => second.page.evaluate(async () => (window as any).electronAPI.loadRecovery())).toEqual({ status: 'ok', value: null })
     } finally {
-      await second.app.close()
+      await closeElectronApp(second.app, second.page)
     }
   })
 })
