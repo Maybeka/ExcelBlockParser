@@ -67,6 +67,9 @@ async function launch(userDataDirectory: string, importPath: string, outputPath:
   })
   const page = await app.firstWindow()
   await page.getByText('Excel Block Parser').waitFor()
+  await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+  await page.reload()
+  await page.getByText('Excel Block Parser').waitFor()
   await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
   return { app, page }
 }

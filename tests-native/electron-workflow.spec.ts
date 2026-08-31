@@ -18,6 +18,9 @@ async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = 
   })
   const page = await app.firstWindow()
   await page.getByText('Excel Block Parser').waitFor()
+  await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+  await page.reload()
+  await page.getByText('Excel Block Parser').waitFor()
   if (!preserveRecovery) {
     const recoveryDialog = page.getByRole('dialog', { name: 'Recover unsaved workspace?' })
     await page.waitForTimeout(150)
@@ -96,7 +99,7 @@ test.describe('Electron native workflow', () => {
       await addWorkbookSource(page, 'test_data.xlsx')
       await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
       await page.getByRole('button', { name: 'Show workspace navigation' }).click()
-      await expect(page.getByRole('navigation', { name: 'Workspace navigator' }).getByText('Sheet1', { exact: true })).toBeVisible()
+      await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByText('Sheet1', { exact: true })).toBeVisible()
     } finally {
       await app.close()
     }
