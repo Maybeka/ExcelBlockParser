@@ -289,14 +289,17 @@ test.describe('Downstream Properties', () => {
   })
 })
 
-test.describe('Reconciliation', () => {
-  test('opens the reviewed reconciliation workflow for an imported block', async ({ page }) => {
+test.describe('Block range reset', () => {
+  test('shows the existing source, requires review, and supports cancellation', async ({ page }) => {
     await loadWorkbookFixture(page)
 
-    await page.getByLabel('Edit block').click()
-    await expect(page.getByText('Choose which sheet this block should reference.')).toBeVisible()
-    await expect(page.getByText('① Sheet', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Next: Range' }).click()
-    await expect(page.getByText('Current range:', { exact: false })).toBeVisible()
+    await page.getByLabel('Reset range').click()
+    await expect(page.getByText('Current source')).toBeVisible()
+    await expect(page.getByText('test_data.xlsx · Sheet1 · A1:D9')).toBeVisible()
+    await page.getByRole('button', { name: 'Review change' }).click()
+    await expect(page.getByText('Review range change')).toBeVisible()
+    await expect(page.getByText('Column, filter, tag, and property configuration will be preserved.')).toBeVisible()
+    await page.locator('.block-range-reset-flow').getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(page.getByText('Current source')).toHaveCount(0)
   })
 })

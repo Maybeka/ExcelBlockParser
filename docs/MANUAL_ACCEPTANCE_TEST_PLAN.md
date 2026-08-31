@@ -174,25 +174,37 @@ the primary evidence for the stable contract described in
 
 **Evidence:** screenshot of selected region/range and preview results.
 
-### TC-06: Reconciliation Against Changed Source
+### TC-06: Multi-Workbook Selection And Block Range Reset
 
 **Steps**
 
-1. Open `test_data_v2.xlsx`.
-2. Import the original `project.json` fixture and choose **Replace All**.
-3. Read the reconciliation message or use the affected block's sync action to
-   open its reconciliation flow.
-4. Inspect the reported changed, added, removed, or shifted columns.
-5. Do not apply a suggested fix unless its range/sheet matches the visible
-   workbook. If applied, parse and preview again.
+1. Open `project.json`, then use **Project settings** to add
+   `multi_sheet.xlsx` as a second workbook source.
+2. Select `multi_sheet.xlsx` from the top workbook list. Confirm that the
+   active Block remains `block_1`; it must not be replaced or cleared merely
+   because the workbook changed.
+3. In the Block card, choose **Reset range**. Confirm the current workbook,
+   sheet, and A1 range are shown before making a change.
+4. Select `multi_sheet.xlsx`, then `Products`. Drag a new range in the canvas
+   and choose **Reselect range** in the reset flow.
+5. Choose **Review change**. Verify the Before and After values identify the
+   correct workbook, sheet, and A1 range. Select **Cancel**.
+6. Confirm the Block still points to its original source and that its column,
+   row-filter, tag, and downstream-property configuration is unchanged.
+7. Repeat the reset, choose **Apply range change**, and confirm that the app
+   switches to and focuses the new range. Save the project and inspect the
+   saved JSON.
 
 **Expected result**
 
-- The app reports the configuration/source mismatch instead of silently
-  treating the changed workbook as equivalent.
-- Any applied fix is explicit and leaves a valid, parseable configuration.
+- Workbook navigation never silently changes the active Block or Region.
+- Cancel discards the proposed source and preserves the complete Block
+  configuration.
+- The saved Block has the newly selected `workbookId`, `activeSheet`, and
+  range, while its non-source configuration is preserved.
 
-**Evidence:** screenshot of reconciliation diagnostics and any applied fix.
+**Evidence:** screenshots of the review and applied range, plus the saved JSON
+showing the new source binding.
 
 ### TC-07: Undo, Redo, And Unsaved-Change Protection
 

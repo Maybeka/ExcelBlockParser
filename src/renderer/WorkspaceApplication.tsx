@@ -485,6 +485,7 @@ export function WorkspaceApplication() {
         setHasUnsavedChanges(false)
         historyRef.current.markSaved()
         void getBridge().clearRecovery()
+        message.success(t('project.saved', { name: result.project.name }))
       } else if (result.status === 'error') {
         message.error(result.message || t('project.saveFailedRecovery'))
         console.error('Save failed:', result.message)
@@ -587,7 +588,7 @@ export function WorkspaceApplication() {
     const configured = builtInFeatureRegistry.canvasRanges(project, activeWorkbookId)
 
     const range = reconcilingPreviewRange ?? reconcilingItem?.range
-    const reconciling = reconcilingItem && range
+    const reconciling = reconcilingItem && range && reconcilingItem.workbookId === activeWorkbookId
       ? [{ itemId: reconcilingItem.id, range, activeSheet: reconcilingPreviewSheet ?? reconcilingItem.activeSheet, color: '#fa8c16' }]
       : []
 

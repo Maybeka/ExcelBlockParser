@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 - 2026-08-31
+
+- Refined project workflows: saving now confirms success, switching workbooks
+  preserves the selected Block or Region, and Project Python runs with
+  Cmd/Ctrl+Enter.
+- Separated Block configuration editing from a dedicated range-reset workflow.
+  The reset flow shows the current source, lets users choose a project
+  workbook, sheet, and range, requires a before/after review, preserves
+  configuration, and focuses the newly applied range.
+
 ## 1.3.5 - 2026-08-31
 
 - Preserved Excel worksheet tab colors in the spreadsheet canvas and workspace

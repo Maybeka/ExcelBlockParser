@@ -26,6 +26,8 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
       render: () => (
         <ConfigPanel
           spreadsheet={context.spreadsheet}
+          workbooks={project.workbooks}
+          loadedWorkbookId={context.loadedWorkbookId}
           blocks={activeBlocks}
           activeBlockId={project.activeBlockId}
           activeColIndex={context.activeColIndex}
@@ -55,7 +57,7 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
           onColumnFocus={context.setActiveColumn}
           onReconcilingChange={blockId => {
             const block = context.project.blocks.find(item => item.id === blockId)
-            context.setReconciliationItem(block ? { id: block.id, range: block.range, activeSheet: block.activeSheet } : null)
+            context.setReconciliationItem(block ? { id: block.id, workbookId: block.workbookId, range: block.range, activeSheet: block.activeSheet } : null)
           }}
           onReselectRange={context.takeReselectedRange}
           onPreviewSheet={context.setPreviewSheet}
@@ -63,6 +65,12 @@ export const extractionPanelProvider: WorkspaceFeaturePanelProvider = {
             const block = context.project.blocks.find(item => item.id === blockId)
             if (block) context.focusRange(block.workbookId, block.activeSheet, block.range)
           }}
+          onFocusRangeReset={source => {
+            if (!source.workbookId || !source.range) return
+            context.activateWorkbook(source.workbookId, source.activeSheet ?? undefined)
+            context.focusRange(source.workbookId, source.activeSheet, source.range)
+          }}
+          onActivateWorkbook={context.activateWorkbook}
           canAddBlock={Boolean(project.activeWorkbookId)}
         />
       ),

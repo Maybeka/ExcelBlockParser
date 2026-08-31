@@ -1,6 +1,5 @@
 import type { ProjectFeatureModule } from '../core/projectFeature'
 import type { ProjectConfig } from '../../types'
-import { blocksForWorkbook } from './model'
 import { validateBlocks } from './validation'
 import { generateColumnMappings, parseProjectWorkbooks, suggestMappingsForWorkbook } from '../../services/extraction'
 import { captureExtractionSnapshots } from '../../services/extractionPersistence'
@@ -10,9 +9,7 @@ export const extractionFeatureModule: ProjectFeatureModule = {
   id: 'builtin.extraction',
   schemaVersion: 1,
   initialize: project => project,
-  activateWorkbook(project, workbookId) {
-    return { ...project, activeBlockId: blocksForWorkbook(project, workbookId)[0]?.id ?? '' }
-  },
+  activateWorkbook: project => project,
   workbookLoaded: project => project,
   removeWorkbook(project, workbookId) {
     const blocks = project.blocks.filter(block => block.workbookId !== workbookId)

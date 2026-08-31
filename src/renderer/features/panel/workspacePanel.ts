@@ -25,6 +25,7 @@ export interface WorkspaceFeaturePanelContext {
 
 export interface WorkspaceReconciliationItem {
   id: string
+  workbookId: string | null
   range: CellRange | null
   activeSheet: string | null
 }

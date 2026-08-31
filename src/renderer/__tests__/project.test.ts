@@ -207,7 +207,7 @@ describe('project workspace', () => {
     expect(loaded.activeBlockId).toBe('')
   })
 
-  it('switches workbook and sheet atomically with workbook-scoped active state', () => {
+  it('switches workbook and sheet without replacing global extraction selections', () => {
     const project: ProjectConfig = {
       id: 'project-1', name: 'Switching',
       workbooks: [
@@ -219,8 +219,8 @@ describe('project workspace', () => {
     }
     const switched = activateProjectWorkbook(project, 'costs', builtInFeatureRegistry, 'Summary')
     expect(switched.activeWorkbookId).toBe('costs')
-    expect(switched.activeBlockId).toBe('costs-block')
-    expect(switched.activeRegionId).toBeNull()
+    expect(switched.activeBlockId).toBe('sales-block')
+    expect(switched.activeRegionId).toBe('stale-region')
     expect(switched.workbooks.find(item => item.id === 'costs')?.activeSheetName).toBe('Summary')
 
     const sheetChanged = setActiveWorkbookSheet(switched, 'Detail')
@@ -245,7 +245,7 @@ describe('project workspace', () => {
     expect(removed.blocks.map(item => item.id)).toEqual(['costs-block'])
     expect(removed.regions).toEqual([])
     expect(removed.activeWorkbookId).toBe('costs')
-    expect(removed.activeBlockId).toBe('costs-block')
+    expect(removed.activeBlockId).toBe('')
     expect(removed.activeRegionId).toBeNull()
   })
 

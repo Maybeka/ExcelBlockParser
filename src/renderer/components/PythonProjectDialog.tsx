@@ -307,6 +307,20 @@ export function PythonProjectDialog({ open, project, parseResult, onPrepareInput
     else setBridgeError(response.status === 'error' ? response.error.message : 'Python run was cancelled.')
   }
 
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key !== 'Enter') return
+      const entryFile = draftPackage.files.find(file => file.path === draftPackage.entryPath)
+      if (running || exporting || !entryFile?.source.trim()) return
+      event.preventDefault()
+      event.stopPropagation()
+      void run()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [draftPackage, exporting, open, running])
+
   const prepareInput = async () => {
     setPreparingInput(true)
     setBridgeError('')
@@ -508,7 +522,7 @@ export function PythonProjectDialog({ open, project, parseResult, onPrepareInput
       )}
       {running
         ? <Button danger icon={<StopOutlined />} onClick={cancel}>Cancel run</Button>
-        : <Button type="primary" icon={<CaretRightOutlined />} onClick={() => void run()} disabled={!draftPackage.files.some(file => file.path === draftPackage.entryPath && file.source.trim()) || exporting}>Run</Button>}
+        : <Button type="primary" icon={<CaretRightOutlined />} onClick={() => void run()} aria-keyshortcuts="Control+Enter Meta+Enter" title="Run (Cmd/Ctrl+Enter)" disabled={!draftPackage.files.some(file => file.path === draftPackage.entryPath && file.source.trim()) || exporting}>Run</Button>}
     </Space>
   )
 

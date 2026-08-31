@@ -7,7 +7,7 @@ export const regionFeatureModule: ProjectFeatureModule = {
   id: 'builtin.regions',
   schemaVersion: 1,
   initialize: project => project,
-  activateWorkbook: project => ({ ...project, activeRegionId: null }),
+  activateWorkbook: project => project,
   workbookLoaded: project => project,
   removeWorkbook(project, workbookId) {
     const regions = project.regions.filter(region => region.workbookId !== workbookId)

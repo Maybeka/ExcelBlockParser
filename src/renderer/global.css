@@ -372,6 +372,16 @@ html, body, #root {
 .card-range-empty { color: var(--fluent-text-muted); font-size: 13px; padding: 8px 0; }
 .telegram-card-body,
 .extractor-card-body { padding: var(--space-3) !important; }
+
+.block-range-reset-flow { display: flex; flex: 1; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
+.block-range-reset-summary, .block-range-reset-review { background: var(--m3-surface-container-low); border: 1px solid var(--fluent-stroke); display: flex; flex-direction: column; gap: 4px; padding: var(--space-2) var(--space-3); }
+.block-range-reset-fields { display: flex; flex-direction: column; gap: var(--space-2); }
+.block-range-reset-fields label { align-items: center; display: grid; font-size: 12px; gap: var(--space-2); grid-template-columns: 72px minmax(0, 1fr); }
+.block-range-reset-range { align-items: center; display: grid; font-size: 12px; gap: var(--space-2); grid-template-columns: 72px minmax(0, 1fr) auto; }
+.block-range-reset-value { font-family: var(--font-code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-range-reset-review > div { display: grid; gap: var(--space-2); grid-template-columns: 56px minmax(0, 1fr); }
+.block-range-reset-review strong { font-family: var(--font-code); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-range-reset-actions { border-top: 1px solid var(--fluent-stroke); display: flex; gap: var(--space-2); margin-top: auto; padding-top: var(--space-3); }
 .telegram-card-body.is-locked,
 .extractor-card-body.is-locked { opacity: .5; }
 .telegram-card.is-active,

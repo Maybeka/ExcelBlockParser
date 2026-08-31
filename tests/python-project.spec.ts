@@ -91,6 +91,7 @@ test('opens the project Python editor with syntax highlighting', async ({ page }
   await expect(page.getByRole('button', { name: 'Refresh Input' })).toBeVisible()
   await page.getByRole('tab', { name: 'Script' }).click()
   await expect(pythonActions.getByRole('button', { name: 'Run' })).toBeEnabled()
+  await expect(pythonActions.getByRole('button', { name: 'Run' })).toHaveAttribute('aria-keyshortcuts', 'Control+Enter Meta+Enter')
   await page.keyboard.press('Escape')
   await expect(dialog).toBeVisible()
 

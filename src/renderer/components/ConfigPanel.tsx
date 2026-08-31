@@ -2,17 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Divider, Input, Modal, Select, Switch, Tooltip } from 'antd'
 import { CompressOutlined, ExpandOutlined, PlusOutlined, SearchOutlined, SettingOutlined } from '@ant-design/icons'
-import type { BlockConfig, CellRange, ParseResult, ReconciliationReport } from '../types'
+import type { BlockConfig, CellRange, ParseResult, WorkbookConfig } from '../types'
 import type { SpreadsheetCapability } from '../services/spreadsheetCapability'
 import { filterBlocksByTag, getAllTags } from '../services/tagUtils'
 import { BlockInspector } from './config-panel/BlockInspector'
 import { useColumnConfiguration } from './config-panel/useColumnConfiguration'
 import { useI18n } from '../i18n'
+import { resetBlockRange, type BlockRangeSource } from '../features/extraction/rangeReset'
 
 export type FocusMode = 'always-editable' | 'activate-first'
 
 export interface ConfigPanelProps {
   spreadsheet: SpreadsheetCapability
+  workbooks: WorkbookConfig[]
+  loadedWorkbookId: string | null
   blocks: BlockConfig[]
   activeBlockId: string
   activeColIndex: number | null
@@ -28,6 +31,8 @@ export interface ConfigPanelProps {
   onReselectRange?: (onRange: (range: CellRange) => void) => void
   onPreviewSheet?: (sheetName: string | null) => void
   onFocusRange: (blockId: string) => void
+  onFocusRangeReset: (source: BlockRangeSource) => void
+  onActivateWorkbook: (workbookId: string, sheetName?: string) => void
   canAddBlock?: boolean
   toolbarTarget?: HTMLElement | null
 }
@@ -47,6 +52,8 @@ function toggleSetValue(current: Set<string>, value: string): Set<string> {
 
 export function ConfigPanel({
   spreadsheet,
+  workbooks,
+  loadedWorkbookId,
   blocks,
   activeBlockId,
   activeColIndex,
@@ -61,6 +68,8 @@ export function ConfigPanel({
   onReselectRange,
   onPreviewSheet,
   onFocusRange,
+  onFocusRangeReset,
+  onActivateWorkbook,
   canAddBlock = true,
   toolbarTarget,
 }: ConfigPanelProps) {
@@ -72,8 +81,6 @@ export function ConfigPanel({
   const [tagFilter, setTagFilter] = useState<string>()
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
   const [reconcilingBlockId, setReconcilingBlockId] = useState<string | null>(null)
-  const [reconciliationReports, setReconciliationReports] = useState<Record<string, ReconciliationReport>>({})
-  const [reconciliationHeights, setReconciliationHeights] = useState<Record<string, number>>({})
   const [expandedRowFilters, setExpandedRowFilters] = useState<Set<string>>(new Set())
   const [expandedComputedProperties, setExpandedComputedProperties] = useState<Set<string>>(new Set())
   const [visibleTags, setVisibleTags] = useState<Set<string>>(new Set())
@@ -210,8 +217,6 @@ export function ConfigPanel({
               controlsLocked={controlsLocked}
               otherBlockReconciling={reconcilingBlockId !== null && block.id !== reconcilingBlockId}
               reconciling={reconcilingBlockId === block.id}
-              reconciliationReport={reconciliationReports[block.id]}
-              reconciliationHeight={reconciliationHeights[block.id]}
               duplicateLabel={duplicateLabels.has(block.label?.trim() || '')}
               rowFilterExpanded={expandedRowFilters.has(block.id)}
               computedPropertiesExpanded={expandedComputedProperties.has(block.id)}
@@ -219,6 +224,8 @@ export function ConfigPanel({
               addingTag={addingTagForBlock === block.id}
               newTagInput={newTagInput}
               spreadsheet={spreadsheet}
+              workbooks={workbooks}
+              loadedWorkbookId={loadedWorkbookId}
               columnController={columnController}
               onActivate={() => onActivateBlock(block.id)}
               onChange={partial => onBlockChange(block.id, partial)}
@@ -230,12 +237,10 @@ export function ConfigPanel({
               onStartAddingTag={() => setAddingTagForBlock(block.id)}
               onNewTagInputChange={setNewTagInput}
               onCancelAddingTag={cancelTagEntry}
-              onStartReconciliation={(report, height) => {
-                setReconciliationReports(current => ({ ...current, [block.id]: report }))
-                setReconciliationHeights(current => ({ ...current, [block.id]: height }))
-                setReconcilingBlockId(block.id)
-              }}
-              onEndReconciliation={() => setReconcilingBlockId(null)}
+              onStartRangeReset={() => setReconcilingBlockId(block.id)}
+              onEndRangeReset={() => setReconcilingBlockId(null)}
+              onApplyRangeReset={(source: BlockRangeSource) => { onBlockChange(block.id, resetBlockRange(block, source)); onFocusRangeReset(source) }}
+              onActivateWorkbook={onActivateWorkbook}
               onReconcilingChange={onReconcilingChange}
               onReselectRange={onReselectRange}
               onPreviewSheet={onPreviewSheet}

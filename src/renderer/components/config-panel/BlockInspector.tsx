@@ -1,14 +1,14 @@
 import { useRef } from 'react'
 import { Button, Input, Tag, Tooltip } from 'antd'
-import { AimOutlined, CaretDownOutlined, CaretRightOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons'
-import type { BlockConfig, CellRange, ReconciliationReport, Tag as TagType } from '../../types'
+import { AimOutlined, CaretDownOutlined, CaretRightOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, RetweetOutlined } from '@ant-design/icons'
+import type { BlockConfig, CellRange, Tag as TagType, WorkbookConfig } from '../../types'
 import type { SpreadsheetCapability } from '../../services/spreadsheetCapability'
 import { addTag, removeTag } from '../../services/tagUtils'
-import { runReconciliation } from '../../services/reconciliation'
 import { isValidVariableName } from '../../features/extraction/validation'
 import { countRowFilterRules, RowFilterEditor } from '../RowFilterEditor'
 import { HeaderRowsEditor } from './HeaderRowsEditor'
-import { ReconciliationTabs } from './ReconciliationTabs'
+import { ResetBlockRangeFlow } from './ResetBlockRangeFlow'
+import type { BlockRangeSource } from '../../features/extraction/rangeReset'
 import { ColumnEditor } from './ColumnEditor'
 import { DownstreamPropertiesEditor } from './DownstreamPropertiesEditor'
 import type { ColumnConfigurationController } from './useColumnConfiguration'
@@ -22,8 +22,6 @@ export interface BlockInspectorProps {
   controlsLocked: boolean
   otherBlockReconciling: boolean
   reconciling: boolean
-  reconciliationReport?: ReconciliationReport
-  reconciliationHeight?: number
   duplicateLabel: boolean
   rowFilterExpanded: boolean
   computedPropertiesExpanded: boolean
@@ -31,6 +29,8 @@ export interface BlockInspectorProps {
   addingTag: boolean
   newTagInput: string
   spreadsheet: SpreadsheetCapability
+  workbooks: WorkbookConfig[]
+  loadedWorkbookId: string | null
   columnController: ColumnConfigurationController
   onActivate: () => void
   onChange: (partial: Partial<BlockConfig>) => void
@@ -42,8 +42,10 @@ export interface BlockInspectorProps {
   onStartAddingTag: () => void
   onNewTagInputChange: (value: string) => void
   onCancelAddingTag: () => void
-  onStartReconciliation: (report: ReconciliationReport, contentHeight: number) => void
-  onEndReconciliation: () => void
+  onStartRangeReset: () => void
+  onEndRangeReset: () => void
+  onApplyRangeReset: (source: BlockRangeSource) => void
+  onActivateWorkbook: (workbookId: string, sheetName?: string) => void
   onReconcilingChange?: (blockId: string | null) => void
   onReselectRange?: (onRange: (range: CellRange) => void) => void
   onPreviewSheet?: (sheetName: string | null) => void
@@ -56,11 +58,11 @@ export function BlockInspector(props: BlockInspectorProps) {
   const { t } = useI18n()
   const {
     block, blockIndex, active, activeColIndex, controlsLocked, otherBlockReconciling, reconciling,
-    reconciliationReport, reconciliationHeight, duplicateLabel, rowFilterExpanded, computedPropertiesExpanded,
+    duplicateLabel, rowFilterExpanded, computedPropertiesExpanded,
     infoVisible, addingTag, newTagInput, spreadsheet, columnController, onActivate, onChange, onDelete,
     onColumnFocus, onToggleRowFilter, onToggleComputedProperties, onToggleInfo, onStartAddingTag,
-    onNewTagInputChange, onCancelAddingTag, onStartReconciliation, onEndReconciliation,
-    onReconcilingChange, onReselectRange, onPreviewSheet, onFocusRange, setContainerRef, setInputRef,
+    onNewTagInputChange, onCancelAddingTag, onStartRangeReset, onEndRangeReset, onApplyRangeReset, onActivateWorkbook,
+    onReconcilingChange, onReselectRange, onPreviewSheet, onFocusRange, setContainerRef, setInputRef, workbooks, loadedWorkbookId,
   } = props
 
   const normalContentRef = useRef<HTMLDivElement | null>(null)
@@ -114,33 +116,33 @@ export function BlockInspector(props: BlockInspectorProps) {
           <Tooltip title={t('block.confirm')}><Button className="card-confirm-button" aria-label={t('block.confirm')} size="small" type="text" icon={<CheckOutlined />} onClick={() => onChange({ selectionLocked: true })} onMouseDown={event => event.stopPropagation()} /></Tooltip>
           )}
           {block.selectionLocked && (
-          <Tooltip title={reconciling ? t('common.cancel') : t('block.edit')}>
+          <Tooltip title={t('block.edit')}>
             <Button
-              aria-label={reconciling ? 'Discard block editing' : 'Edit block'}
-              size="small" type="text" icon={reconciling ? <CloseOutlined /> : <EditOutlined />}
-              onClick={async event => {
+              aria-label={t('block.edit')}
+              size="small" type="text" icon={<EditOutlined />}
+              onClick={event => {
                 event.stopPropagation()
-                if (controlsLocked || !block.range) return
+                if (controlsLocked) return
                 onActivate()
-                if (reconciling) {
-                  if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
-                  onEndReconciliation()
-                  onReconcilingChange?.(null)
-                  return
-                }
-                const workbook = spreadsheet.workbookReader()
-                if (!workbook) return
-                if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
-                const report = await runReconciliation(block, workbook, spreadsheet.sheetNames())
-                onStartReconciliation(report, normalContentRef.current?.offsetHeight || 0)
-                onPreviewSheet?.(block.activeSheet || spreadsheet.activeSheetName())
-                onReconcilingChange?.(block.id)
+                normalContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
               }}
-              disabled={controlsLocked || !block.range || otherBlockReconciling}
-              className={reconciling ? 'is-active' : ''}
+              disabled={controlsLocked || otherBlockReconciling}
             />
           </Tooltip>
           )}
+          <Tooltip title={reconciling ? t('common.cancel') : t('block.resetRange')}>
+            <Button aria-label={reconciling ? t('common.cancel') : t('block.resetRange')} size="small" type="text" icon={reconciling ? <CloseOutlined /> : <RetweetOutlined />}
+              onClick={event => {
+                event.stopPropagation()
+                if (controlsLocked || !block.range) return
+                if (reconciling) { onEndRangeReset(); onReconcilingChange?.(null); return }
+                onActivate()
+                if (block.workbookId) onActivateWorkbook(block.workbookId, block.activeSheet ?? undefined)
+                onStartRangeReset()
+                onPreviewSheet?.(block.activeSheet || spreadsheet.activeSheetName())
+                onReconcilingChange?.(block.id)
+              }} disabled={controlsLocked || !block.range || otherBlockReconciling} className={reconciling ? 'is-active' : ''} />
+          </Tooltip>
           {block.range && !otherBlockReconciling && <Tooltip title={t('common.focusRange')}><Button aria-label={t('common.focusRange')} size="small" type="text" icon={<AimOutlined />} onClick={event => { event.stopPropagation(); onFocusRange() }} onMouseDown={event => event.stopPropagation()} /></Tooltip>}
           <Tooltip title={infoVisible ? t('common.hideInfo') : t('common.showInfo')}>
           <Button
@@ -184,15 +186,11 @@ export function BlockInspector(props: BlockInspectorProps) {
       {block.label && !isValidVariableName(block.label) && <div className="card-validation-error">{t('block.invalidName')}</div>}
       {block.label?.trim() && duplicateLabel && <div className="card-validation-error">{t('block.duplicateName')}</div>}
 
-      {reconciling && reconciliationReport ? (
-        <div style={{ overflow: 'auto', height: reconciliationHeight || 'auto' }}>
-          <ReconciliationTabs
-            report={reconciliationReport} block={block} onReselectRange={onReselectRange} onPreviewSheet={onPreviewSheet}
-            spreadsheet={spreadsheet} onColumnFocus={onColumnFocus}
-            onApply={updatedBlock => { onChange(updatedBlock); onEndReconciliation(); onReconcilingChange?.(null) }}
-            onClose={() => { onEndReconciliation(); onReconcilingChange?.(null) }}
-          />
-        </div>
+      {reconciling ? (
+        <ResetBlockRangeFlow block={block} workbooks={workbooks} loadedWorkbookId={loadedWorkbookId} spreadsheet={spreadsheet}
+          onReselectRange={onReselectRange} onActivateWorkbook={onActivateWorkbook}
+          onApply={source => { onApplyRangeReset(source); onEndRangeReset(); onReconcilingChange?.(null) }}
+          onClose={() => { onEndRangeReset(); onReconcilingChange?.(null) }} />
       ) : !effectivelyCollapsed && (
         <div className={`extractor-card-body ${controlsLocked ? 'is-locked' : ''}`} ref={normalContentRef}>
           {!block.range ? <div className="card-range-empty">{t('block.selectRange')}</div> : (
