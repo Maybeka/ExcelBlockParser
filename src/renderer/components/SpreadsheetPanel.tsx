@@ -1,13 +1,14 @@
-import { useRef, useEffect, useState } from 'react'
-import { Button, Checkbox, Input, Spin, Tooltip, message } from 'antd'
-import { CopyOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
+import { useRef, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { Button, Checkbox, Input, Spin, Tooltip, message, type InputRef } from 'antd'
+import { CloseOutlined, CopyOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
 import type { CellRange } from '../types'
 import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
 import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
-import { findWorkbookMatches, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
+import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
 import type { WorkbookLoadRequest } from '../services/workbookRuntime'
 import { useI18n } from '../i18n'
 
@@ -34,6 +35,9 @@ interface SpreadsheetPanelProps {
   closeSignal: number
   lockedRanges: LockedRangeInfo[]
   onOpenWorkbook: () => void
+  toolbarContainer?: HTMLElement | null
+  onSuccessNotice?: (text: string, duration: number) => void
+  focusRange?: (sheetName: string | null, range: CellRange) => boolean
 }
 
 interface CachedWorkbook {
@@ -46,7 +50,7 @@ interface SearchMatch extends WorkbookSearchMatch {
   sheetName: string
 }
 
-export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
   const { locale, t } = useI18n()
   const initialLocaleRef = useRef(locale)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -58,6 +62,8 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   onSelectionChangeRef.current = onSelectionChange
   const onActiveSheetChangeRef = useRef(onActiveSheetChange)
   onActiveSheetChangeRef.current = onActiveSheetChange
+  const focusRangeRef = useRef(focusRange)
+  focusRangeRef.current = focusRange
 
   const refreshSheetNames = (targetWorkbook?: any) => {
     const api = univerAPIRef.current
@@ -83,8 +89,17 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   const [searchQuery, setSearchQuery] = useState('')
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false)
   const [searchWholeCell, setSearchWholeCell] = useState(false)
+  const [searchAllSheets, setSearchAllSheets] = useState(false)
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
   const [searchIndex, setSearchIndex] = useState(-1)
+  const [searchRan, setSearchRan] = useState(false)
+  const searchInputRef = useRef<InputRef>(null)
+  const searchPanelRef = useRef<HTMLDivElement>(null)
+  const searchPositionRef = useRef({ left: 16, top: 52 })
+  const searchDragRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null)
+  const searchPlacedRef = useRef(false)
+  const lastSearchKeyRef = useRef('')
+  const copySelectionRef = useRef<() => Promise<void>>(async () => {})
   const initializedRef = useRef(false)
   const requestedWorkbookRef = useRef<number | null>(null)
   const handledLoadSignalRef = useRef(0)
@@ -105,11 +120,14 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
       const range = sheet.getRange(selection.range.a1Notation)
       const text = formatCellsAsTsv(range.getDisplayValues?.() ?? range.getValues())
       await copyText(text)
-      message.success(t('workbook.copySuccess'))
+      onSuccessNotice?.(t('workbook.copySuccess'), 1000)
     } catch {
       message.error(t('workbook.copyFailed'))
     }
   }
+  copySelectionRef.current = copySelection
+
+  const searchKey = () => [searchQuery.trim(), searchCaseSensitive, searchWholeCell, searchAllSheets].join('|')
 
   const focusSearchMatch = (matches: SearchMatch[], index: number) => {
     const match = matches[index]
@@ -117,11 +135,11 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
     if (!match || !workbook) return
     const sheet = workbook.getSheetByName(match.sheetName)
     if (!sheet) return
-    sheet.activate()
+    if (loadedWorkbookId) onActiveSheetChangeRef.current(loadedWorkbookId, match.sheetName)
+    focusRangeRef.current?.(match.sheetName, match.range)
     const range = sheet.getRange(match.range.a1Notation)
     sheet.setActiveSelection?.(range)
     range.activate?.()
-    range.scrollTo?.()
     setSearchIndex(index)
   }
 
@@ -131,22 +149,120 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
     if (!workbook || !query) {
       setSearchMatches([])
       setSearchIndex(-1)
+      setSearchRan(false)
+      lastSearchKeyRef.current = ''
       return
     }
-    const matches: SearchMatch[] = []
-    for (const sheet of workbook.getSheets()) {
+    const sheets = (searchAllSheets ? workbook.getSheets() : [workbook.getActiveSheet()]).flatMap(sheet => {
+      if (!sheet) return []
       const rowCount = sheet.getMaxRows()
       const columnCount = sheet.getMaxColumns()
       const values = sheet.getRange(0, 0, rowCount, columnCount).getDisplayValues?.() ?? sheet.getRange(0, 0, rowCount, columnCount).getValues()
-      for (const match of findWorkbookMatches(values, query, { caseSensitive: searchCaseSensitive, wholeCell: searchWholeCell, maxResults: 250 - matches.length })) {
-        matches.push({ ...match, sheetName: sheet.getSheetName() })
-      }
-      if (matches.length >= 250) break
-    }
+      return [{ name: sheet.getSheetName(), values }]
+    })
+    const matches = findMatchesInSheets(sheets, query, { caseSensitive: searchCaseSensitive, wholeCell: searchWholeCell })
     setSearchMatches(matches)
+    setSearchRan(true)
+    lastSearchKeyRef.current = searchKey()
     if (matches.length) focusSearchMatch(matches, 0)
     else setSearchIndex(-1)
   }
+
+  const runOrAdvanceSearch = () => {
+    if (searchMatches.length && lastSearchKeyRef.current === searchKey()) {
+      focusSearchMatch(searchMatches, (searchIndex + 1) % searchMatches.length)
+      return
+    }
+    runSearch()
+  }
+
+  const applySearchPosition = (left: number, top: number) => {
+    const panel = searchPanelRef.current
+    const next = clampFloatingPanelPosition(
+      { left, top },
+      { width: panel?.offsetWidth || 220, height: panel?.offsetHeight || 42 },
+      { width: window.innerWidth, height: window.innerHeight },
+    )
+    searchPositionRef.current = next
+    if (panel) {
+      panel.style.left = `${next.left}px`
+      panel.style.top = `${next.top}px`
+    }
+  }
+
+  const beginSearchDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    const panel = searchPanelRef.current
+    if (!panel) return
+    event.preventDefault()
+    const rect = panel.getBoundingClientRect()
+    searchDragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const moveSearchPanel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = searchDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    applySearchPosition(drag.left + event.clientX - drag.x, drag.top + event.clientY - drag.y)
+  }
+
+  const endSearchDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (searchDragRef.current?.pointerId !== event.pointerId) return
+    searchDragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  useEffect(() => {
+    const onResize = () => {
+      const current = searchPositionRef.current
+      applySearchPosition(current.left, current.top)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const openWorkbookSearch = () => {
+    setSearchOpen(true)
+    window.setTimeout(() => searchInputRef.current?.focus({ preventScroll: true }), 0)
+  }
+
+  useEffect(() => {
+    if (!searchOpen) return
+    if (!searchPlacedRef.current) {
+      searchPlacedRef.current = true
+      const origin = containerRef.current?.closest('.workspace-canvas')?.getBoundingClientRect()
+      applySearchPosition((origin?.left ?? 16) + 16, (origin?.top ?? 42) + 12)
+    }
+    const timer = window.setTimeout(() => searchInputRef.current?.focus({ preventScroll: true }), 0)
+    return () => window.clearTimeout(timer)
+  }, [searchOpen])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!hasFile) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[role="dialog"], .ant-modal, .ant-drawer')) return
+      if (event.key === 'Escape' && searchOpen) {
+        event.preventDefault()
+        setSearchOpen(false)
+        return
+      }
+      if ((!event.metaKey && !event.ctrlKey) || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'f') {
+        event.preventDefault()
+        openWorkbookSearch()
+        return
+      }
+      if (target?.closest('input, textarea')) return
+      if (key === 'c' && selection) {
+        event.preventDefault()
+        void copySelectionRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [hasFile, searchOpen, selection])
 
   useEffect(() => {
     highlightDisposablesRef.current.forEach(d => { try { d.dispose() } catch { /* ignore */ } })
@@ -467,8 +583,11 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
     workbookCacheRef.current.clear()
     setHasFile(false)
     setSelection(null)
+    setSearchOpen(false)
     setSearchMatches([])
     setSearchIndex(-1)
+    setSearchRan(false)
+    searchPlacedRef.current = false
     setSheetNames([])
     onLoadedWorkbookChange(null)
     setError(null)
@@ -477,30 +596,45 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      {hasFile && (
+      {hasFile && toolbarContainer && createPortal(
         <div className="workbook-readonly-tools" aria-label={t('workbook.readonlyTools')}>
           <Tooltip title={t('workbook.copySelection')}>
-            <Button aria-label={t('workbook.copySelection')} type="text" size="small" icon={<CopyOutlined />} disabled={!selection} onClick={() => void copySelection()} />
+            <Button aria-label={t('workbook.copySelection')} aria-keyshortcuts="Control+C Meta+C" type="text" size="small" icon={<CopyOutlined />} disabled={!selection} onClick={() => void copySelection()} />
           </Tooltip>
           <Tooltip title={t('workbook.search')}>
-            <Button aria-label={t('workbook.search')} type="text" size="small" icon={<SearchOutlined />} onClick={() => setSearchOpen(current => !current)} />
+            <Button aria-label={t('workbook.search')} aria-keyshortcuts="Control+F Meta+F" type="text" size="small" icon={<SearchOutlined />} onClick={() => setSearchOpen(current => !current)} />
           </Tooltip>
-        </div>
+        </div>, toolbarContainer,
       )}
-      {hasFile && searchOpen && (
-        <div className="workbook-search" role="search">
-          <Input size="small" autoFocus value={searchQuery} placeholder={t('workbook.searchPlaceholder')}
-            onChange={event => setSearchQuery(event.target.value)} onPressEnter={runSearch} suffix={<SearchOutlined />} />
-          <div className="workbook-search-options">
-            <Checkbox checked={searchCaseSensitive} onChange={event => setSearchCaseSensitive(event.target.checked)}>{t('workbook.searchCaseSensitive')}</Checkbox>
-            <Checkbox checked={searchWholeCell} onChange={event => setSearchWholeCell(event.target.checked)}>{t('workbook.searchWholeCell')}</Checkbox>
-            <span className="workbook-search-count">{searchMatches.length ? `${searchIndex + 1}/${searchMatches.length}` : ''}</span>
+      {hasFile && searchOpen && createPortal(
+        <div ref={searchPanelRef} className="workbook-search" role="search" style={{ left: searchPositionRef.current.left, top: searchPositionRef.current.top }}>
+          <div className="workbook-search-drag-handle" onPointerDown={beginSearchDrag} onPointerMove={moveSearchPanel} onPointerUp={endSearchDrag} onPointerCancel={endSearchDrag}>
+            <span>{t('workbook.search')}</span>
+            <Tooltip title={t('common.close')}>
+              <Button aria-label={t('common.close')} type="text" size="small" icon={<CloseOutlined />} onPointerDown={event => event.stopPropagation()} onClick={() => setSearchOpen(false)} />
+            </Tooltip>
+          </div>
+          <div className="workbook-search-query">
+            <Input ref={searchInputRef} size="small" value={searchQuery} placeholder={t('workbook.searchPlaceholder')}
+              onChange={event => setSearchQuery(event.target.value)} onPressEnter={runOrAdvanceSearch}
+              suffix={<Button aria-label={t('workbook.search')} type="text" size="small" icon={<SearchOutlined />} onMouseDown={event => event.preventDefault()} onClick={runOrAdvanceSearch} />} />
+            <span className="workbook-search-count">{searchMatches.length ? `${searchIndex + 1}/${searchMatches.length}` : searchRan ? t('workbook.searchNoResults') : ''}</span>
             <Button aria-label={t('workbook.searchPrevious')} type="text" size="small" icon={<LeftOutlined />} disabled={!searchMatches.length}
               onClick={() => focusSearchMatch(searchMatches, (searchIndex - 1 + searchMatches.length) % searchMatches.length)} />
             <Button aria-label={t('workbook.searchNext')} type="text" size="small" icon={<RightOutlined />} disabled={!searchMatches.length}
               onClick={() => focusSearchMatch(searchMatches, (searchIndex + 1) % searchMatches.length)} />
           </div>
-        </div>
+          <div className="workbook-search-options">
+            <Checkbox checked={searchCaseSensitive} onChange={event => setSearchCaseSensitive(event.target.checked)}>{t('workbook.searchCaseSensitive')}</Checkbox>
+            <Checkbox checked={searchWholeCell} onChange={event => setSearchWholeCell(event.target.checked)}>{t('workbook.searchWholeCell')}</Checkbox>
+            <Checkbox checked={searchAllSheets} onChange={event => setSearchAllSheets(event.target.checked)}>{t('workbook.searchAllSheets')}</Checkbox>
+          </div>
+          <div className="workbook-search-results" aria-label={t('workbook.searchResults')}>
+            {searchMatches.map((match, index) => <button key={`${match.sheetName}:${match.range.a1Notation}`} className={`workbook-search-result ${index === searchIndex ? 'is-active' : ''}`} type="button" onClick={() => focusSearchMatch(searchMatches, index)}>
+              <span>{match.sheetName}!{match.range.a1Notation}</span><span>{match.value || ' '}</span>
+            </button>)}
+          </div>
+        </div>, document.body,
       )}
       {!hasFile && !error && !loading && (
         <div className="workbook-empty-state">
@@ -545,6 +679,17 @@ function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), 30_000) })
   return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer) })
+}
+
+function clampFloatingPanelPosition(
+  position: { left: number; top: number },
+  panel: { width: number; height: number },
+  viewport: { width: number; height: number },
+): { left: number; top: number } {
+  return {
+    left: Math.min(Math.max(0, position.left), Math.max(0, viewport.width - panel.width)),
+    top: Math.min(Math.max(0, position.top), Math.max(0, viewport.height - panel.height)),
+  }
 }
 
 function colToA1(col: number): string {

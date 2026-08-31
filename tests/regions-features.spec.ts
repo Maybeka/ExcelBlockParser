@@ -298,7 +298,7 @@ test.describe('Block range reset', () => {
     await expect(page.getByText('test_data.xlsx · Sheet1 · A1:D9')).toBeVisible()
     await page.getByRole('button', { name: 'Review change' }).click()
     await expect(page.getByText('Review range change')).toBeVisible()
-    await expect(page.getByText('Column, filter, tag, and property configuration will be preserved.')).toBeVisible()
+    await expect(page.getByText('Compatible column, filter, tag, and property configuration is retained.')).toBeVisible()
     await page.locator('.block-range-reset-flow').getByRole('button', { name: 'Cancel', exact: true }).click()
     await expect(page.getByText('Current source')).toHaveCount(0)
   })

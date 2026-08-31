@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { Button, Input, Tag, Tooltip } from 'antd'
-import { AimOutlined, CaretDownOutlined, CaretRightOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined, InfoCircleOutlined, RetweetOutlined } from '@ant-design/icons'
+import { AimOutlined, CaretDownOutlined, CaretRightOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, PlusOutlined, InfoCircleOutlined, RetweetOutlined } from '@ant-design/icons'
 import type { BlockConfig, CellRange, Tag as TagType, WorkbookConfig } from '../../types'
 import type { SpreadsheetCapability } from '../../services/spreadsheetCapability'
 import { addTag, removeTag } from '../../services/tagUtils'
@@ -114,21 +114,6 @@ export function BlockInspector(props: BlockInspectorProps) {
         <div className="extractor-card-actions">
           {!block.selectionLocked && block.range && !otherBlockReconciling && (
           <Tooltip title={t('block.confirm')}><Button className="card-confirm-button" aria-label={t('block.confirm')} size="small" type="text" icon={<CheckOutlined />} onClick={() => onChange({ selectionLocked: true })} onMouseDown={event => event.stopPropagation()} /></Tooltip>
-          )}
-          {block.selectionLocked && (
-          <Tooltip title={t('block.edit')}>
-            <Button
-              aria-label={t('block.edit')}
-              size="small" type="text" icon={<EditOutlined />}
-              onClick={event => {
-                event.stopPropagation()
-                if (controlsLocked) return
-                onActivate()
-                normalContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-              }}
-              disabled={controlsLocked || otherBlockReconciling}
-            />
-          </Tooltip>
           )}
           <Tooltip title={reconciling ? t('common.cancel') : t('block.resetRange')}>
             <Button aria-label={reconciling ? t('common.cancel') : t('block.resetRange')} size="small" type="text" icon={reconciling ? <CloseOutlined /> : <RetweetOutlined />}

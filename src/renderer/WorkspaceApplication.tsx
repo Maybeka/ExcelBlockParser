@@ -1,6 +1,6 @@
 import { Suspense, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
 import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { BorderOutlined, CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { PythonProjectDialog } from './components/PythonProjectDialog'
 import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
@@ -72,6 +72,8 @@ export function WorkspaceApplication() {
   const [reconcilingPreviewSheet, setReconcilingPreviewSheet] = useState<string | null>(null)
   const [reconcilingPreviewRange, setReconcilingPreviewRange] = useState<CellRange | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [successNotice, setSuccessNotice] = useState<{ id: number; text: string; duration: number } | null>(null)
+  const successNoticeIdRef = useRef(0)
   const [previewExecution, setPreviewExecution] = useState<Extract<ProjectExecutionResult, { status: 'complete' }> | null>(null)
   const [runningExtraction, setRunningExtraction] = useState(false)
   const [workbookRuntime, setWorkbookRuntime] = useState<WorkbookRuntimeState>(() => createWorkbookRuntimeState())
@@ -89,11 +91,12 @@ export function WorkspaceApplication() {
   const [pythonProjectOpen, setPythonProjectOpen] = useState(false)
   const [pythonToolbarContainer, setPythonToolbarContainer] = useState<HTMLDivElement | null>(null)
   const [pythonTabsContainer, setPythonTabsContainer] = useState<HTMLDivElement | null>(null)
+  const [workbookToolbarContainer, setWorkbookToolbarContainer] = useState<HTMLDivElement | null>(null)
   const [pendingProjectRemoval, setPendingProjectRemoval] = useState<string | null>(null)
   const [hasUnsavedChanges, setDirtyState] = useState(false)
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
   const [sidebarHidden, setSidebarHidden] = useState(true)
-  const [inspectorHidden, setInspectorHidden] = useState(() => localStorage.getItem('excel-block-parser.inspector-hidden') === 'true')
+  const [inspectorHidden, setInspectorHidden] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(272)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
@@ -101,10 +104,6 @@ export function WorkspaceApplication() {
   const [pendingNavigatorRangeFocus, setPendingNavigatorRangeFocus] = useState<{ workbookId: string; sheetName: string | null; range: CellRange } | null>(null)
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const historyRef = useRef(new WorkspaceStateCoordinator())
-
-  useEffect(() => {
-    localStorage.setItem('excel-block-parser.inspector-hidden', String(inspectorHidden))
-  }, [inspectorHidden])
 
   useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
@@ -269,6 +268,26 @@ export function WorkspaceApplication() {
     }, 1000)
     return () => window.clearTimeout(timer)
   }, [e2eMode, hasUnsavedChanges, parseResult, project, projectFilePath])
+
+  const showSuccessNotice = useCallback((text: string, duration: number) => {
+    setSuccessNotice({ id: ++successNoticeIdRef.current, text, duration })
+  }, [])
+
+  useEffect(() => {
+    if (!successNotice) return
+    const timer = window.setTimeout(() => setSuccessNotice(null), successNotice.duration)
+    return () => window.clearTimeout(timer)
+  }, [successNotice])
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const confirmClose = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', confirmClose)
+    return () => window.removeEventListener('beforeunload', confirmClose)
+  }, [hasUnsavedChanges])
 
   const attachWorkbook = useCallback(async () => {
     if (projectRef.current.workbooks.length === 0) {
@@ -490,7 +509,7 @@ export function WorkspaceApplication() {
         setHasUnsavedChanges(false)
         historyRef.current.markSaved()
         void getBridge().clearRecovery()
-        message.success(t('project.saved', { name: result.project.name }))
+        showSuccessNotice(t('project.saved', { name: result.project.name }), 1800)
       } else if (result.status === 'error') {
         message.error(result.message || t('project.saveFailedRecovery'))
         console.error('Save failed:', result.message)
@@ -499,7 +518,7 @@ export function WorkspaceApplication() {
       message.error(t('project.saveFailed', { message: err instanceof Error ? err.message : String(err) }))
       console.error('Save failed:', err)
     }
-  }, [parseResult, projectFilePath, spreadsheet])
+  }, [parseResult, projectFilePath, showSuccessNotice, spreadsheet])
 
   const saveProjectRef = useRef(saveProjectToDisk)
   saveProjectRef.current = saveProjectToDisk
@@ -823,6 +842,7 @@ export function WorkspaceApplication() {
           <Tooltip title={t('common.close')}><Button className="window-control-close" aria-label={t('common.close')} type="text" icon={<CloseOutlined />} onClick={() => { void getBridge().closeWindow() }} /></Tooltip>
         </div>
       </Layout.Header>
+      {successNotice && <div key={successNotice.id} className="project-save-notice" role="status"><CheckCircleOutlined />{successNotice.text}</div>}
       {importError && (
         <Alert
           message={importError}
@@ -851,7 +871,7 @@ export function WorkspaceApplication() {
             <Splitter.Panel defaultSize="70%" min="45%" max="82%">
               <section className="workspace-canvas" aria-label={t('app.workbookCanvas')}>
                 <header className="panel-heading canvas-heading">
-                  <div><strong>{t('workbook.title')}</strong></div>
+                  <div className="canvas-heading-title"><strong>{t('workbook.title')}</strong><div ref={setWorkbookToolbarContainer} /></div>
                   <div className="canvas-heading-actions">
                     <span>{currentFileName ?? 'Choose a file to begin'}</span>
                     <Tooltip title={t('workbook.refresh')}>
@@ -860,9 +880,6 @@ export function WorkspaceApplication() {
                     </Tooltip>
                   </div>
                 </header>
-                {inspectorHidden && <Tooltip title={t('app.showInspector')}>
-                  <Button className="workspace-inspector-restore" aria-label={t('app.showInspector')} type="primary" shape="circle" icon={<MenuUnfoldOutlined />} onClick={() => setInspectorHidden(false)} />
-                </Tooltip>}
                 <SpreadsheetPanel
                   activeSheet={activeSheetName}
                   activeItemIds={activeCanvasItemIds}
@@ -881,13 +898,24 @@ export function WorkspaceApplication() {
                   lockedRanges={lockedRanges}
                   closeSignal={closeSignal}
                   onOpenWorkbook={handleOpenFile}
+                  toolbarContainer={workbookToolbarContainer}
+                  onSuccessNotice={showSuccessNotice}
+                  focusRange={spreadsheet.focusRange}
                 />
               </section>
             </Splitter.Panel>
             <Splitter.Panel defaultSize="30%" min={360}>
-              <FeaturePanelHost panels={featurePanels} onCollapse={() => setInspectorHidden(true)} />
+              <div className="workspace-inspector-shell">
+                <Tooltip title={t('app.hideInspector')}>
+                  <Button className="workspace-inspector-edge-toggle" aria-label={t('app.hideInspector')} size="small" type="text" icon={<RightOutlined />} onClick={() => setInspectorHidden(true)} />
+                </Tooltip>
+                <FeaturePanelHost panels={featurePanels} />
+              </div>
             </Splitter.Panel>
           </Splitter>
+          {inspectorHidden && <Tooltip title={t('app.showInspector')}>
+            <Button className="workspace-inspector-edge-toggle is-collapsed" aria-label={t('app.showInspector')} size="small" type="text" icon={<LeftOutlined />} onClick={() => setInspectorHidden(false)} />
+          </Tooltip>}
         </div>
       </Layout.Content>
       <Drawer title={t('workspace.title')} open={workspaceNavOpen} onClose={() => setWorkspaceNavOpen(false)} placement="left" width={300} destroyOnClose styles={{ body: { padding: 0 } }}>
