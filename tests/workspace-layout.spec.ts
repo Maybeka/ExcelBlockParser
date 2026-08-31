@@ -53,7 +53,6 @@ test.describe('M3 workspace layout', () => {
   })
 
   test('collapses Extractions without unmounting the workbook canvas', async ({ page }) => {
-    await page.addInitScript(() => localStorage.removeItem('excel-block-parser.inspector-hidden'))
     await page.goto('/?e2e=1')
 
     const inspector = page.getByRole('complementary', { name: 'Extractions' })

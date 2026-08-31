@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.4 - 2026-09-01
+
+- Moved workbook copy and search into the canvas heading. Search is a window-level
+  panel that can be dragged across the application, lists matches, and can scan
+  the active sheet or every sheet.
+- Search runs from Enter or the in-field search button, uses the Block/Region
+  focus API to bring off-screen cells into view, and no longer caps matches at
+  250 unless a caller supplies a limit. Cmd/Ctrl+F opens search and Cmd/Ctrl+C
+  copies the selected cells.
+- Moved Extractions collapse to an edge control without persisting that state,
+  and used a shared success notice for project save and cell copy.
+
 ## 1.4.3 - 2026-08-31
 
 - Migrated the real Electron multi-workbook regression to the current
