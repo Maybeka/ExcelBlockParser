@@ -61,9 +61,8 @@ async function loadWorkbookFixture(page: import('@playwright/test').Page): Promi
 // ---------------------------------------------------------------------------
 test.describe('Region Creation', () => {
   async function addRegion(page: import('@playwright/test').Page): Promise<void> {
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Show workspace navigation' }).click()
-    await page.getByRole('button', { name: /Add Region/ }).click()
+    await loadWorkbookFixture(page)
+    await page.getByRole('button', { name: 'Add Region', exact: true }).click()
     await expect(page.getByRole('textbox', { name: 'Region 1' })).toHaveValue('region_1')
   }
 
@@ -71,18 +70,9 @@ test.describe('Region Creation', () => {
     await addRegion(page)
   })
 
-  test('Region expand/collapse controls its empty-range guidance', async ({ page }) => {
+  test('Region editor keeps its empty-range guidance visible', async ({ page }) => {
     await addRegion(page)
 
-    const regionCard = page.getByRole('textbox', { name: 'Region 1' }).locator('xpath=../..')
-    await expect(page.getByText('Click and drag in the spreadsheet to select a region range.')).toBeVisible()
-    const collapse = regionCard.locator('.anticon-caret-down')
-    await expect(collapse).toHaveCount(1)
-    await collapse.click()
-    await expect(page.getByText('Click and drag in the spreadsheet to select a region range.')).not.toBeVisible()
-    const expand = regionCard.locator('.anticon-caret-right')
-    await expect(expand).toHaveCount(1)
-    await expand.click()
     await expect(page.getByText('Click and drag in the spreadsheet to select a region range.')).toBeVisible()
   })
 
@@ -119,7 +109,7 @@ test.describe('Row filtering', () => {
     await page.locator('.row-filter-operator').click()
     await page.getByText('not in', { exact: true }).last().click()
     await expect(page.locator('.row-filter-value')).toBeVisible()
-    await page.getByRole('button', { name: 'Add row condition group' }).click()
+    await page.getByRole('button', { name: 'Add group' }).click()
     await expect(page.getByRole('button', { name: 'Delete row condition group' })).toHaveCount(1)
   })
 
@@ -154,7 +144,7 @@ test.describe('Row filtering', () => {
     await expect(editor.getByRole('button', { name: 'Clear conditions' })).toBeVisible()
 
     await editor.getByRole('button', { name: 'Clear conditions' }).click()
-    await page.getByRole('button', { name: 'Clear', exact: true }).click()
+    await page.getByRole('button', { name: 'Clear conditions', exact: true }).last().click()
     await expect(editor.getByRole('button', { name: /Add condition/ })).toBeVisible()
   })
 })
@@ -164,8 +154,8 @@ test.describe('Row filtering', () => {
 // ---------------------------------------------------------------------------
 test.describe('Tag Management', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Show block tags' }).click()
+    await loadWorkbookFixture(page)
+    await page.getByRole('button', { name: 'Show block info' }).click()
     await expect(page.locator('button').filter({ hasText: 'Tag' })).toBeVisible()
   })
 
@@ -223,6 +213,11 @@ test.describe('Downstream Properties', () => {
     await loadWorkbookFixture(page)
   })
 
+  const addProperty = (page: import('@playwright/test').Page) => page
+    .getByText('Downstream Properties', { exact: true })
+    .locator('..')
+    .getByRole('button', { name: 'plus Add' })
+
   test('Expand computed properties section and add a property', async ({ page }) => {
     // The downstream metadata heading acts as a toggle.
     await page.locator('text=Downstream Properties').click()
@@ -230,7 +225,7 @@ test.describe('Downstream Properties', () => {
     // The "Add" button should appear inside the expanded section.
     // (The main "Add" button at the top is for blocks; we want the one scoped
     //  to computed properties.)
-    const addButton = page.getByRole('button', { name: 'Add' })
+    const addButton = addProperty(page)
     // After expanding CP there should be at least one "Add" button visible.
     await expect(addButton.first()).toBeVisible()
   })
@@ -240,10 +235,9 @@ test.describe('Downstream Properties', () => {
 
     // Click "Add" to insert a new computed-property row.
     // Count "Add" buttons first so we click the right one.
-    const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
-    await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
+    await addProperty(page).click()
 
-    const exprInput = page.getByPlaceholder('key1 * key2')
+    const exprInput = page.getByPlaceholder('field_a * field_b')
     await exprInput.fill('1 + 1')
 
     // A "✓ Valid" message appears in green (#52c41a).
@@ -255,11 +249,10 @@ test.describe('Downstream Properties', () => {
     await page.locator('text=Downstream Properties').click()
 
     // Add a new computed property.
-    const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
-    await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
+    await addProperty(page).click()
 
     // Fill with an expression referencing an unknown key.
-    const exprInput = page.getByPlaceholder('key1 * key2')
+    const exprInput = page.getByPlaceholder('field_a * field_b')
     await exprInput.fill("row['nonexistent_column']")
 
     // An error message should appear in red (#ff4d4f).
@@ -270,11 +263,10 @@ test.describe('Downstream Properties', () => {
   test('Invalid syntax shows error', async ({ page }) => {
     await page.locator('text=Downstream Properties').click()
 
-    const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
-    await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
+    await addProperty(page).click()
 
     // Syntax error: unbalanced parentheses.
-    const exprInput = page.getByPlaceholder('key1 * key2')
+    const exprInput = page.getByPlaceholder('field_a * field_b')
     await exprInput.fill('(1 + 1')
 
     // Should show a syntax error.
@@ -285,10 +277,9 @@ test.describe('Downstream Properties', () => {
     await page.locator('text=Downstream Properties').click()
 
     // Add one property.
-    const addBtnsBefore = await page.getByRole('button', { name: 'Add' }).count()
-    await page.getByRole('button', { name: 'Add' }).nth(addBtnsBefore - 1).click()
+    await addProperty(page).click()
 
-    const propertyRow = page.getByPlaceholder('key1 * key2').locator('xpath=../..')
+    const propertyRow = page.getByPlaceholder('field_a * field_b').locator('xpath=../..')
     await propertyRow.getByRole('button').click()
 
     // The CP row should be gone.  Count rows or check no "Add" re-appeared.

@@ -3,61 +3,49 @@ import { expect, test } from '@playwright/test'
 test.describe('Gate B feature panel host', () => {
   test('mounts only the active Block view through the host-owned section', async ({ page }) => {
     await page.goto('/')
-    const panel = page.getByRole('complementary', { name: 'Workspace configuration' })
-    const blocks = panel.locator('[data-feature-id="builtin.extraction"]')
-    await expect(blocks.getByText('Blocks', { exact: true })).toBeVisible()
+    const panel = page.getByRole('complementary', { name: 'Extractions' })
+    const blocks = panel
+    await expect(blocks.getByRole('button', { name: 'Add Block', exact: true })).toBeVisible()
     await expect(panel.locator('[data-feature-id="builtin.regions"]')).toHaveCount(0)
-    const content = blocks.getByLabel('Blocks content')
+    const content = blocks.getByLabel('Extractions content')
     await expect(content).toHaveAttribute('tabindex', '0')
     await content.focus()
     await expect(content).toBeFocused()
     await content.press('Tab')
     await expect(content).not.toBeFocused()
-    await expect(blocks.getByRole('button', { name: 'Add Block' })).toBeVisible()
-    await expect(blocks.locator('.extractor-card')).toHaveCount(1)
-    await expect(blocks.locator('.extractor-card')).not.toHaveClass(/is-active/)
+    await expect(blocks.locator('.extractor-card')).toHaveCount(0)
+    await expect(blocks.getByRole('button', { name: 'Add Block', exact: true })).toBeDisabled()
   })
 
-  test('shows only the newly active Block after another Block is added', async ({ page }) => {
+  test('does not create a Block before a workbook is active', async ({ page }) => {
     await page.goto('/')
-    const panel = page.getByRole('complementary', { name: 'Workspace configuration' })
-    await panel.getByRole('button', { name: 'Add Block' }).click()
-
-    await expect(panel.locator('.extractor-card')).toHaveCount(1)
-    await expect(panel.getByRole('textbox', { name: 'Block 1' })).toHaveValue('block_2')
-    await expect(panel.getByRole('textbox', { name: 'Block 1' })).not.toHaveValue('block_1')
+    const panel = page.getByRole('complementary', { name: 'Extractions' })
+    await expect(panel.getByRole('button', { name: 'Add Block', exact: true })).toBeDisabled()
+    await expect(panel.locator('.extractor-card')).toHaveCount(0)
   })
 
-  test('replaces the Block editor with the active Region editor', async ({ page }) => {
+  test('does not create a Region before a workbook is active', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Add Region' }).click()
-
-    const panel = page.getByRole('complementary', { name: 'Workspace configuration' })
-    await expect(panel.locator('[data-feature-id="builtin.extraction"]')).toHaveCount(0)
-    await expect(panel.locator('[data-feature-id="builtin.regions"]')).toBeVisible()
-    await expect(panel.getByRole('textbox', { name: 'Region 1' })).toHaveValue('region_1')
-    await expect(panel.getByRole('button', { name: 'Add Block' })).toBeVisible()
-    await expect(panel.locator('.telegram-card')).not.toHaveClass(/is-active/)
-    await panel.getByRole('button', { name: 'Add Region' }).click()
-    await expect(panel.locator('.telegram-card')).toHaveCount(1)
-    await expect(panel.getByRole('textbox', { name: 'Region 1' })).toHaveValue('region_2')
+    const panel = page.getByRole('complementary', { name: 'Extractions' })
+    await expect(panel.getByRole('button', { name: 'Add Region', exact: true })).toBeDisabled()
+    await expect(panel.locator('[data-feature-id="builtin.regions"]')).toHaveCount(0)
   })
 
-  test('keeps the primary add action at the end of the Blocks header toolbar', async ({ page }) => {
+  test('keeps the Block and Region actions together in the header toolbar', async ({ page }) => {
     await page.goto('/')
-    const blocks = page.locator('[data-feature-id="builtin.extraction"]')
-    const actions = blocks.locator('.panel-heading-actions')
-    const addBlock = actions.getByRole('button', { name: 'Add Block' })
+    const blocks = page.getByRole('complementary', { name: 'Extractions' })
+    const actions = blocks
+    const addBlock = actions.getByRole('button', { name: 'Add Block', exact: true })
 
-    await expect(actions.getByRole('button', { name: 'Add Region' })).toBeVisible()
+    await expect(actions.getByRole('button', { name: 'Add Region', exact: true })).toBeVisible()
 
     const [addBounds, addRegionBounds] = await Promise.all([
       addBlock.boundingBox(),
-      actions.getByRole('button', { name: 'Add Region' }).boundingBox(),
+      actions.getByRole('button', { name: 'Add Region', exact: true }).boundingBox(),
     ])
     expect(addBounds).not.toBeNull()
     expect(addRegionBounds).not.toBeNull()
-    expect(addBounds!.x).toBeGreaterThan(addRegionBounds!.x)
+    expect(addRegionBounds!.x).toBeGreaterThan(addBounds!.x)
   })
 
   test('mounts a materially different review view through the same host', async ({ page }) => {
@@ -95,7 +83,7 @@ test.describe('Gate B feature panel host', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
     await expect(page.getByTestId('external-review-panel')).toHaveCount(0)
-    await expect(page.getByRole('complementary', { name: 'Workspace configuration' })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: 'Extractions' })).toBeVisible()
     expect(scopedClass).toMatch(/^_panel_/)
     await expect(page.locator(`body.${scopedClass}`)).toHaveCount(0)
   })

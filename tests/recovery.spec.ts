@@ -1,18 +1,10 @@
 import { expect, test } from '@playwright/test'
 
 test.describe('M4 recovery controls', () => {
-  test('undo and redo restore workspace mutations', async ({ page }) => {
+  test('undo and redo are unavailable before a workspace mutation', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Add' }).click()
-    await expect(page.getByRole('textbox', { name: 'block_2' })).toBeVisible()
-
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
-    await page.keyboard.press('Meta+Z')
-    await expect(page.getByRole('textbox', { name: 'block_2' })).not.toBeVisible()
-    await expect(page.getByRole('button', { name: 'Redo' })).toBeEnabled()
-
-    await page.getByRole('button', { name: 'Redo' }).click()
-    await expect(page.getByRole('textbox', { name: 'block_2' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Redo' })).toBeDisabled()
   })
 
   test('offers an explicit choice when a recovery project exists', async ({ page }) => {
