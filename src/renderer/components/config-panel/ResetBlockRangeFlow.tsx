@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, message, Select, Typography } from 'antd'
+import { Button, message, Radio, Select, Typography } from 'antd'
 import { CheckOutlined } from '@ant-design/icons'
 import type { BlockConfig, CellRange, WorkbookConfig } from '../../types'
 import type { SpreadsheetCapability } from '../../services/spreadsheetCapability'
 import { useI18n } from '../../i18n'
 import type { BlockRangeSource } from '../../features/extraction/rangeReset'
+import { prepareBlockRangeUpdate, type RangeMigrationMode } from '../../features/extraction/rangeResetMigration'
 
 interface ResetBlockRangeFlowProps {
   block: BlockConfig
   workbooks: WorkbookConfig[]
   loadedWorkbookId: string | null
   spreadsheet: SpreadsheetCapability
-  onApply: (source: BlockRangeSource) => void
+  onApply: (source: BlockRangeSource | ReturnType<typeof prepareBlockRangeUpdate>['update']) => void
   onClose: () => void
   onReselectRange?: (onRange: (range: CellRange) => void) => void
   onActivateWorkbook: (workbookId: string, sheetName?: string) => void
@@ -29,6 +30,7 @@ export function ResetBlockRangeFlow({
   const [sheetName, setSheetName] = useState(block.activeSheet || '')
   const [range, setRange] = useState<CellRange | null>(block.range)
   const [showReview, setShowReview] = useState(false)
+  const [migrationMode, setMigrationMode] = useState<RangeMigrationMode>('preserve')
 
   const currentWorkbook = useMemo(() => workbooks.find(item => item.id === block.workbookId), [block.workbookId, workbooks])
   const selectedWorkbook = useMemo(() => workbooks.find(item => item.id === workbookId), [workbookId, workbooks])
@@ -72,6 +74,12 @@ export function ResetBlockRangeFlow({
   const oldDescription = describeRange(currentWorkbook?.name || t('project.thisWorkbook'), block.activeSheet, block.range)
   const newDescription = describeRange(selectedWorkbook?.name || t('project.thisWorkbook'), sheetName, range)
   const canReview = Boolean(workbookId && sheetName && range)
+  const migration = useMemo(() => {
+    if (!workbookId || !sheetName || !range || !targetIsLoaded) return null
+    const values = spreadsheet.readRange(sheetName, range)
+    if (!values) return null
+    return prepareBlockRangeUpdate(block, { workbookId, activeSheet: sheetName, range }, values, migrationMode)
+  }, [block, migrationMode, range, sheetName, spreadsheet, targetIsLoaded, workbookId])
 
   return (
     <div className="block-range-reset-flow">
@@ -95,16 +103,29 @@ export function ResetBlockRangeFlow({
           <Button size="small" onClick={reselectRange} disabled={!targetIsLoaded}>{t('reconcile.reselect')}</Button>
         </div>
       </div>
+      <div className="block-range-migration-mode">
+        <span>{t('block.resetMigration')}</span>
+        <Radio.Group value={migrationMode} onChange={event => { setMigrationMode(event.target.value); setShowReview(false) }}>
+          <Radio value="preserve">{t('block.resetPreserveCompatible')}</Radio>
+          <Radio value="regenerate">{t('block.resetRegenerateColumns')}</Radio>
+        </Radio.Group>
+      </div>
       {showReview && (
         <div className="block-range-reset-review">
           <Typography.Text>{t('block.resetReview')}</Typography.Text>
           <div><span>{t('block.resetBefore')}</span><strong>{oldDescription || '—'}</strong></div>
           <div><span>{t('block.resetAfter')}</span><strong>{newDescription || '—'}</strong></div>
-          <Typography.Text type="secondary">{t('block.resetPreserveConfig')}</Typography.Text>
+          <Typography.Text type="secondary">{migrationMode === 'preserve' ? t('block.resetPreserveConfig') : t('block.resetRegenerateNotice')}</Typography.Text>
+          {migration && <div className="block-range-migration-impact">
+            {!!migration.impact.preservedColumns.length && <span>{t('block.resetImpactPreserved', { count: migration.impact.preservedColumns.length })}</span>}
+            {!!migration.impact.regeneratedColumns.length && <span>{t('block.resetImpactRegenerated', { count: migration.impact.regeneratedColumns.length })}</span>}
+            {!!migration.impact.unmatchedColumns.length && <span>{t('block.resetImpactUnmatched', { names: migration.impact.unmatchedColumns.join(', ') })}</span>}
+            {!!migration.impact.affectedReferences.length && <span>{t('block.resetImpactReferences', { names: migration.impact.affectedReferences.join(', ') })}</span>}
+          </div>}
         </div>
       )}
       <div className="block-range-reset-actions">
-        {!showReview ? <Button type="primary" size="small" onClick={() => setShowReview(true)} disabled={!canReview}>{t('block.resetReviewAction')}</Button> : <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => { onApply({ workbookId, activeSheet: sheetName, range }); message.success(t('block.resetSuccess')) }}>{t('block.resetApply')}</Button>}
+        {!showReview ? <Button type="primary" size="small" onClick={() => setShowReview(true)} disabled={!canReview || !migration}>{t('block.resetReviewAction')}</Button> : <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => { if (migration) { onApply(migration.update); message.success(t('block.resetSuccess')) } }}>{t('block.resetApply')}</Button>}
         <Button size="small" onClick={cancel}>{t('common.cancel')}</Button>
       </div>
     </div>

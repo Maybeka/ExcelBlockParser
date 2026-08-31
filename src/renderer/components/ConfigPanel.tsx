@@ -8,7 +8,7 @@ import { filterBlocksByTag, getAllTags } from '../services/tagUtils'
 import { BlockInspector } from './config-panel/BlockInspector'
 import { useColumnConfiguration } from './config-panel/useColumnConfiguration'
 import { useI18n } from '../i18n'
-import { resetBlockRange, type BlockRangeSource } from '../features/extraction/rangeReset'
+import { resetBlockRange, type BlockRangeReset } from '../features/extraction/rangeReset'
 
 export type FocusMode = 'always-editable' | 'activate-first'
 
@@ -239,7 +239,7 @@ export function ConfigPanel({
               onCancelAddingTag={cancelTagEntry}
               onStartRangeReset={() => setReconcilingBlockId(block.id)}
               onEndRangeReset={() => setReconcilingBlockId(null)}
-              onApplyRangeReset={(source: BlockRangeSource) => { onBlockChange(block.id, resetBlockRange(block, source)); onFocusRangeReset(source) }}
+              onApplyRangeReset={(source: BlockRangeReset) => { onBlockChange(block.id, resetBlockRange(block, source)); onFocusRangeReset(source) }}
               onActivateWorkbook={onActivateWorkbook}
               onReconcilingChange={onReconcilingChange}
               onReselectRange={onReselectRange}

@@ -8,7 +8,7 @@ import { isValidVariableName } from '../../features/extraction/validation'
 import { countRowFilterRules, RowFilterEditor } from '../RowFilterEditor'
 import { HeaderRowsEditor } from './HeaderRowsEditor'
 import { ResetBlockRangeFlow } from './ResetBlockRangeFlow'
-import type { BlockRangeSource } from '../../features/extraction/rangeReset'
+import type { BlockRangeReset, BlockRangeSource } from '../../features/extraction/rangeReset'
 import { ColumnEditor } from './ColumnEditor'
 import { DownstreamPropertiesEditor } from './DownstreamPropertiesEditor'
 import type { ColumnConfigurationController } from './useColumnConfiguration'
@@ -44,7 +44,7 @@ export interface BlockInspectorProps {
   onCancelAddingTag: () => void
   onStartRangeReset: () => void
   onEndRangeReset: () => void
-  onApplyRangeReset: (source: BlockRangeSource) => void
+  onApplyRangeReset: (source: BlockRangeReset) => void
   onActivateWorkbook: (workbookId: string, sheetName?: string) => void
   onReconcilingChange?: (blockId: string | null) => void
   onReselectRange?: (onRange: (range: CellRange) => void) => void

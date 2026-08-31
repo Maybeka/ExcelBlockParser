@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.2 - 2026-08-31
+
+- Added an explicit Block range-reset migration choice: preserve compatible
+  column configuration by normalized header, with positional fallback, or
+  regenerate the target columns.
+- Range-reset review now identifies retained, regenerated, unmatched, and
+  filter/property-referenced column configuration before applying changes.
+- Retained the project-open recovery flow that surfaces all unavailable
+  workbook sources together while preserving configuration for available sources.
+
 ## 1.4.1 - 2026-08-31
 
 - Added a persistent Extractions-panel collapse control so the workbook canvas

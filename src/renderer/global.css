@@ -391,6 +391,12 @@ html, body, #root {
 .block-range-reset-value { font-family: var(--font-code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .block-range-reset-review > div { display: grid; gap: var(--space-2); grid-template-columns: 56px minmax(0, 1fr); }
 .block-range-reset-review strong { font-family: var(--font-code); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-range-migration-mode { display: flex; flex-direction: column; gap: 6px; }
+.block-range-migration-mode > span { color: var(--fluent-text-muted); font-size: 12px; }
+.block-range-migration-mode .ant-radio-group { display: flex; flex-direction: column; gap: 4px; }
+.block-range-migration-mode .ant-radio-wrapper { font-size: 12px; margin-inline-end: 0; }
+.block-range-migration-impact { border-top: 1px solid var(--fluent-stroke); color: var(--fluent-text-muted); display: flex; flex-direction: column; font-size: 11px; gap: 3px; margin-top: 4px; padding-top: 6px; }
+.block-range-migration-impact span:last-child { color: #825500; }
 .block-range-reset-actions { border-top: 1px solid var(--fluent-stroke); display: flex; gap: var(--space-2); margin-top: auto; padding-top: var(--space-3); }
 .telegram-card-body.is-locked,
 .extractor-card-body.is-locked { opacity: .5; }
