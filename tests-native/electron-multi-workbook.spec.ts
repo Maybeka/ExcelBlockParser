@@ -91,15 +91,16 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await expect(page.getByRole('region', { name: 'Workbook canvas' }).getByText('Excel Workbook', { exact: true })).toBeVisible()
 
     await page.getByRole('button', { name: 'Show workspace navigation' }).click()
-    const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
-    await expect(navigator.getByText('Multi workbook regression', { exact: true })).toBeVisible()
+    const navigator = page.getByRole('navigation', { name: 'Workspace navigation' })
+    await expect(navigator.locator('.workspace-file-name[title="Multi workbook regression"]')).toBeVisible()
     await expect(navigator.getByLabel('test_data.xlsx sheets').getByText('Sheet1', { exact: true })).toBeVisible()
     await expect(navigator.getByLabel('multi_sheet.xlsx sheets').getByText('Products', { exact: true })).toBeVisible()
     await expect(navigator.getByLabel('multi_sheet.xlsx sheets').getByText('Orders', { exact: true })).toBeVisible()
 
-    await navigator.getByRole('button', { name: 'Collapse multi_sheet.xlsx sheets' }).click()
+    const catalogNode = navigator.locator('.workspace-workbook-node').filter({ hasText: 'multi_sheet.xlsx' })
+    await catalogNode.getByRole('button', { name: 'Collapse sheets' }).click()
     await expect(navigator.locator('.workspace-workbook-sheets[aria-label="multi_sheet.xlsx sheets"]')).toBeHidden()
-    await navigator.getByRole('button', { name: 'Expand multi_sheet.xlsx sheets' }).click()
+    await catalogNode.getByRole('button', { name: 'Expand sheets' }).click()
     await expect(navigator.locator('.workspace-workbook-sheets[aria-label="multi_sheet.xlsx sheets"]')).toBeVisible()
 
     const salesTab = page.getByRole('tab', { name: 'test_data.xlsx' })
@@ -116,7 +117,7 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await catalogTab.click()
     await expect(page.getByRole('tab', { name: 'Products', exact: true })).toBeVisible()
 
-    const extractors = navigator.locator('.workspace-feature-section').filter({ hasText: 'EXTRACTORS' })
+    const extractors = navigator.locator('.workspace-feature-section').filter({ has: navigator.getByRole('button', { name: 'Blocks' }) })
     await extractors.locator('.workspace-row').filter({ hasText: 'test_data.xlsx' }).getByRole('button').first().click()
     await expect(salesTab).toHaveAttribute('aria-selected', 'true')
     await extractors.locator('.workspace-row').filter({ hasText: 'multi_sheet.xlsx' }).getByRole('button').first().click()
@@ -125,7 +126,7 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await page.getByRole('button', { name: 'Refresh current workbook' }).click()
     await expect(page.getByRole('tab', { name: 'Products', exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Run & Preview' }).click()
+    await page.getByRole('button', { name: 'Preview' }).click()
     await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
     await expect(page.getByRole('tab', { name: /Regions/ })).toBeVisible()
     await page.getByRole('tab', { name: /Regions/ }).click()

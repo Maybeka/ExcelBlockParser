@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.3 - 2026-08-31
+
+- Migrated the real Electron multi-workbook regression to the current
+  project-first navigation, Blocks, Preview, and project-save workflows.
+- Kept the native smoke suite focused on current project creation and
+  cross-workbook selection, while the expanded multi-workbook suite remains a
+  release-candidate regression rather than a routine pre-push cost.
+
 ## 1.4.2 - 2026-08-31
 
 - Added an explicit Block range-reset migration choice: preserve compatible
