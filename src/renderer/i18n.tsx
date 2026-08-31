@@ -239,9 +239,12 @@ const dictionaries: Record<AppLocale, Dictionary> = {
 }
 
 function preferredLocale(): AppLocale {
-  const saved = localStorage.getItem(storageKey)
+  return resolveAppLocale(localStorage.getItem(storageKey), navigator.language)
+}
+
+export function resolveAppLocale(saved: string | null, language: string | undefined): AppLocale {
   if (saved === 'en-US' || saved === 'zh-CN') return saved
-  return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
+  return (language ?? '').toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
 }
 
 function interpolate(text: string, values?: Values): string {
