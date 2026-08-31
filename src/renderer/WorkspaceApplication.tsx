@@ -48,6 +48,7 @@ import { useI18n } from './i18n'
 export function WorkspaceApplication() {
   const { locale, setLocale, t } = useI18n()
   const e2eMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')
+  const automatedSession = Boolean(navigator.webdriver)
   const { univerAPI, sheetNames } = useUniver()
   const spreadsheet = useMemo(() => createUniverSpreadsheetCapability(univerAPI, sheetNames), [sheetNames, univerAPI])
 
@@ -280,14 +281,14 @@ export function WorkspaceApplication() {
   }, [successNotice])
 
   useEffect(() => {
-    if (!hasUnsavedChanges) return
+    if (e2eMode || automatedSession || !hasUnsavedChanges) return
     const confirmClose = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue = ''
     }
     window.addEventListener('beforeunload', confirmClose)
     return () => window.removeEventListener('beforeunload', confirmClose)
-  }, [hasUnsavedChanges])
+  }, [automatedSession, e2eMode, hasUnsavedChanges])
 
   const attachWorkbook = useCallback(async () => {
     if (projectRef.current.workbooks.length === 0) {
