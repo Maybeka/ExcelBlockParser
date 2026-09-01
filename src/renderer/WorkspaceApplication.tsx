@@ -1,8 +1,7 @@
-import { Suspense, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
+import { Suspense, lazy, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
 import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
 import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, MoreOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
-import { PythonProjectDialog } from './components/PythonProjectDialog'
 import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseResult, type ProjectConfig, type ProjectWorkbook, type WorkbookDisplaySettings } from './types'
 import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
 import { gateBPrototypePanel } from './features/panel/gateBPrototypePanels'
@@ -45,6 +44,11 @@ import { executeProject, type ProjectExecutionResult } from './services/projectE
 import { changedWorkbookSourceIds, type WorkbookSourceFingerprints } from './services/workbookSourceFingerprint'
 import { orderDiagnostics, type DiagnosticFocusTarget } from './services/diagnostics'
 import { useI18n } from './i18n'
+
+const PythonProjectDialog = lazy(async () => {
+  const module = await import('./components/PythonProjectDialog')
+  return { default: module.PythonProjectDialog }
+})
 
 type CompletedProjectExecution = Extract<ProjectExecutionResult, { status: 'complete' }>
 type ProjectExecutionResponse = { project: ProjectConfig; result: ParseResult } | { error: string }
@@ -1218,7 +1222,7 @@ export function WorkspaceApplication() {
             : <Alert type="error" showIcon message={t('project.jsonInvalid')} description={<div className="json-validation-errors">{jsonValidationReport.errors.map((error, index) => <div key={`${index}:${error}`}>{error}</div>)}</div>} />}
         </div>}
       </Modal>
-      <PythonProjectDialog
+      {pythonProjectOpen && <Suspense fallback={null}><PythonProjectDialog
         open={pythonProjectOpen}
         project={project}
         parseResult={parseResult}
@@ -1227,7 +1231,7 @@ export function WorkspaceApplication() {
         onClose={() => setPythonProjectOpen(false)}
         toolbarContainer={pythonToolbarContainer}
         tabBarContainer={pythonTabsContainer}
-      />
+      /></Suspense>}
     </Layout>
   )
 }
