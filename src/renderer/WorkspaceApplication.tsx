@@ -1,6 +1,6 @@
 import { Suspense, lazy, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
 import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, MoreOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { BorderOutlined, CheckCircleOutlined, CodeOutlined, EyeInvisibleOutlined, EyeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, MoreOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseResult, type ProjectConfig, type ProjectWorkbook, type WorkbookDisplaySettings } from './types'
 import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
@@ -117,6 +117,8 @@ export function WorkspaceApplication() {
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false)
   const [sidebarHidden, setSidebarHidden] = useState(true)
   const [inspectorHidden, setInspectorHidden] = useState(false)
+  const [workbookBrowserMode, setWorkbookBrowserMode] = useState(false)
+  const browserModeRestoreRef = useRef<{ sidebarHidden: boolean; inspectorHidden: boolean } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(272)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
@@ -311,6 +313,26 @@ export function WorkspaceApplication() {
   const showSuccessNotice = useCallback((text: string, duration: number) => {
     setSuccessNotice({ id: ++successNoticeIdRef.current, text, duration })
   }, [])
+
+  const toggleWorkbookBrowserMode = useCallback(() => {
+    if (!activeWorkbookId) return
+    if (workbookBrowserMode) {
+      const restore = browserModeRestoreRef.current
+      if (restore) {
+        setSidebarHidden(restore.sidebarHidden)
+        setInspectorHidden(restore.inspectorHidden)
+      }
+      browserModeRestoreRef.current = null
+      setWorkbookBrowserMode(false)
+      return
+    }
+    browserModeRestoreRef.current = { sidebarHidden, inspectorHidden }
+    setWorkspaceNavOpen(false)
+    setDiagnosticsOpen(false)
+    setSidebarHidden(true)
+    setInspectorHidden(true)
+    setWorkbookBrowserMode(true)
+  }, [activeWorkbookId, inspectorHidden, sidebarHidden, workbookBrowserMode])
 
   useEffect(() => {
     if (!successNotice) return
@@ -827,7 +849,7 @@ export function WorkspaceApplication() {
     <Layout className="app-shell">
       <Layout.Header className="app-header">
         <div className="app-brand">
-          {!pythonProjectOpen && <Tooltip title={sidebarHidden ? t('app.showNavigation') : t('app.hideNavigation')}>
+          {!pythonProjectOpen && !workbookBrowserMode && <Tooltip title={sidebarHidden ? t('app.showNavigation') : t('app.hideNavigation')}>
             <Button
               className="workspace-sidebar-toggle"
               aria-label={sidebarHidden ? t('app.showNavigation') : t('app.hideNavigation')}
@@ -841,7 +863,7 @@ export function WorkspaceApplication() {
             <strong>{pythonProjectOpen ? t('app.python') : t('app.name')}</strong>
           </span>
         </div>
-        {!pythonProjectOpen && <Tooltip title={t('workspace.navigation')}>
+        {!pythonProjectOpen && !workbookBrowserMode && <Tooltip title={t('workspace.navigation')}>
           <Button className="workspace-mobile-nav" aria-label={t('workspace.navigation')} size="small" type="text" icon={<MenuOutlined />} onClick={() => setWorkspaceNavOpen(true)} />
         </Tooltip>}
         {!pythonProjectOpen && openWorkbookIds.length > 0 && (
@@ -956,7 +978,7 @@ export function WorkspaceApplication() {
         </dl>
       </Modal>
       <Layout.Content className="workspace-layout">
-        {!sidebarHidden && (
+        {!sidebarHidden && !workbookBrowserMode && (
           <>
             <aside className="workspace-desktop-nav workspace-sidebar" style={{ flexBasis: sidebarWidth, width: sidebarWidth }}>
               {navigator}
@@ -970,13 +992,19 @@ export function WorkspaceApplication() {
           </>
         )}
         <div className="workspace-main">
-          <Splitter className={`workspace-splitter ${inspectorHidden ? 'is-inspector-collapsed' : ''}`}>
+          <Splitter className={`workspace-splitter ${inspectorHidden || workbookBrowserMode ? 'is-inspector-collapsed' : ''}`}>
             <Splitter.Panel defaultSize="70%" min="45%" max="82%">
               <section className="workspace-canvas" aria-label={t('app.workbookCanvas')}>
                 <header className="panel-heading canvas-heading">
                   <div className="canvas-heading-title"><strong>{t('workbook.title')}</strong><div ref={setWorkbookToolbarContainer} /></div>
                   <div className="canvas-heading-actions">
                     <span>{currentFileName ?? 'Choose a file to begin'}</span>
+                    <Tooltip title={workbookBrowserMode ? t('workbook.exitBrowserMode') : t('workbook.enterBrowserMode')}>
+                      <Button aria-label={workbookBrowserMode ? t('workbook.exitBrowserMode') : t('workbook.enterBrowserMode')} aria-pressed={workbookBrowserMode}
+                        size="small" type="text" className={workbookBrowserMode ? 'is-active' : ''}
+                        icon={workbookBrowserMode ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                        disabled={!activeWorkbookId} onClick={toggleWorkbookBrowserMode} />
+                    </Tooltip>
                     <Tooltip title={t('workbook.refresh')}>
                       <Button aria-label={t('app.refreshWorkbook')} size="small" type="text" icon={<ReloadOutlined />}
                         disabled={!activeWorkbookId || !workbookRuntime.paths[activeWorkbookId]} onClick={handleRefreshWorkbook} />
@@ -988,9 +1016,9 @@ export function WorkspaceApplication() {
                   activeSheet={activeSheetName}
                   displaySettings={activeWorkbookDisplaySettings}
                   onDisplaySettingsChange={handleWorkbookDisplaySettingsChange}
-                  activeItemIds={activeCanvasItemIds}
-                  activeColumnItemId={activeColIndex === null ? null : activeColumnItemId}
-                  activeColIndex={activeColIndex}
+                  activeItemIds={workbookBrowserMode ? [] : activeCanvasItemIds}
+                  activeColumnItemId={workbookBrowserMode || activeColIndex === null ? null : activeColumnItemId}
+                  activeColIndex={workbookBrowserMode ? null : activeColIndex}
                   onSelectionChange={handleSelectionChange}
                   onActiveSheetChange={(workbookId, sheetName) => {
                     if (workbookId === projectRef.current.activeWorkbookId && workbookId === loadedWorkbookId) setProjectActiveSheet(sheetName)
@@ -1001,7 +1029,7 @@ export function WorkspaceApplication() {
                   openWorkbookIds={openWorkbookIds}
                   onFileLoaded={handleFileLoaded}
                   onLoadedWorkbookChange={workbookId => updateWorkbookRuntime(current => setLoadedWorkbook(current, workbookId))}
-                  lockedRanges={lockedRanges}
+                  lockedRanges={workbookBrowserMode ? [] : lockedRanges}
                   closeSignal={closeSignal}
                   onOpenWorkbook={handleOpenFile}
                   toolbarContainer={workbookToolbarContainer}
@@ -1019,7 +1047,7 @@ export function WorkspaceApplication() {
               </div>
             </Splitter.Panel>
           </Splitter>
-          {inspectorHidden && <Tooltip title={t('app.showInspector')}>
+          {inspectorHidden && !workbookBrowserMode && <Tooltip title={t('app.showInspector')}>
             <Button className="workspace-inspector-edge-toggle is-collapsed" aria-label={t('app.showInspector')} size="small" type="text" icon={<LeftOutlined />} onClick={() => setInspectorHidden(false)} />
           </Tooltip>}
         </div>

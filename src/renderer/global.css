@@ -165,6 +165,7 @@ html, body, #root {
 .canvas-heading-title { align-items: center; display: flex; gap: 8px; min-width: 0; }
 .canvas-heading-actions { align-items: center; gap: 4px; justify-content: flex-end; max-width: 55%; }
 .canvas-heading-actions .ant-btn { flex: 0 0 auto; }
+.canvas-heading-actions .ant-btn.is-active { background: var(--m3-secondary-container); color: var(--fluent-accent); }
 .inspector-heading { background: transparent; }
 .feature-panel-host-1 .inspector-heading {
   background: var(--m3-surface-container);

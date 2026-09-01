@@ -77,3 +77,22 @@ test('lets the search panel move across the application window', async ({ page }
   expect(inspectorBox).not.toBeNull()
   expect(after!.x + after!.width).toBeGreaterThan(inspectorBox!.x + 8)
 })
+
+test('uses Excel browser mode without changing the workspace sidebar state', async ({ page }) => {
+  await loadWorkbookFixture(page)
+
+  const navigation = page.getByRole('navigation', { name: 'Workspace navigation' })
+  const inspector = page.getByRole('complementary', { name: 'Extractions' })
+  await page.getByRole('button', { name: 'Show workspace navigation' }).click()
+  await expect(navigation).toBeVisible()
+  await expect(inspector).toBeVisible()
+
+  await page.getByRole('button', { name: 'Enter Excel browser mode' }).click()
+  await expect(navigation).not.toBeVisible()
+  await expect(inspector).not.toBeVisible()
+  await expect(page.getByRole('button', { name: 'Show Extractions' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Exit Excel browser mode' }).click()
+  await expect(navigation).toBeVisible()
+  await expect(inspector).toBeVisible()
+})
