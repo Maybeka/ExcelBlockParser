@@ -11,14 +11,16 @@
         "sourcePath": "workbooks/sales.xlsx",
         "sheetNames": ["Orders", "Summary"],
         "sheetTabColors": { "Orders": "#1677ff" },
-        "activeSheetName": "Orders"
+        "activeSheetName": "Orders",
+        "displaySettings": { "showOutlines": false, "showFrozenPanes": false }
       },
       {
         "id": "costs",
         "name": "costs.xlsx",
         "sourcePath": "C:\\Projects\\costs.xlsx",
         "sheetNames": ["Costs"],
-        "activeSheetName": "Costs"
+        "activeSheetName": "Costs",
+        "displaySettings": { "showOutlines": false, "showFrozenPanes": false }
       }
     ],
     "activeWorkbookId": "sales",

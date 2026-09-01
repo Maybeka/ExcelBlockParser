@@ -43,6 +43,7 @@ describe('Project v3 strict conformance', () => {
     ['missing workbook ID', value => { delete value.project.workbooks[0].id }],
     ['wrong workbook sheetNames type', value => { value.project.workbooks[0].sheetNames = 'Orders' }],
     ['invalid active sheet type', value => { value.project.workbooks[0].activeSheetName = 4 }],
+    ['incomplete workbook display settings', value => { value.project.workbooks[0].displaySettings = { showOutlines: true } }],
     ['invalid range coordinates', value => { value.project.blocks[0].range.startRow = -1 }],
     ['inverted range coordinates', value => { value.project.blocks[0].range.endRow = -1 }],
     ['missing block columns', value => { delete value.project.blocks[0].columns }],

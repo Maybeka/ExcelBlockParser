@@ -21,6 +21,10 @@ describe('project execution coordinator', () => {
     expect(result.result.data.a).toEqual({ block_1: [{ value: '/a' }] })
     expect(result.result.data.b).toEqual({ block_1: [{ value: '/b' }] })
     expect(result.previews.size).toBe(2)
+    expect(result.sourceFingerprints).toEqual({
+      a: expect.stringMatching(/^2:/),
+      b: expect.stringMatching(/^2:/),
+    })
   })
   it('reports an unavailable reader through parse diagnostics', async () => {
     const result = await executeProject(project, { a: '/a' }, async () => bridgeOk(new ArrayBuffer(1)), async () => workbook('a'))

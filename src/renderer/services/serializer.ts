@@ -1,4 +1,4 @@
-import type { ExportedProject, ParseResult, ProjectConfig, RegionParseResult } from '../types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type ExportedProject, type ParseResult, type ProjectConfig, type RegionParseResult } from '../types'
 import { isRecord, validateProjectV3Document } from './projectV3Validation'
 
 export const CURRENT_PROJECT_VERSION = 3 as const
@@ -33,7 +33,13 @@ export function serializeProject(project: ProjectConfig, parseResult: ParseResul
   return {
     version: CURRENT_PROJECT_VERSION,
     exportedAt: new Date().toISOString(),
-    project,
+    project: {
+      ...project,
+      workbooks: project.workbooks.map(workbook => ({
+        ...workbook,
+        displaySettings: { ...DEFAULT_WORKBOOK_DISPLAY_SETTINGS, ...workbook.displaySettings },
+      })),
+    },
     data: parseResult?.data || {},
     blockResults: parseResult?.blocks || [],
     ...(parseResult?.regionResults?.length ? { regionResults: parseResult.regionResults } : {}),
@@ -49,7 +55,14 @@ export function canonicalProjectJson(project: ExportedProject): string {
 export function loadProject(value: unknown): ProjectLoadResult {
   const errors = validateProjectV3Document(value)
   if (errors.length || !isRecord(value) || !isRecord(value.project)) return { errors }
-  const project = structuredClone(value.project) as ProjectConfig
+  const loadedProject = structuredClone(value.project) as ProjectConfig
+  const project: ProjectConfig = {
+    ...loadedProject,
+    workbooks: loadedProject.workbooks.map(workbook => ({
+      ...workbook,
+      displaySettings: { ...DEFAULT_WORKBOOK_DISPLAY_SETTINGS, ...workbook.displaySettings },
+    })),
+  }
   return {
     errors: [],
     project: {

@@ -151,13 +151,17 @@ function validateRegion(value: unknown, index: number): string | null {
 
 function validateWorkbook(value: unknown, index: number): string | null {
   if (!isRecord(value)) return `Invalid project workbook at index ${index}.`
-  const extra = unknownKey(value, new Set(['id', 'name', 'sourcePath', 'sheetNames', 'sheetTabColors', 'activeSheetName']))
+  const extra = unknownKey(value, new Set(['id', 'name', 'sourcePath', 'sheetNames', 'sheetTabColors', 'activeSheetName', 'displaySettings']))
   if (extra) return `Invalid project workbook at index ${index}: unknown field "${extra}".`
   if (typeof value.id !== 'string' || !value.id || typeof value.name !== 'string' || !value.name) return `Invalid project workbook at index ${index}.`
   if (value.sourcePath !== undefined && (typeof value.sourcePath !== 'string' || !value.sourcePath)) return `Invalid project workbook at index ${index}: sourcePath is invalid.`
   if (value.sheetNames !== undefined && (!Array.isArray(value.sheetNames) || value.sheetNames.some(name => typeof name !== 'string') || new Set(value.sheetNames).size !== value.sheetNames.length)) return `Invalid project workbook at index ${index}: sheetNames are invalid.`
   if (value.sheetTabColors !== undefined && (!isRecord(value.sheetTabColors) || Object.entries(value.sheetTabColors).some(([sheet, color]) => typeof sheet !== 'string' || typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)))) return `Invalid project workbook at index ${index}: sheetTabColors are invalid.`
   if (value.activeSheetName !== undefined && value.activeSheetName !== null && typeof value.activeSheetName !== 'string') return `Invalid project workbook at index ${index}: activeSheetName is invalid.`
+  if (value.displaySettings !== undefined && (!isRecord(value.displaySettings)
+    || Boolean(unknownKey(value.displaySettings, new Set(['showOutlines', 'showFrozenPanes'])))
+    || typeof value.displaySettings.showOutlines !== 'boolean'
+    || typeof value.displaySettings.showFrozenPanes !== 'boolean')) return `Invalid project workbook at index ${index}: displaySettings are invalid.`
   return null
 }
 
@@ -175,7 +179,7 @@ function invalidResult(value: unknown, index: number, kind: 'blockResults' | 're
 
 function validateBlockResult(value: unknown, index: number): string | null {
   if (!isRecord(value)) return invalidResult(value, index, 'blockResults', 'blockId', `must be an object; received ${describeJsonValue(value)}.`)
-  const extra = unknownKey(value, new Set(['blockId', 'label', 'workbookId', 'data', 'rowCount']))
+  const extra = unknownKey(value, new Set(['blockId', 'label', 'workbookId', 'data', 'rowCount', 'sourceRowIndices']))
   if (extra) return invalidResult(value, index, 'blockResults', 'blockId', `contains unsupported field "${extra}".`)
   if (typeof value.blockId !== 'string' || !value.blockId) return invalidResult(value, index, 'blockResults', 'blockId', 'field "blockId" must be a non-empty string.')
   if (typeof value.label !== 'string') return invalidResult(value, index, 'blockResults', 'blockId', 'field "label" must be a string.')
@@ -190,6 +194,14 @@ function validateBlockResult(value: unknown, index: number): string | null {
   }
   if (!Number.isInteger(value.rowCount) || Number(value.rowCount) < 0) return invalidResult(value, index, 'blockResults', 'blockId', 'field "rowCount" must be a non-negative integer.')
   if (value.rowCount !== value.data.length) return invalidResult(value, index, 'blockResults', 'blockId', `field "rowCount" is ${value.rowCount}, but data contains ${value.data.length} rows.`)
+  if (value.sourceRowIndices !== undefined) {
+    if (!Array.isArray(value.sourceRowIndices) || value.sourceRowIndices.some(row => !Number.isInteger(row) || Number(row) < 0)) {
+      return invalidResult(value, index, 'blockResults', 'blockId', 'field "sourceRowIndices" must contain non-negative integers.')
+    }
+    if (value.sourceRowIndices.length !== value.data.length) {
+      return invalidResult(value, index, 'blockResults', 'blockId', `field "sourceRowIndices" contains ${value.sourceRowIndices.length} entries, but data contains ${value.data.length} rows.`)
+    }
+  }
   return null
 }
 

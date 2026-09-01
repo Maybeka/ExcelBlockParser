@@ -1,4 +1,4 @@
-import type { ProjectConfig, ProjectWorkbook } from '../types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type ProjectConfig, type ProjectWorkbook } from '../types'
 import type { BuiltInFeatureRegistry, WorkbookLoadedEvent } from '../features/core/projectFeature'
 import { createPythonPackage } from './pythonPackage'
 
@@ -37,7 +37,7 @@ export function projectJsonFileName(projectName: string): string {
 }
 
 export function createProjectWorkbook(name: string, id = `workbook-${Date.now()}`, sourcePath?: string): ProjectWorkbook {
-  return { id, name, ...(sourcePath ? { sourcePath } : {}), sheetNames: [], activeSheetName: null }
+  return { id, name, ...(sourcePath ? { sourcePath } : {}), sheetNames: [], activeSheetName: null, displaySettings: { ...DEFAULT_WORKBOOK_DISPLAY_SETTINGS } }
 }
 
 export function createProject(name = 'Untitled project'): ProjectConfig {

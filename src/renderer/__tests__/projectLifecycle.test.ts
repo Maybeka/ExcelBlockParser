@@ -54,6 +54,22 @@ describe('project lifecycle coordinator', () => {
       message: 'Invalid project file: blockResults[0] (blockId "legacy-result", label "Legacy rows") contains unsupported field "range".',
     })
   })
+  it('accepts source row indices emitted by the current block parser', () => {
+    const configuredProject: ProjectConfig = {
+      ...project,
+      blocks: [{
+        id: 'parsed', label: 'Parsed rows', workbookId: 'a', range: null, activeSheet: null,
+        headerRows: [], collapsed: false, selectionLocked: false, columns: [], dataSnapshot: null,
+      }],
+    }
+    const valid = {
+      ...serializeProject(configuredProject, null),
+      blockResults: [{ blockId: 'parsed', label: 'Parsed rows', workbookId: 'a', data: [{ value: 'first' }], rowCount: 1, sourceRowIndices: [3] }],
+    }
+    const decoded = decodeProjectDocument(JSON.stringify(valid))
+    expect(decoded.status).toBe('ok')
+    if (decoded.status === 'ok') expect(decoded.document.parseResult?.blocks[0].sourceRowIndices).toEqual([3])
+  })
   it('reports the invalid region result path, identity, and nested field during import', () => {
     const invalid = {
       ...serializeProject({ ...project, regions: [{

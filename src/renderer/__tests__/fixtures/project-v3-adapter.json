@@ -10,7 +10,8 @@
         "name": "First.xlsx",
         "sourcePath": "First.xlsx",
         "sheetNames": ["Sheet1"],
-        "activeSheetName": "Sheet1"
+        "activeSheetName": "Sheet1",
+        "displaySettings": { "showOutlines": false, "showFrozenPanes": false }
       }
     ],
     "activeWorkbookId": "book-1",

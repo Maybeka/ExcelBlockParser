@@ -1,11 +1,11 @@
 import { useRef, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Checkbox, Input, Spin, Tooltip, message, type InputRef } from 'antd'
-import { CloseOutlined, CompressOutlined, CopyOutlined, LeftOutlined, PushpinOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Input, Popover, Spin, Tooltip, message, type InputRef } from 'antd'
+import { CloseOutlined, CompressOutlined, CopyOutlined, LeftOutlined, MinusSquareOutlined, PlusSquareOutlined, PushpinOutlined, RightOutlined, SearchOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
-import type { CellRange } from '../types'
-import { convertXlsxToWorkbookData, type SheetDisplaySettings } from '../services/xlsx-converter'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type WorkbookDisplaySettings } from '../types'
+import { convertXlsxToWorkbookData, type SheetDisplaySettings, type SheetOutlineGroup } from '../services/xlsx-converter'
 import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
@@ -20,7 +20,10 @@ interface LockedRangeInfo {
 }
 
 interface SpreadsheetPanelProps {
+  activeWorkbookId: string | null
   activeSheet: string | null
+  displaySettings: WorkbookDisplaySettings
+  onDisplaySettingsChange: (settings: WorkbookDisplaySettings) => void
   activeItemIds: string[]
   activeColumnItemId: string | null
   activeColIndex: number | null
@@ -51,7 +54,7 @@ interface SearchMatch extends WorkbookSearchMatch {
   sheetName: string
 }
 
-export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySettings, onDisplaySettingsChange, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
   const { locale, t } = useI18n()
   const initialLocaleRef = useRef(locale)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -91,8 +94,7 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false)
   const [searchWholeCell, setSearchWholeCell] = useState(false)
   const [searchAllSheets, setSearchAllSheets] = useState(false)
-  const [showOutlines, setShowOutlines] = useState(true)
-  const [showFrozenPanes, setShowFrozenPanes] = useState(true)
+  const { showOutlines, showFrozenPanes } = displaySettings ?? DEFAULT_WORKBOOK_DISPLAY_SETTINGS
   const displayModesRef = useRef({ showOutlines, showFrozenPanes })
   displayModesRef.current = { showOutlines, showFrozenPanes }
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
@@ -115,8 +117,21 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   const renameObserverRef = useRef<MutationObserver | null>(null)
   const highlightDisposablesRef = useRef<Array<{ dispose: () => void }>>([])
   const workbookCacheRef = useRef<Map<string, CachedWorkbook>>(new Map())
+  const outlineCollapsedRef = useRef<Map<string, Map<string, boolean>>>(new Map())
+  const [outlineRevision, setOutlineRevision] = useState(0)
 
-  const applyDisplayModes = (workbook: any, settings: Record<string, SheetDisplaySettings>) => {
+  const outlineStateFor = (workbookId: string, sheetName: string, group: SheetOutlineGroup): boolean => {
+    let workbookStates = outlineCollapsedRef.current.get(workbookId)
+    if (!workbookStates) {
+      workbookStates = new Map()
+      outlineCollapsedRef.current.set(workbookId, workbookStates)
+    }
+    const key = `${sheetName}:${group.id}`
+    if (!workbookStates.has(key)) workbookStates.set(key, group.initialCollapsed)
+    return workbookStates.get(key) ?? group.initialCollapsed
+  }
+
+  const applyDisplayModes = (workbook: any, settings: Record<string, SheetDisplaySettings>, workbookId: string) => {
     const displayModes = displayModesRef.current
     for (const [sheetName, sheetSettings] of Object.entries(settings)) {
       const sheet = workbook.getSheetByName(sheetName)
@@ -125,8 +140,7 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
         if (displayModes.showFrozenPanes && sheetSettings.freeze) sheet.setFreeze(sheetSettings.freeze)
         else sheet.cancelFreeze()
 
-        applyOutlineVisibility(sheet, sheetSettings.outlinedHiddenRows, displayModes.showOutlines, 'row')
-        applyOutlineVisibility(sheet, sheetSettings.outlinedHiddenColumns, displayModes.showOutlines, 'column')
+        applyOutlineGroups(sheet, sheetSettings, displayModes.showOutlines, workbookId, sheetName, outlineStateFor)
       } catch {
         // Display preferences are non-destructive; an individual sheet may not
         // be ready while Univer is constructing the workbook.
@@ -359,12 +373,11 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
 
   useEffect(() => {
     const api = univerAPIRef.current
-    if (!api) return
-    for (const cached of workbookCacheRef.current.values()) {
-      const workbook = api.getWorkbook(cached.unitId)
-      if (workbook) applyDisplayModes(workbook, cached.sheetDisplaySettings)
-    }
-  }, [showOutlines, showFrozenPanes])
+    if (!api || !activeWorkbookId || loadedWorkbookId !== activeWorkbookId) return
+    const cached = workbookCacheRef.current.get(activeWorkbookId)
+    const workbook = cached ? api.getWorkbook(cached.unitId) : null
+    if (workbook && cached) applyDisplayModes(workbook, cached.sheetDisplaySettings, activeWorkbookId)
+  }, [activeWorkbookId, loadedWorkbookId, outlineRevision, showOutlines, showFrozenPanes])
 
   const tryAttachListener = (targetWorkbook: any, sourceWorkbookId: string) => {
     try {
@@ -547,6 +560,7 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
 
         const previous = workbookCacheRef.current.get(sourceWorkbookId)
         if (previous) api.disposeUnit(previous.unitId)
+        outlineCollapsedRef.current.delete(sourceWorkbookId)
 
         const newWorkbook = api.createWorkbook(workbookData, { makeCurrent: true })
         if (!newWorkbook) throw new Error(t('workbook.createFailed'))
@@ -571,7 +585,7 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
           sheetNames: loadedSheetNames,
           sheetDisplaySettings,
         })
-        applyDisplayModes(newWorkbook, sheetDisplaySettings)
+        applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId)
         setHasFile(true)
         onFileLoaded(sourceWorkbookId, fileName, filePath, loadedSheetNames, sheetTabColors, loadedActiveSheetName)
         onLoadedWorkbookChange(sourceWorkbookId)
@@ -627,6 +641,39 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
     setError(null)
   }, [closeSignal, setSheetNames])
 
+  const activeOutlineSheetName = (() => {
+    if (!activeWorkbookId || activeWorkbookId !== loadedWorkbookId) return null
+    const cached = workbookCacheRef.current.get(activeWorkbookId)
+    return activeSheet ?? cached?.sheetNames[0] ?? null
+  })()
+
+  const activeOutlineGroups = activeWorkbookId && activeOutlineSheetName
+    ? workbookCacheRef.current.get(activeWorkbookId)?.sheetDisplaySettings[activeOutlineSheetName]?.outlineGroups ?? []
+    : []
+
+  const toggleOutlineGroup = (group: SheetOutlineGroup) => {
+    if (!activeWorkbookId || !activeOutlineSheetName) return
+    const current = outlineStateFor(activeWorkbookId, activeOutlineSheetName, group)
+    outlineCollapsedRef.current.get(activeWorkbookId)?.set(`${activeOutlineSheetName}:${group.id}`, !current)
+    setOutlineRevision(version => version + 1)
+  }
+
+  const outlineGroupsContent = activeOutlineGroups.length > 0 && activeWorkbookId && activeOutlineSheetName ? (
+    <div className="workbook-outline-groups" aria-label={t('workbook.outlineGroups')}>
+      {activeOutlineGroups.map(group => {
+        const collapsed = outlineStateFor(activeWorkbookId, activeOutlineSheetName, group)
+        const rangeLabel = group.axis === 'row'
+          ? t('workbook.outlineRows', { start: group.start + 1, end: group.end + 1 })
+          : t('workbook.outlineColumns', { start: colToA1(group.start), end: colToA1(group.end) })
+        return <Button key={group.id} className="workbook-outline-group" size="small" type="text"
+          icon={collapsed ? <PlusSquareOutlined /> : <MinusSquareOutlined />}
+          onClick={() => toggleOutlineGroup(group)}>
+          <span className="workbook-outline-level">{group.level}</span>{rangeLabel}
+        </Button>
+      })}
+    </div>
+  ) : <div className="workbook-outline-groups-empty">{t('workbook.noOutlineGroups')}</div>
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
@@ -639,10 +686,15 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
             <Button aria-label={t('workbook.search')} aria-keyshortcuts="Control+F Meta+F" type="text" size="small" icon={<SearchOutlined />} onClick={() => setSearchOpen(current => !current)} />
           </Tooltip>
           <Tooltip title={t('workbook.showOutlines')}>
-            <Button aria-label={t('workbook.showOutlines')} aria-pressed={showOutlines} type="text" size="small" className={showOutlines ? 'is-active' : ''} icon={<CompressOutlined />} onClick={() => setShowOutlines(current => !current)} />
+            <Button aria-label={t('workbook.showOutlines')} aria-pressed={showOutlines} type="text" size="small" className={showOutlines ? 'is-active' : ''} icon={<CompressOutlined />} onClick={() => onDisplaySettingsChange({ ...displaySettings, showOutlines: !showOutlines })} />
           </Tooltip>
+          <Popover content={outlineGroupsContent} trigger="click" placement="bottomRight">
+            <Tooltip title={t('workbook.outlineGroups')}>
+              <Button aria-label={t('workbook.outlineGroups')} type="text" size="small" icon={<UnorderedListOutlined />} disabled={!showOutlines || activeOutlineGroups.length === 0} />
+            </Tooltip>
+          </Popover>
           <Tooltip title={t('workbook.showFrozenPanes')}>
-            <Button aria-label={t('workbook.showFrozenPanes')} aria-pressed={showFrozenPanes} type="text" size="small" className={showFrozenPanes ? 'is-active' : ''} icon={<PushpinOutlined />} onClick={() => setShowFrozenPanes(current => !current)} />
+            <Button aria-label={t('workbook.showFrozenPanes')} aria-pressed={showFrozenPanes} type="text" size="small" className={showFrozenPanes ? 'is-active' : ''} icon={<PushpinOutlined />} onClick={() => onDisplaySettingsChange({ ...displaySettings, showFrozenPanes: !showFrozenPanes })} />
           </Tooltip>
         </div>, toolbarContainer,
       )}
@@ -742,14 +794,41 @@ function colToA1(col: number): string {
   return letter
 }
 
-function applyOutlineVisibility(sheet: any, indexes: number[], showOutlines: boolean, kind: 'row' | 'column') {
-  for (const [start, count] of contiguousRanges(indexes)) {
-    if (kind === 'row') {
-      if (showOutlines) sheet.hideRows(start, count)
-      else sheet.unhideRow(sheet.getRange(`${start + 1}:${start + count}`))
-    } else {
-      if (showOutlines) sheet.hideColumns(start, count)
-      else sheet.unhideColumn(sheet.getRange(`${colToA1(start)}:${colToA1(start + count - 1)}`))
+function applyOutlineGroups(
+  sheet: any,
+  settings: SheetDisplaySettings,
+  showOutlines: boolean,
+  workbookId: string,
+  sheetName: string,
+  stateFor: (workbookId: string, sheetName: string, group: SheetOutlineGroup) => boolean,
+) {
+  for (const axis of ['row', 'column'] as const) {
+    const groups = settings.outlineGroups.filter(group => group.axis === axis)
+    if (groups.length === 0) {
+      const legacyIndexes = axis === 'row' ? settings.outlinedHiddenRows : settings.outlinedHiddenColumns
+      for (const [start, count] of contiguousRanges(legacyIndexes)) {
+        if (showOutlines) axis === 'row' ? sheet.hideRows(start, count) : sheet.hideColumns(start, count)
+        else axis === 'row' ? sheet.showRows(start, count) : sheet.showColumns(start, count)
+      }
+      continue
+    }
+
+    const covered = new Set<number>()
+    const hidden = new Set<number>()
+    for (const group of groups) {
+      const collapsed = showOutlines && stateFor(workbookId, sheetName, group)
+      for (let index = group.start; index <= group.end; index += 1) {
+        covered.add(index)
+        if (collapsed) hidden.add(index)
+      }
+    }
+    for (const [start, count] of contiguousRanges([...covered])) {
+      if (axis === 'row') sheet.showRows(start, count)
+      else sheet.showColumns(start, count)
+    }
+    for (const [start, count] of contiguousRanges([...hidden])) {
+      if (axis === 'row') sheet.hideRows(start, count)
+      else sheet.hideColumns(start, count)
     }
   }
 }

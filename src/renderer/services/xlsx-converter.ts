@@ -27,6 +27,47 @@ export interface SheetDisplaySettings {
   freeze: { startRow: number; startColumn: number; xSplit: number; ySplit: number } | null
   outlinedHiddenRows: number[]
   outlinedHiddenColumns: number[]
+  outlineGroups: SheetOutlineGroup[]
+}
+
+export interface SheetOutlineGroup {
+  id: string
+  axis: 'row' | 'column'
+  start: number
+  end: number
+  level: number
+  initialCollapsed: boolean
+}
+
+export function deriveOutlineGroups(
+  axis: SheetOutlineGroup['axis'],
+  outlineLevels: number[],
+  hiddenIndexes: number[],
+): SheetOutlineGroup[] {
+  const hidden = new Set(hiddenIndexes)
+  const maxLevel = Math.max(0, ...outlineLevels)
+  const groups: SheetOutlineGroup[] = []
+  for (let level = 1; level <= maxLevel; level += 1) {
+    let start: number | null = null
+    for (let index = 0; index <= outlineLevels.length; index += 1) {
+      if (outlineLevels[index] >= level) {
+        if (start === null) start = index
+        continue
+      }
+      if (start === null) continue
+      const end = index - 1
+      groups.push({
+        id: `${axis}:${level}:${start}:${end}`,
+        axis,
+        start,
+        end,
+        level,
+        initialCollapsed: Array.from({ length: end - start + 1 }, (_, offset) => hidden.has(start + offset)).every(Boolean),
+      })
+      start = null
+    }
+  }
+  return groups
 }
 
 export async function convertXlsxToWorkbookData(
@@ -145,8 +186,10 @@ export async function convertXlsxToWorkbookData(
     const lastRow = Math.max(maxRow, worksheet.rowCount - 1)
     const columnData: Record<number, { w?: number; hd?: BooleanNumber }> = {}
     const outlinedHiddenColumns: number[] = []
+    const columnOutlineLevels: number[] = []
     for (let c = 0; c <= lastColumn; c++) {
       const col = worksheet.getColumn(c + 1)
+      columnOutlineLevels[c] = col?.outlineLevel ?? 0
       const column: { w?: number; hd?: BooleanNumber } = {}
       if (col?.width != null) {
         column.w = col.width * 8
@@ -162,8 +205,10 @@ export async function convertXlsxToWorkbookData(
 
     const rowHeights: Record<number, { h?: number; hd?: BooleanNumber }> = {}
     const outlinedHiddenRows: number[] = []
+    const rowOutlineLevels: number[] = []
     for (let r = 0; r <= lastRow; r++) {
       const row = worksheet.getRow(r + 1)
+      rowOutlineLevels[r] = row?.outlineLevel ?? 0
       const rowData: { h?: number; hd?: BooleanNumber } = {}
       if (row?.height != null) {
         rowData.h = row.height * 1.333
@@ -184,6 +229,10 @@ export async function convertXlsxToWorkbookData(
       freeze: xSplit || ySplit ? { startRow: ySplit, startColumn: xSplit, xSplit, ySplit } : null,
       outlinedHiddenRows,
       outlinedHiddenColumns,
+      outlineGroups: [
+        ...deriveOutlineGroups('row', rowOutlineLevels, outlinedHiddenRows),
+        ...deriveOutlineGroups('column', columnOutlineLevels, outlinedHiddenColumns),
+      ],
     }
 
     sheets[sheetId] = {
