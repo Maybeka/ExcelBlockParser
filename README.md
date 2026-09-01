@@ -26,7 +26,7 @@ npx electron out/main/index.js
 1. Create a project or open an existing project JSON file.
 2. Add `examples/test_data.xlsx` as a workbook source in **Project settings**.
 3. Select a table range and configure its extractor.
-4. Use **Run & Preview** in the extraction panel to inspect the result.
+4. Use **Preview** in the Extractions header to inspect the result.
 5. Use **Save Project** or **Save Project As** to persist the complete project.
 
 `examples/test_data_v2.xlsx` is a deliberately changed source workbook for
@@ -43,9 +43,9 @@ npm run test:packaged # optional Electron package smoke test; not a CI/release g
 npm run test:release  # release-tag/package-version consistency
 ```
 
-Version 1.3.0 is released as a Wails Windows 11 x64 ZIP package. Create future
-Windows candidates with `npm run package:wails:win`; the command rejects a
-release tag that does not exactly match `package.json`.
+Releases are published as Wails Windows 11 x64 ZIP packages. Create a Windows
+candidate with `npm run package:wails:win`; the command rejects a release tag
+that does not exactly match `package.json`.
 
 See [Project JSON Contract](docs/SESSION_SCHEMA.md),
 [Support and Limitations](docs/SUPPORT.md), and

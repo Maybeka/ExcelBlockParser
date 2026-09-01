@@ -1,6 +1,6 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** development after v1.3.0
+**Status:** active maintenance and feature refinement
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
 **Last assessed:** 2026-08-16
@@ -208,10 +208,9 @@ surface.
 
 ## 8. Current Refinement Priorities
 
-Version 1.3.0 is released, Phase A is complete, and Phase B established the
-compile-time built-in module architecture. The unified Project Python workflow
-is implemented without opening Gate C or weakening Block and Region extraction
-quality.
+Phase A is complete and Phase B established the compile-time built-in module
+architecture. The unified Project Python workflow is implemented without
+opening Gate C or weakening Block and Region extraction quality.
 
 ### Baseline maintenance
 

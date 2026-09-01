@@ -1,11 +1,9 @@
 # Release Acceptance
 
-Version 1.3.0 is the current release. Version 1.0.0 was accepted and tagged on
-2026-08-09. The gates below are the
-baseline for subsequent release candidates unless a version-specific release
-plan explicitly strengthens them. Wails is the production runtime. Electron
-checks protect the shared renderer and bridge contract during development; they
-do not produce release artifacts.
+The gates below are the baseline for release candidates unless a
+version-specific release plan explicitly strengthens them. Wails is the
+production runtime. Electron checks protect the shared renderer and bridge
+contract during development; they do not produce release artifacts.
 
 ## Current Verification Status
 
@@ -70,7 +68,8 @@ processed.
 
 ## Architecture Boundary
 
-Runtime plugins and in-app LLM integration are not part of the 1.3.0 release.
+Runtime plugins and in-app LLM integration are not part of the current release
+scope.
 Project-owned Python code-generation execution is included, while external
 Python packages, host filesystem access, and terminal tooling remain outside
 the product boundary. Built-in feature-module work is governed by

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.5 - 2026-09-01
+
+- Fixed a renderer startup failure in 1.4.4 caused by a local navigation
+  variable shadowing the browser `navigator` object.
+
 ## 1.4.4 - 2026-09-01
 
 - Moved workbook copy and search into the canvas heading. Search is a window-level

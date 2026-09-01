@@ -13,9 +13,10 @@ was distributed as a ZIP package; installer selection remains separate
 distribution-hardening work.
 Electron packaging is not a supported distribution channel.
 
-The tag workflow builds an unsigned Windows 11 x64 Wails ZIP candidate plus a
-SHA-256 sidecar. Manual acceptance on Windows 11 is required before publishing
-each release. Authenticode signing remains deferred distribution hardening.
+The tag workflow builds and publishes an unsigned Windows 11 x64 Wails ZIP
+candidate plus a SHA-256 sidecar. Manual acceptance on Windows 11 is required
+as release evidence for each tagged candidate. Authenticode signing remains
+deferred distribution hardening.
 
 ## Supported Workbook Behavior
 

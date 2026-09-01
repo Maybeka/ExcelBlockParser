@@ -61,8 +61,10 @@ separate `output/` directory for generated JSON files and screenshots.
 
 - The header shows **Excel Block Parser**, Undo, Redo, Diagnostics, and a
   project control whose menu contains New, Save, Save As, Settings, and Close.
-- A default `block_1` is visible and the canvas says to open an XLSX file.
-- Run & Preview in the extraction panel is disabled until a range is selected.
+- No Block or Region is created until a workbook is active and the user selects
+  the corresponding add action; the canvas says to open a project or configure
+  a workbook source.
+- Preview is unavailable until an extraction with a valid range exists.
 - Workspace navigation remains reachable at narrow widths.
 
 **Evidence:** screenshot of the clean launch and any layout defect.
@@ -98,7 +100,7 @@ This is the required end-to-end acceptance case.
 2. If warned that the current project will be replaced, select **Open Project**.
 3. Confirm the strict Project v3 fixture opens and the configured block is
    named **block_1** with range `Sheet1!A1:D9`.
-4. Select **Run & Preview** in the extraction panel.
+4. Select **Preview** in the Extractions header.
 5. In the preview, inspect the parsed view and verify there are eight rows.
    The first row must contain `Alice`, `25`, `88.5`, and `New York`; the last
    row must contain `Hank`, `29`, `60`, and `Dubai`.
@@ -130,7 +132,7 @@ the primary evidence for the stable contract described in
    `core-workflow.json` exists.
 2. Select **Open Project**.
 3. Open `output/core-workflow.json` and confirm replacement when asked.
-4. Select **Run & Preview** and save a second file with **Save Project As**,
+4. Select **Preview** and save a second file with **Save Project As**,
    `output/core-workflow-roundtrip.json`.
 5. Compare the two files' `version`, block label, configured range, data row
    count, and the first/last output records.
@@ -150,10 +152,10 @@ the primary evidence for the stable contract described in
 1. Open `multi_sheet.xlsx`.
 2. Use the workspace navigator to switch between its sheets. Verify the canvas
    changes with the selected sheet.
-3. In the Blocks panel, use the Add menu and select **Add Region**.
+3. In the Extractions header, select **Regions** to add a Region.
 4. Activate the new region, drag a multi-cell range in the spreadsheet, and
    confirm the region shows the selected sheet and A1 range.
-5. Add an **Empty Row** split rule with minimum gap `1`, then select **Run & Preview**.
+5. Add an **Empty Row** split rule with minimum gap `1`, then select **Preview**.
 6. On a range containing a fully blank column, add **Empty Col** with minimum
    gap `1`; run again and verify horizontal and vertical boundaries combine.
 7. Save the project, close it, reopen it, and inspect the Region's detected
@@ -261,7 +263,7 @@ data before testing the next artifact.
    to `999`.
 3. Attempt to import a text file renamed with `.json` that contains invalid
    JSON.
-4. Start an export and cancel the native save dialog.
+4. Select **Save Project As** and cancel the native save dialog.
 
 **Expected result**
 
@@ -269,7 +271,7 @@ data before testing the next artifact.
   crash or fabricated output.
 - Unsupported project versions and malformed JSON show an import error and do
   not replace the existing workspace.
-- Cancelling export leaves the workspace/recovery state available.
+- Cancelling Save Project As leaves the workspace/recovery state available.
 
 **Evidence:** capture each error message and verify the previous block remains
 visible after each failed import.
