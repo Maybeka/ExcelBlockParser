@@ -65,6 +65,10 @@ describe('project workspace', () => {
     expect(loaded.project?.project.blocks.map(item => item.workbookId)).toEqual(['sales', 'costs'])
     expect(loaded.project?.project.workbooks[0].sheetNames).toEqual(['Orders', 'Summary'])
     expect(loaded.project?.project.workbooks[0].activeSheetName).toBe('Summary')
+    expect(loaded.project?.project.workbooks.map(item => item.displaySettings)).toEqual([
+      { showOutlines: false, showFrozenPanes: false },
+      { showOutlines: false, showFrozenPanes: false },
+    ])
   })
 
   it('rejects legacy session versions explicitly', () => {

@@ -86,6 +86,18 @@ export interface ProjectWorkbook {
   sheetTabColors?: Record<string, string>
   /** The last selected sheet for this workbook. */
   activeSheetName?: string | null
+  /** Per-workbook display preferences, independent of the XLSX source state. */
+  displaySettings?: WorkbookDisplaySettings
+}
+
+export interface WorkbookDisplaySettings {
+  showOutlines: boolean
+  showFrozenPanes: boolean
+}
+
+export const DEFAULT_WORKBOOK_DISPLAY_SETTINGS: WorkbookDisplaySettings = {
+  showOutlines: false,
+  showFrozenPanes: false,
 }
 
 export interface PythonProjectFile {

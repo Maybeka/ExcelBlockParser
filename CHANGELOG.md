@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.0 - 2026-09-01
+
+- Saved per-workbook read-only display preferences for Excel outlines and frozen
+  panes. Both are disabled by default and never modify the source workbook.
+- Added an outline-group controller for rows and columns without Univer Pro,
+  including nested groups and independent expand/collapse actions.
+- Added source-change confirmation before regenerating Preview data or Project
+  Python input, so changes to an Excel source are explicit and intentional.
+- Fixed cross-workbook range focusing, extended Project v3 validation for
+  `sourceRowIndices`, and added a browser regression that opens a project JSON
+  exported by the application itself.
+- Moved JSON validation and About into the application More menu.
+
 ## 1.4.7 - 2026-09-01
 
 - Added read-only Excel display toggles for source workbook frozen panes and

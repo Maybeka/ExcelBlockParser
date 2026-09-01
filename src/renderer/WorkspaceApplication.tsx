@@ -1,9 +1,9 @@
 import { Suspense, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
 import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, MoreOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { PythonProjectDialog } from './components/PythonProjectDialog'
-import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseResult, type ProjectConfig, type ProjectWorkbook, type WorkbookDisplaySettings } from './types'
 import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
 import { gateBPrototypePanel } from './features/panel/gateBPrototypePanels'
 import type { WorkspaceFeaturePanelContext, WorkspaceReconciliationItem } from './features/panel/workspacePanel'
@@ -42,8 +42,19 @@ import {
 } from './services/workbookRuntime'
 import { decodeProjectDocument, inspectProjectWorkbookSources, projectRecoveryContent, saveProjectDocument } from './services/projectLifecycle'
 import { executeProject, type ProjectExecutionResult } from './services/projectExecution'
+import { changedWorkbookSourceIds, type WorkbookSourceFingerprints } from './services/workbookSourceFingerprint'
 import { orderDiagnostics, type DiagnosticFocusTarget } from './services/diagnostics'
 import { useI18n } from './i18n'
+
+type CompletedProjectExecution = Extract<ProjectExecutionResult, { status: 'complete' }>
+type ProjectExecutionResponse = { project: ProjectConfig; result: ParseResult } | { error: string }
+
+interface PendingSourceConfirmation {
+  execution: CompletedProjectExecution
+  changedWorkbookNames: string[]
+  showPreview: boolean
+  resolve: (response: ProjectExecutionResponse) => void
+}
 
 export function WorkspaceApplication() {
   const { locale, setLocale, t } = useI18n()
@@ -78,7 +89,8 @@ export function WorkspaceApplication() {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [successNotice, setSuccessNotice] = useState<{ id: number; text: string; duration: number } | null>(null)
   const successNoticeIdRef = useRef(0)
-  const [previewExecution, setPreviewExecution] = useState<Extract<ProjectExecutionResult, { status: 'complete' }> | null>(null)
+  const [previewExecution, setPreviewExecution] = useState<CompletedProjectExecution | null>(null)
+  const [pendingSourceConfirmation, setPendingSourceConfirmation] = useState<PendingSourceConfirmation | null>(null)
   const [runningExtraction, setRunningExtraction] = useState(false)
   const [workbookRuntime, setWorkbookRuntime] = useState<WorkbookRuntimeState>(() => createWorkbookRuntimeState())
   const workbookRuntimeRef = useRef(workbookRuntime)
@@ -140,6 +152,7 @@ export function WorkspaceApplication() {
   const [historyVersion, setHistoryVersion] = useState(0)
   const executionGenerationRef = useRef(0)
   const executionControllerRef = useRef<AbortController | null>(null)
+  const sourceFingerprintsRef = useRef<WorkbookSourceFingerprints | null>(null)
   const pendingReconcilingRangeRef = useRef<{ range: CellRange; activeSheet: string | null } | null>(null)
 
   const projectRef = useRef(project)
@@ -165,6 +178,10 @@ export function WorkspaceApplication() {
     () => projectWorkbooks.find(workbook => workbook.id === activeWorkbookId)?.activeSheetName ?? null,
     [activeWorkbookId, projectWorkbooks],
   )
+  const activeWorkbookDisplaySettings = useMemo(
+    () => projectWorkbooks.find(workbook => workbook.id === activeWorkbookId)?.displaySettings ?? DEFAULT_WORKBOOK_DISPLAY_SETTINGS,
+    [activeWorkbookId, projectWorkbooks],
+  )
   const setProjectActiveSheet = useCallback((sheetName: string | null) => {
     setProject(current => setActiveWorkbookSheet(current, sheetName))
   }, [])
@@ -176,6 +193,17 @@ export function WorkspaceApplication() {
     setHasUnsavedChanges(true)
     setHistoryVersion(version => version + 1)
   }, [workspaceSnapshot])
+
+  const handleWorkbookDisplaySettingsChange = useCallback((displaySettings: WorkbookDisplaySettings) => {
+    const workbookId = projectRef.current.activeWorkbookId
+    if (!workbookId) return
+    rememberWorkspace()
+    setProject(current => ({
+      ...current,
+      workbooks: current.workbooks.map(workbook => workbook.id === workbookId ? { ...workbook, displaySettings } : workbook),
+    }))
+    setHasUnsavedChanges(true)
+  }, [rememberWorkspace, setHasUnsavedChanges])
 
   const restoreWorkspace = useCallback((snapshot: WorkspaceSnapshot) => {
     setProject(snapshot)
@@ -204,6 +232,9 @@ export function WorkspaceApplication() {
     setProject(importedProject)
     setProjectFilePath(projectPath ?? null)
     setParseResult(decoded.document.parseResult)
+    setPreviewExecution(null)
+    setPendingSourceConfirmation(null)
+    sourceFingerprintsRef.current = null
 
     historyRef.current.reset()
     setHistoryVersion(version => version + 1)
@@ -443,7 +474,19 @@ export function WorkspaceApplication() {
     setProjectActiveSheet(sheetName)
   }, [loadedWorkbookId, spreadsheet])
 
-  const runProjectExtraction = useCallback(async (showPreview: boolean): Promise<{ project: ProjectConfig; result: ParseResult } | { error: string }> => {
+  const applyProjectExecution = useCallback((execution: CompletedProjectExecution, showPreview: boolean) => {
+    if (execution.project !== projectRef.current) {
+      rememberWorkspace()
+      setHasUnsavedChanges(true)
+    }
+    setProject(execution.project)
+    setParseResult(execution.result)
+    sourceFingerprintsRef.current = execution.sourceFingerprints
+    if (showPreview) setPreviewExecution(execution)
+    return { project: execution.project, result: execution.result }
+  }, [rememberWorkspace, setHasUnsavedChanges])
+
+  const runProjectExtraction = useCallback(async (showPreview: boolean): Promise<ProjectExecutionResponse> => {
     const clearPreview = () => {
       if (showPreview) setPreviewExecution(null)
     }
@@ -483,18 +526,18 @@ export function WorkspaceApplication() {
       return { error }
     }
 
-    if (execution.project !== projectRef.current) {
-      rememberWorkspace()
-      setHasUnsavedChanges(true)
+    const changedIds = changedWorkbookSourceIds(sourceFingerprintsRef.current, execution.sourceFingerprints)
+    if (changedIds.length > 0) {
+      const changedWorkbookNames = changedIds.map(id => projectRef.current.workbooks.find(workbook => workbook.id === id)?.name ?? id)
+      return await new Promise<ProjectExecutionResponse>(resolve => {
+        setPendingSourceConfirmation({ execution, changedWorkbookNames, showPreview, resolve })
+      })
     }
-    setProject(execution.project)
-    setParseResult(result)
-    if (showPreview) setPreviewExecution(execution)
-    return { project: execution.project, result }
+    return applyProjectExecution(execution, showPreview)
     } finally {
       setRunningExtraction(false)
     }
-  }, [rememberWorkspace])
+  }, [applyProjectExecution])
 
   const handleParse = useCallback(() => { void runProjectExtraction(true) }, [runProjectExtraction])
   const preparePythonInput = useCallback(() => runProjectExtraction(false), [runProjectExtraction])
@@ -602,6 +645,8 @@ export function WorkspaceApplication() {
     updateWorkbookRuntime(resetWorkbookRuntime)
     setParseResult(null)
     setPreviewExecution(null)
+    setPendingSourceConfirmation(null)
+    sourceFingerprintsRef.current = null
     setActiveColIndex(null)
     setReconcilingItem(null)
     setReconcilingPreviewSheet(null)
@@ -664,7 +709,8 @@ export function WorkspaceApplication() {
       return
     }
     setPendingNavigatorRangeFocus({ workbookId, sheetName, range })
-  }, [loadedWorkbookId, spreadsheet])
+    handleSelectWorkbook(workbookId, sheetName ?? undefined)
+  }, [handleSelectWorkbook, loadedWorkbookId, spreadsheet])
 
   useEffect(() => {
     if (!pendingNavigatorRangeFocus || pendingNavigatorRangeFocus.workbookId !== loadedWorkbookId) return
@@ -836,17 +882,13 @@ export function WorkspaceApplication() {
                   { key: 'save', icon: <SaveOutlined />, label: t('project.save'), extra: <span aria-hidden="true">Ctrl+S</span> },
                   { key: 'save-as', icon: <SaveOutlined />, label: t('project.saveAs'), extra: <span aria-hidden="true">Ctrl+Shift+S</span> },
                   { key: 'settings', icon: <SettingOutlined />, label: t('project.settings') },
-                  { key: 'validate-json', icon: <FileSearchOutlined />, label: t('project.validateJson') },
                   { key: 'project-python', icon: <CodeOutlined />, label: t('project.python') },
                   { type: 'divider' },
-                  { key: 'about', icon: <InfoCircleOutlined />, label: t('project.about') },
                   { key: 'close', icon: <CloseOutlined />, label: t('project.close'), danger: true, disabled: !projectFilePath && projectWorkbooks.length === 0 && !hasUnsavedChanges },
                 ],
                 onClick: ({ key }) => {
                   if (key === 'settings') setProjectSettingsOpen(true)
-                  else if (key === 'validate-json') void handleValidateProjectJson()
                   else if (key === 'project-python') setPythonProjectOpen(true)
-                  else if (key === 'about') setAboutOpen(true)
                   else if (key === 'save') void handleSaveProject(false)
                   else if (key === 'save-as') void handleSaveProject(true)
                   else requestProjectReset(key as 'new' | 'close')
@@ -856,6 +898,23 @@ export function WorkspaceApplication() {
               <Button aria-label={t('project.actions')} icon={<DownOutlined />} />
             </Dropdown>
           </Space.Compact>
+          <Dropdown
+            trigger={['click']}
+            placement="bottomRight"
+            overlayClassName="project-command-menu"
+            menu={{
+              items: [
+                { key: 'validate-json', icon: <FileSearchOutlined />, label: t('project.validateJson') },
+                { key: 'about', icon: <InfoCircleOutlined />, label: t('project.about') },
+              ],
+              onClick: ({ key }) => {
+                if (key === 'validate-json') void handleValidateProjectJson()
+                else if (key === 'about') setAboutOpen(true)
+              },
+            }}
+          >
+            <Tooltip title={t('app.moreActions')}><Button aria-label={t('app.moreActions')} icon={<MoreOutlined />} /></Tooltip>
+          </Dropdown>
           {diagnosticCount > 0 && <Tooltip title={t('common.diagnostics')}>
             <Badge count={diagnosticCount} size="small" offset={[-2, 3]}>
               <Button aria-label={t('common.diagnostics')} icon={<WarningOutlined />} onClick={() => setDiagnosticsOpen(true)} />
@@ -921,7 +980,10 @@ export function WorkspaceApplication() {
                   </div>
                 </header>
                 <SpreadsheetPanel
+                  activeWorkbookId={activeWorkbookId}
                   activeSheet={activeSheetName}
+                  displaySettings={activeWorkbookDisplaySettings}
+                  onDisplaySettingsChange={handleWorkbookDisplaySettingsChange}
                   activeItemIds={activeCanvasItemIds}
                   activeColumnItemId={activeColIndex === null ? null : activeColumnItemId}
                   activeColIndex={activeColIndex}
@@ -968,6 +1030,28 @@ export function WorkspaceApplication() {
         validationErrors={configurationDiagnostics}
         onFocus={handleFocusDiagnostic}
       />}
+      <Modal
+        title={t('dialog.sourceChanged.title')}
+        open={pendingSourceConfirmation !== null}
+        onCancel={() => {
+          const pending = pendingSourceConfirmation
+          setPendingSourceConfirmation(null)
+          pending?.resolve({ error: t('dialog.sourceChanged.cancelled') })
+        }}
+        onOk={() => {
+          const pending = pendingSourceConfirmation
+          setPendingSourceConfirmation(null)
+          if (pending) pending.resolve(applyProjectExecution(pending.execution, pending.showPreview))
+        }}
+        okText={t('dialog.sourceChanged.confirm')}
+        cancelText={t('common.cancel')}
+        maskClosable={false}
+      >
+        <p>{t('dialog.sourceChanged.body')}</p>
+        <ul>
+          {pendingSourceConfirmation?.changedWorkbookNames.map(name => <li key={name}>{name}</li>)}
+        </ul>
+      </Modal>
       <Modal
         className="preview-modal"
         title={null}

@@ -216,7 +216,16 @@
           "type": "object",
           "additionalProperties": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
         },
-        "activeSheetName": { "type": ["string", "null"] }
+        "activeSheetName": { "type": ["string", "null"] },
+        "displaySettings": {
+          "type": "object",
+          "required": ["showOutlines", "showFrozenPanes"],
+          "properties": {
+            "showOutlines": { "type": "boolean" },
+            "showFrozenPanes": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },
@@ -265,7 +274,11 @@
         "label": { "type": "string" },
         "workbookId": { "type": "string", "minLength": 1 },
         "data": { "type": "array", "items": { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } } },
-        "rowCount": { "type": "integer", "minimum": 0 }
+        "rowCount": { "type": "integer", "minimum": 0 },
+        "sourceRowIndices": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        }
       },
       "additionalProperties": false
     },

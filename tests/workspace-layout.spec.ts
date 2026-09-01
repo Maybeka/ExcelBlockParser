@@ -23,7 +23,7 @@ test.describe('M3 workspace layout', () => {
 
   test('opens About from the project actions menu', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Project actions' }).click()
+    await page.getByRole('button', { name: 'More actions' }).click()
     await page.getByText('About Excel Block Parser', { exact: true }).click()
 
     const dialog = page.getByRole('dialog', { name: 'About Excel Block Parser' })

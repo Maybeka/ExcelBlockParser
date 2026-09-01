@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs'
 import { HorizontalAlign, WrapStrategy } from '@univerjs/core'
 import { describe, expect, it } from 'vitest'
-import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
+import { convertXlsxToWorkbookData, deriveOutlineGroups } from '../services/xlsx-converter'
 
 describe('XLSX workbook conversion', () => {
   it('preserves themed fills and multiline cell text for Univer', async () => {
@@ -55,10 +55,21 @@ describe('XLSX workbook conversion', () => {
       freeze: { startRow: 1, startColumn: 2, xSplit: 2, ySplit: 1 },
       outlinedHiddenRows: [1],
       outlinedHiddenColumns: [1],
+      outlineGroups: [
+        { id: 'row:1:1:1', axis: 'row', start: 1, end: 1, level: 1, initialCollapsed: true },
+        { id: 'column:1:1:1', axis: 'column', start: 1, end: 1, level: 1, initialCollapsed: true },
+      ],
     })
     expect(data.rowData![1]).toMatchObject({ hd: 1 })
     expect(data.rowData![2]).toMatchObject({ hd: 1 })
     expect(data.columnData![1]).toMatchObject({ hd: 1 })
     expect(data.columnData![2]).toMatchObject({ hd: 1 })
+  })
+
+  it('derives independently controllable nested outline groups', () => {
+    expect(deriveOutlineGroups('row', [0, 1, 2, 2, 1, 0], [2, 3])).toEqual([
+      { id: 'row:1:1:4', axis: 'row', start: 1, end: 4, level: 1, initialCollapsed: false },
+      { id: 'row:2:2:3', axis: 'row', start: 2, end: 3, level: 2, initialCollapsed: true },
+    ])
   })
 })
