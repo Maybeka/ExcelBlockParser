@@ -21,12 +21,13 @@ runtime transitions, extraction execution, or diagnostics decisions.
 
 ## Project schema
 
-The current and only supported saved-project schema is version `3`. It persists
+The current development saved-project schema is version `3`. It persists
 project identity, multiple workbook sources, workbook-owned blocks and regions,
 editor state, the optional project Python source, and the most recent successful result. Versions `1` and `2` are
 rejected without migration. Unsupported versions and malformed definitions are rejected
-before they reach UI state. See `SESSION_SCHEMA.md` and
-`project-v3.schema.json` for the public contract.
+before they reach UI state. Before 2.0.0, v3 is an evolving development format,
+not a compatibility promise. See `SESSION_SCHEMA.md` and
+`project-v3.schema.json` for the current format.
 
 ## Parse diagnostics
 

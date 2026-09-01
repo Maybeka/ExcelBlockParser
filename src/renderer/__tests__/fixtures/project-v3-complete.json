@@ -10,6 +10,7 @@
         "name": "sales.xlsx",
         "sourcePath": "workbooks/sales.xlsx",
         "sheetNames": ["Orders", "Summary"],
+        "sheetTabColors": { "Orders": "#1677ff" },
         "activeSheetName": "Orders"
       },
       {
@@ -57,6 +58,7 @@
         "rowFilter": {
           "removeEmptyRows": true,
           "emptyCellConditions": { "fullyStruck": true },
+          "matchMode": "exclude",
           "condition": { "type": "rule", "column": "status", "operator": "eq", "value": "ignored" }
         },
         "skipEmptyColumns": true,

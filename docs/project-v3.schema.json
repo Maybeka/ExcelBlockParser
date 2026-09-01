@@ -114,17 +114,8 @@
             { "$ref": "#/$defs/rowFilterCondition" },
             { "type": "null" }
           ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "v3RowIgnoreRule": {
-      "type": "object",
-      "required": ["column", "operator"],
-      "properties": {
-        "column": { "type": "string", "minLength": 1 },
-        "operator": { "enum": ["eq", "neq", "contains", "empty", "regex"] },
-        "value": { "type": "string" }
+        },
+        "matchMode": { "enum": ["include", "exclude"] }
       },
       "additionalProperties": false
     },
@@ -174,13 +165,11 @@
           ]
         },
         "rowFilter": { "$ref": "#/$defs/rowFilter" },
-        "ignoreRules": { "type": "array", "items": { "$ref": "#/$defs/v3RowIgnoreRule" } },
         "skipEmptyColumns": { "type": "boolean" },
         "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } },
         "computedProperties": { "type": "array", "items": { "$ref": "#/$defs/computedProperty" } }
       },
-      "additionalProperties": false,
-      "not": { "properties": { "rowFilter": {}, "ignoreRules": {} }, "required": ["rowFilter", "ignoreRules"] }
+      "additionalProperties": false
     },
     "ownedBlock": {
       "allOf": [
@@ -223,6 +212,10 @@
         "name": { "type": "string", "minLength": 1 },
         "sourcePath": { "type": "string", "minLength": 1 },
         "sheetNames": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "sheetTabColors": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+        },
         "activeSheetName": { "type": ["string", "null"] }
       },
       "additionalProperties": false

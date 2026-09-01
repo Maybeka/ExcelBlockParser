@@ -5,14 +5,13 @@ type RecordValue = Record<string, unknown>
 
 const blockKeys = new Set([
   'id', 'label', 'workbookId', 'range', 'activeSheet', 'headerRows', 'collapsed',
-  'selectionLocked', 'columns', 'dataSnapshot', 'headerSnapshot', 'rowFilter', 'ignoreRules',
+  'selectionLocked', 'columns', 'dataSnapshot', 'headerSnapshot', 'rowFilter',
   'skipEmptyColumns', 'tags', 'computedProperties',
 ])
 const columnKeys = new Set(['colIndex', 'colLetter', 'suggestedKey', 'key', 'type', 'skip', 'valueMap', 'valueMapFallbackType'])
 const columnTypes = new Set(['auto', 'string', 'integer', 'float', 'boolean', 'date', 'valueMapping'])
 const fallbackTypes = new Set(['auto', 'string', 'integer', 'float', 'boolean', 'date'])
 const rowFilterOperators = new Set(['eq', 'neq', 'in', 'notIn', 'contains', 'notContains', 'empty', 'notEmpty', 'regex', 'notRegex'])
-const v3RuleOperators = new Set(['eq', 'neq', 'contains', 'empty', 'regex'])
 const splitTypes = new Set(['keyword', 'emptyRow', 'emptyColumn'])
 
 export function isRecord(value: unknown): value is RecordValue {
@@ -90,14 +89,6 @@ function validateRowFilter(value: unknown): boolean {
   return value.condition === null || validateRowFilterCondition(value.condition)
 }
 
-function validateV3Rules(value: unknown): boolean {
-  return Array.isArray(value) && value.every(rule => isRecord(rule)
-    && !unknownKey(rule, new Set(['column', 'operator', 'value']))
-    && typeof rule.column === 'string' && rule.column.length > 0
-    && v3RuleOperators.has(String(rule.operator))
-    && (rule.value === undefined || typeof rule.value === 'string'))
-}
-
 export function validateProjectBlock(value: unknown, index: number, nested = false): string | null {
   if (!isRecord(value)) return `Invalid block at index ${index}: expected an object.`
   const extra = unknownKey(value, blockKeys)
@@ -118,8 +109,6 @@ export function validateProjectBlock(value: unknown, index: number, nested = fal
     if (!flat && !matrix) return `Invalid block "${value.label}": headerSnapshot is invalid.`
   }
   if (value.rowFilter !== undefined && !validateRowFilter(value.rowFilter)) return `Invalid block "${value.label}": rowFilter is invalid.`
-  if (value.ignoreRules !== undefined && !validateV3Rules(value.ignoreRules)) return `Invalid block "${value.label}": ignoreRules are invalid.`
-  if (value.rowFilter !== undefined && value.ignoreRules !== undefined) return `Invalid block "${value.label}": rowFilter conflicts with ignoreRules.`
   if (value.skipEmptyColumns !== undefined && typeof value.skipEmptyColumns !== 'boolean') return `Invalid block "${value.label}": skipEmptyColumns is invalid.`
   if (value.tags !== undefined && (!Array.isArray(value.tags) || !value.tags.every(validateTag))) return `Invalid block "${value.label}": tags are invalid.`
   if (value.computedProperties !== undefined && (!Array.isArray(value.computedProperties) || value.computedProperties.some(item => !isRecord(item)
