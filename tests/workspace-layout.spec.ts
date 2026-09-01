@@ -21,6 +21,17 @@ test.describe('M3 workspace layout', () => {
     await expect(page.getByRole('button', { name: 'Add Region', exact: true })).toBeDisabled()
   })
 
+  test('opens About from the project actions menu', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Project actions' }).click()
+    await page.getByText('About Excel Block Parser', { exact: true }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'About Excel Block Parser' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText('v1.4.6')).toBeVisible()
+    await expect(dialog.getByText('Current development v3')).toBeVisible()
+  })
+
   test('uses a drawer navigator at compact widths', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 })
     await page.goto('/')

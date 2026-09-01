@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.6 - 2026-09-01
+
+- Added an About dialog under Project actions with the build version, project
+  format, and desktop runtime roles.
+- Improved project-import errors with Block paths, labels, field-level reasons,
+  and readable multi-line details.
+- Added the branded transparent application icon to the renderer assets.
+
 ## 1.4.5 - 2026-09-01
 
 - Fixed a renderer startup failure in 1.4.4 caused by a local navigation

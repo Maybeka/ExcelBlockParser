@@ -1,6 +1,6 @@
 import { Suspense, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
 import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { PythonProjectDialog } from './components/PythonProjectDialog'
 import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
@@ -47,6 +47,7 @@ import { useI18n } from './i18n'
 
 export function WorkspaceApplication() {
   const { locale, setLocale, t } = useI18n()
+  const appVersion = import.meta.env.APP_VERSION ?? 'development'
   const e2eMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')
   const automatedSession = typeof window !== 'undefined' && Boolean(window.navigator?.webdriver)
   const { univerAPI, sheetNames } = useUniver()
@@ -73,6 +74,7 @@ export function WorkspaceApplication() {
   const [reconcilingPreviewSheet, setReconcilingPreviewSheet] = useState<string | null>(null)
   const [reconcilingPreviewRange, setReconcilingPreviewRange] = useState<CellRange | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const [successNotice, setSuccessNotice] = useState<{ id: number; text: string; duration: number } | null>(null)
   const successNoticeIdRef = useRef(0)
   const [previewExecution, setPreviewExecution] = useState<Extract<ProjectExecutionResult, { status: 'complete' }> | null>(null)
@@ -815,11 +817,13 @@ export function WorkspaceApplication() {
                   { key: 'settings', icon: <SettingOutlined />, label: t('project.settings') },
                   { key: 'project-python', icon: <CodeOutlined />, label: t('project.python') },
                   { type: 'divider' },
+                  { key: 'about', icon: <InfoCircleOutlined />, label: t('project.about') },
                   { key: 'close', icon: <CloseOutlined />, label: t('project.close'), danger: true, disabled: !projectFilePath && projectWorkbooks.length === 0 && !hasUnsavedChanges },
                 ],
                 onClick: ({ key }) => {
                   if (key === 'settings') setProjectSettingsOpen(true)
                   else if (key === 'project-python') setPythonProjectOpen(true)
+                  else if (key === 'about') setAboutOpen(true)
                   else if (key === 'save') void handleSaveProject(false)
                   else if (key === 'save-as') void handleSaveProject(true)
                   else requestProjectReset(key as 'new' | 'close')
@@ -846,13 +850,25 @@ export function WorkspaceApplication() {
       {successNotice && <div key={successNotice.id} className="project-save-notice" role="status"><CheckCircleOutlined />{successNotice.text}</div>}
       {importError && (
         <Alert
-          message={importError}
+          message={t('project.importFailed')}
+          description={<div style={{ whiteSpace: 'pre-wrap' }}>{importError}</div>}
           type="error"
           closable
           onClose={() => setImportError(null)}
           style={{ borderRadius: 0, borderLeft: 'none', borderRight: 'none' }}
         />
       )}
+      <Modal className="about-dialog" title={t('project.about')} open={aboutOpen} footer={null} onCancel={() => setAboutOpen(false)}>
+        <div className="about-dialog-brand">
+          <img className="about-dialog-icon" src="./app-icon-transparent.png" alt="" />
+          <div><strong>{t('app.name')}</strong><span>v{appVersion}</span></div>
+        </div>
+        <dl className="about-dialog-details">
+          <div><dt>{t('about.format')}</dt><dd>{t('about.formatValue')}</dd></div>
+          <div><dt>{t('about.productionRuntime')}</dt><dd>{t('about.productionRuntimeValue')}</dd></div>
+          <div><dt>{t('about.developmentRuntime')}</dt><dd>{t('about.developmentRuntimeValue')}</dd></div>
+        </dl>
+      </Modal>
       <Layout.Content className="workspace-layout">
         {!sidebarHidden && (
           <>
