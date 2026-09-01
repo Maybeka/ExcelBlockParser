@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.0 - 2026-09-01
+
+- Bounded the in-memory Univer cache to the active workbook and one recently
+  used workbook. Opening additional project workbooks now releases the least
+  recently used canvas instance while keeping the workbook configured and
+  transparently reloadable when selected again.
+- Loaded the Project Python workspace only when opened, moving its editor and
+  syntax tooling out of the initial renderer bundle.
+- Limited workbook search to each sheet's populated data range rather than the
+  full spreadsheet grid, avoiding large empty-array allocations on normal
+  Excel files.
+- Added cache-eviction tests and retained the 50,000-cell benchmark. The local
+  release benchmark completed in 133 ms on this development machine.
+
 ## 1.6.0 - 2026-09-01
 
 - Saved per-workbook read-only display preferences for Excel outlines and frozen

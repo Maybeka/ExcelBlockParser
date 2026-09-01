@@ -9,6 +9,7 @@ import { convertXlsxToWorkbookData, type SheetDisplaySettings, type SheetOutline
 import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
+import { workbookCacheEvictions } from '../services/workbookCachePolicy'
 import type { WorkbookLoadRequest } from '../services/workbookRuntime'
 import { useI18n } from '../i18n'
 
@@ -48,6 +49,7 @@ interface CachedWorkbook {
   path: string
   sheetNames: string[]
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
+  lastUsed: number
 }
 
 interface SearchMatch extends WorkbookSearchMatch {
@@ -117,6 +119,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
   const renameObserverRef = useRef<MutationObserver | null>(null)
   const highlightDisposablesRef = useRef<Array<{ dispose: () => void }>>([])
   const workbookCacheRef = useRef<Map<string, CachedWorkbook>>(new Map())
+  const cacheAccessCounterRef = useRef(0)
   const outlineCollapsedRef = useRef<Map<string, Map<string, boolean>>>(new Map())
   const [outlineRevision, setOutlineRevision] = useState(0)
 
@@ -129,6 +132,26 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     const key = `${sheetName}:${group.id}`
     if (!workbookStates.has(key)) workbookStates.set(key, group.initialCollapsed)
     return workbookStates.get(key) ?? group.initialCollapsed
+  }
+
+  const touchCachedWorkbook = (cached: CachedWorkbook) => {
+    cached.lastUsed = ++cacheAccessCounterRef.current
+  }
+
+  const releaseExcessCachedWorkbooks = (activeId: string) => {
+    const api = univerAPIRef.current
+    if (!api) return
+    const evictions = workbookCacheEvictions(
+      [...workbookCacheRef.current].map(([id, cached]) => ({ id, lastUsed: cached.lastUsed })),
+      activeId,
+    )
+    for (const workbookId of evictions) {
+      const cached = workbookCacheRef.current.get(workbookId)
+      if (!cached) continue
+      api.disposeUnit(cached.unitId)
+      workbookCacheRef.current.delete(workbookId)
+      outlineCollapsedRef.current.delete(workbookId)
+    }
   }
 
   const applyDisplayModes = (workbook: any, settings: Record<string, SheetDisplaySettings>, workbookId: string) => {
@@ -192,9 +215,11 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     }
     const sheets = (searchAllSheets ? workbook.getSheets() : [workbook.getActiveSheet()]).flatMap(sheet => {
       if (!sheet) return []
-      const rowCount = sheet.getMaxRows()
-      const columnCount = sheet.getMaxColumns()
-      const values = sheet.getRange(0, 0, rowCount, columnCount).getDisplayValues?.() ?? sheet.getRange(0, 0, rowCount, columnCount).getValues()
+      // getMaxRows/getMaxColumns describe the full grid, not populated cells.
+      // Reading that grid can allocate millions of empty values for a small
+      // workbook, so search only the sheet's actual data range.
+      const dataRange = sheet.getDataRange()
+      const values = dataRange.getDisplayValues?.() ?? dataRange.getValues()
       return [{ name: sheet.getSheetName(), values }]
     })
     const matches = findMatchesInSheets(sheets, query, { caseSensitive: searchCaseSensitive, wholeCell: searchWholeCell })
@@ -528,6 +553,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
           const cachedWorkbook = api.getWorkbook(cached.unitId)
           if (cachedWorkbook) {
             api.setCurrent(cached.unitId)
+            touchCachedWorkbook(cached)
             if (requestedSheetName) cachedWorkbook.getSheetByName(requestedSheetName)?.activate()
             setHasFile(true)
             setError(null)
@@ -584,7 +610,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
           path: filePath,
           sheetNames: loadedSheetNames,
           sheetDisplaySettings,
+          lastUsed: ++cacheAccessCounterRef.current,
         })
+        releaseExcessCachedWorkbooks(sourceWorkbookId)
         applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId)
         setHasFile(true)
         onFileLoaded(sourceWorkbookId, fileName, filePath, loadedSheetNames, sheetTabColors, loadedActiveSheetName)
@@ -620,6 +648,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
       if (retained.has(workbookId)) continue
       api.disposeUnit(cached.unitId)
       workbookCacheRef.current.delete(workbookId)
+      outlineCollapsedRef.current.delete(workbookId)
     }
   }, [openWorkbookIds])
 
@@ -629,6 +658,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     if (!api) return
     for (const cached of workbookCacheRef.current.values()) api.disposeUnit(cached.unitId)
     workbookCacheRef.current.clear()
+    outlineCollapsedRef.current.clear()
     setHasFile(false)
     setSelection(null)
     setSearchOpen(false)
