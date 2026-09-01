@@ -48,7 +48,7 @@ import { useI18n } from './i18n'
 export function WorkspaceApplication() {
   const { locale, setLocale, t } = useI18n()
   const e2eMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')
-  const automatedSession = typeof navigator !== 'undefined' && Boolean(navigator.webdriver)
+  const automatedSession = typeof window !== 'undefined' && Boolean(window.navigator?.webdriver)
   const { univerAPI, sheetNames } = useUniver()
   const spreadsheet = useMemo(() => createUniverSpreadsheetCapability(univerAPI, sheetNames), [sheetNames, univerAPI])
 

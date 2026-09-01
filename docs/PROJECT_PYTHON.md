@@ -20,8 +20,8 @@ underlined while the navigation modifier is held.
 
 The local semantic model distinguishes class construction from function calls
 and resolves instance methods from constructor assignments, type annotations,
-`self` attributes, return annotations, and class inheritance. This support is
-also resolves direct imports between project files, imported module members, and
+`self` attributes, return annotations, and class inheritance. It also resolves
+direct imports between project files, imported module members, and
 methods on instances constructed from imported classes. It does not resolve
 installed packages, wildcard or dynamic imports, dynamically assigned members,
 decorators that replace types, or other runtime-only Python behavior. Full
@@ -52,8 +52,6 @@ def process(context):
 def build(data):
     return {"records": data}
 ```
-
-The entry file must define this callable:
 
 The script must define this callable:
 
