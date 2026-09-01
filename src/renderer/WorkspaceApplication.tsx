@@ -1,6 +1,6 @@
 import { Suspense, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
 import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
-import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { BorderOutlined, CheckCircleOutlined, CodeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
 import { PythonProjectDialog } from './components/PythonProjectDialog'
 import type { CellRange, ParseResult, ProjectConfig, ProjectWorkbook } from './types'
@@ -74,6 +74,7 @@ export function WorkspaceApplication() {
   const [reconcilingPreviewSheet, setReconcilingPreviewSheet] = useState<string | null>(null)
   const [reconcilingPreviewRange, setReconcilingPreviewRange] = useState<CellRange | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [jsonValidationReport, setJsonValidationReport] = useState<{ fileName: string; errors: string[] } | null>(null)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [successNotice, setSuccessNotice] = useState<{ id: number; text: string; duration: number } | null>(null)
   const successNoticeIdRef = useRef(0)
@@ -565,6 +566,26 @@ export function WorkspaceApplication() {
     }
   }, [applyImportContent, hasUnsavedChanges, projectFilePath])
 
+  const handleValidateProjectJson = useCallback(async () => {
+    try {
+      const result = await getBridge().openJson()
+      if (result.status === 'cancelled') return
+      if (result.status === 'error') {
+        recordBridgeFailure('validate-project-json', result)
+        message.error(result.error.message)
+        return
+      }
+      const decoded = decodeProjectDocument(result.value.content, result.value.filePath)
+      const fileName = result.value.filePath.split(/[/\\]/).pop() ?? 'project.json'
+      setJsonValidationReport({
+        fileName,
+        errors: decoded.status === 'error' ? decoded.message.split('\n') : [],
+      })
+    } catch (error) {
+      setJsonValidationReport({ fileName: 'project.json', errors: [String(error)] })
+    }
+  }, [])
+
   const handleConfirmImport = useCallback(() => {
     if (pendingImportContent) {
       applyImportContent(pendingImportContent, pendingImportProjectName, pendingImportProjectPath)
@@ -815,6 +836,7 @@ export function WorkspaceApplication() {
                   { key: 'save', icon: <SaveOutlined />, label: t('project.save'), extra: <span aria-hidden="true">Ctrl+S</span> },
                   { key: 'save-as', icon: <SaveOutlined />, label: t('project.saveAs'), extra: <span aria-hidden="true">Ctrl+Shift+S</span> },
                   { key: 'settings', icon: <SettingOutlined />, label: t('project.settings') },
+                  { key: 'validate-json', icon: <FileSearchOutlined />, label: t('project.validateJson') },
                   { key: 'project-python', icon: <CodeOutlined />, label: t('project.python') },
                   { type: 'divider' },
                   { key: 'about', icon: <InfoCircleOutlined />, label: t('project.about') },
@@ -822,6 +844,7 @@ export function WorkspaceApplication() {
                 ],
                 onClick: ({ key }) => {
                   if (key === 'settings') setProjectSettingsOpen(true)
+                  else if (key === 'validate-json') void handleValidateProjectJson()
                   else if (key === 'project-python') setPythonProjectOpen(true)
                   else if (key === 'about') setAboutOpen(true)
                   else if (key === 'save') void handleSaveProject(false)
@@ -1097,6 +1120,19 @@ export function WorkspaceApplication() {
           {(validationErrors || []).slice(0, 10).map((e, i) => <div key={i} style={{ marginBottom: 4 }}>{e}</div>)}
           {(validationErrors || []).length > 10 && <div style={{ color: '#999' }}>{t('dialog.moreValidation', { count: (validationErrors || []).length - 10 })}</div>}
         </div>
+      </Modal>
+      <Modal
+        title={t('project.validateJson')}
+        open={jsonValidationReport !== null}
+        footer={<Button onClick={() => setJsonValidationReport(null)}>{t('common.close')}</Button>}
+        onCancel={() => setJsonValidationReport(null)}
+      >
+        {jsonValidationReport && <div className="json-validation-report">
+          <strong>{jsonValidationReport.fileName}</strong>
+          {jsonValidationReport.errors.length === 0
+            ? <Alert type="success" showIcon message={t('project.jsonValid')} />
+            : <Alert type="error" showIcon message={t('project.jsonInvalid')} description={<div className="json-validation-errors">{jsonValidationReport.errors.map((error, index) => <div key={`${index}:${error}`}>{error}</div>)}</div>} />}
+        </div>}
       </Modal>
       <PythonProjectDialog
         open={pythonProjectOpen}

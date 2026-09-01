@@ -3,6 +3,7 @@ import type { ParseResult, ProjectConfig } from '../types'
 import type { WorkbookReader } from './workbook'
 import { loadProject, serializeProject } from './serializer'
 import { projectJsonFileName, projectNameFromJsonPath } from './project'
+import { parseJsonDocument } from './jsonValidation'
 
 export interface ProjectDocument {
   project: ProjectConfig
@@ -20,12 +21,9 @@ export function decodeProjectDocument(content: string, filePath: string | null =
   if (new TextEncoder().encode(content).byteLength > MAX_PROJECT_JSON_BYTES) {
     return { status: 'error', message: 'Invalid project file: exceeds the 25 MB limit.' }
   }
-  let value: unknown
-  try {
-    value = JSON.parse(content)
-  } catch {
-    return { status: 'error', message: 'Invalid config file: failed to parse JSON' }
-  }
+  const parsed = parseJsonDocument(content)
+  if (parsed.error) return { status: 'error', message: `Invalid config file: ${parsed.error}` }
+  const value = parsed.value
   const loaded = loadProject(value)
   if (!loaded.project) return { status: 'error', message: loaded.errors.join('\n') }
   const fileName = filePath ? projectNameFromJsonPath(filePath) : null

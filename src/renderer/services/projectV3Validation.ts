@@ -1,5 +1,6 @@
 import { MAX_ROW_FILTER_DEPTH } from './rowFilter'
 import { MAX_PYTHON_FILE_BYTES, MAX_PYTHON_PROJECT_BYTES, normalizePythonPath } from './pythonPackage'
+import { describeJsonValue, findInvalidJsonValue, isJsonRecord, jsonFieldPath } from './jsonValidation'
 
 type RecordValue = Record<string, unknown>
 
@@ -15,7 +16,7 @@ const rowFilterOperators = new Set(['eq', 'neq', 'in', 'notIn', 'contains', 'not
 const splitTypes = new Set(['keyword', 'emptyRow', 'emptyColumn'])
 
 export function isRecord(value: unknown): value is RecordValue {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return isJsonRecord(value)
 }
 
 function unknownKey(value: RecordValue, allowed: Set<string>): string | null {
@@ -23,10 +24,7 @@ function unknownKey(value: RecordValue, allowed: Set<string>): string | null {
 }
 
 function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
-  if (typeof value === 'number') return Number.isFinite(value)
-  if (Array.isArray(value)) return value.every(isJsonValue)
-  return isRecord(value) && Object.values(value).every(isJsonValue)
+  return findInvalidJsonValue(value, '$') === null
 }
 
 function validateRange(value: unknown): boolean {
@@ -163,23 +161,63 @@ function validateWorkbook(value: unknown, index: number): string | null {
   return null
 }
 
+function resultPath(value: unknown, index: number, kind: 'blockResults' | 'regionResults', identity: 'blockId' | 'regionId'): string {
+  const path = `${kind}[${index}]`
+  if (!isRecord(value)) return path
+  const id = typeof value[identity] === 'string' && value[identity] ? `${identity} "${value[identity]}"` : null
+  const label = typeof value.label === 'string' && value.label ? `label "${value.label}"` : null
+  return id || label ? `${path} (${[id, label].filter(Boolean).join(', ')})` : path
+}
+
+function invalidResult(value: unknown, index: number, kind: 'blockResults' | 'regionResults', identity: 'blockId' | 'regionId', message: string): string {
+  return `Invalid project file: ${resultPath(value, index, kind, identity)} ${message}`
+}
+
 function validateBlockResult(value: unknown, index: number): string | null {
-  if (!isRecord(value) || unknownKey(value, new Set(['blockId', 'label', 'workbookId', 'data', 'rowCount']))) return `Invalid block result at index ${index}.`
-  if (typeof value.blockId !== 'string' || !value.blockId || typeof value.label !== 'string' || typeof value.workbookId !== 'string' || !value.workbookId) return `Invalid block result at index ${index}: identity is invalid.`
-  if (!Array.isArray(value.data) || value.data.some(row => !isRecord(row) || !isJsonValue(row))) return `Invalid block result at index ${index}: data is invalid.`
-  if (!Number.isInteger(value.rowCount) || Number(value.rowCount) < 0 || value.rowCount !== value.data.length) return `Invalid block result at index ${index}: rowCount is invalid.`
+  if (!isRecord(value)) return invalidResult(value, index, 'blockResults', 'blockId', `must be an object; received ${describeJsonValue(value)}.`)
+  const extra = unknownKey(value, new Set(['blockId', 'label', 'workbookId', 'data', 'rowCount']))
+  if (extra) return invalidResult(value, index, 'blockResults', 'blockId', `contains unsupported field "${extra}".`)
+  if (typeof value.blockId !== 'string' || !value.blockId) return invalidResult(value, index, 'blockResults', 'blockId', 'field "blockId" must be a non-empty string.')
+  if (typeof value.label !== 'string') return invalidResult(value, index, 'blockResults', 'blockId', 'field "label" must be a string.')
+  if (typeof value.workbookId !== 'string' || !value.workbookId) return invalidResult(value, index, 'blockResults', 'blockId', 'field "workbookId" must be a non-empty string.')
+  if (!Array.isArray(value.data)) return invalidResult(value, index, 'blockResults', 'blockId', `field "data" must be an array of JSON object rows; received ${describeJsonValue(value.data)}.`)
+  for (let rowIndex = 0; rowIndex < value.data.length; rowIndex++) {
+    const row = value.data[rowIndex]
+    const rowPath = `blockResults[${index}].data[${rowIndex}]`
+    if (!isRecord(row)) return invalidResult(value, index, 'blockResults', 'blockId', `${rowPath} must be an object; received ${describeJsonValue(row)}.`)
+    const error = findInvalidJsonValue(row, rowPath)
+    if (error) return invalidResult(value, index, 'blockResults', 'blockId', error)
+  }
+  if (!Number.isInteger(value.rowCount) || Number(value.rowCount) < 0) return invalidResult(value, index, 'blockResults', 'blockId', 'field "rowCount" must be a non-negative integer.')
+  if (value.rowCount !== value.data.length) return invalidResult(value, index, 'blockResults', 'blockId', `field "rowCount" is ${value.rowCount}, but data contains ${value.data.length} rows.`)
   return null
 }
 
 function validateRegionResult(value: unknown, index: number): string | null {
-  if (!isRecord(value) || unknownKey(value, new Set(['regionId', 'label', 'workbookId', 'blocks']))) return `Invalid region result at index ${index}.`
-  if (typeof value.regionId !== 'string' || !value.regionId || typeof value.label !== 'string' || typeof value.workbookId !== 'string' || !value.workbookId || !Array.isArray(value.blocks)) return `Invalid region result at index ${index}: identity is invalid.`
-  if (value.blocks.some(block => !isRecord(block)
-    || Boolean(unknownKey(block, new Set(['blockLabel', 'rows', 'range'])))
-    || typeof block.blockLabel !== 'string'
-    || (block.range !== undefined && !validateRange(block.range))
-    || !Array.isArray(block.rows)
-    || block.rows.some(row => !Array.isArray(row) || row.some(cell => typeof cell !== 'string')))) return `Invalid region result at index ${index}: blocks are invalid.`
+  if (!isRecord(value)) return invalidResult(value, index, 'regionResults', 'regionId', `must be an object; received ${describeJsonValue(value)}.`)
+  const extra = unknownKey(value, new Set(['regionId', 'label', 'workbookId', 'blocks']))
+  if (extra) return invalidResult(value, index, 'regionResults', 'regionId', `contains unsupported field "${extra}".`)
+  if (typeof value.regionId !== 'string' || !value.regionId) return invalidResult(value, index, 'regionResults', 'regionId', 'field "regionId" must be a non-empty string.')
+  if (typeof value.label !== 'string') return invalidResult(value, index, 'regionResults', 'regionId', 'field "label" must be a string.')
+  if (typeof value.workbookId !== 'string' || !value.workbookId) return invalidResult(value, index, 'regionResults', 'regionId', 'field "workbookId" must be a non-empty string.')
+  if (!Array.isArray(value.blocks)) return invalidResult(value, index, 'regionResults', 'regionId', `field "blocks" must be an array; received ${describeJsonValue(value.blocks)}.`)
+  for (let blockIndex = 0; blockIndex < value.blocks.length; blockIndex++) {
+    const block = value.blocks[blockIndex]
+    const blockPath = `regionResults[${index}].blocks[${blockIndex}]`
+    if (!isRecord(block)) return invalidResult(value, index, 'regionResults', 'regionId', `${blockPath} must be an object; received ${describeJsonValue(block)}.`)
+    const blockExtra = unknownKey(block, new Set(['blockLabel', 'rows', 'range']))
+    if (blockExtra) return invalidResult(value, index, 'regionResults', 'regionId', `${blockPath} contains unsupported field "${blockExtra}".`)
+    if (typeof block.blockLabel !== 'string') return invalidResult(value, index, 'regionResults', 'regionId', `${jsonFieldPath(blockPath, 'blockLabel')} must be a string.`)
+    if (block.range !== undefined && !validateRange(block.range)) return invalidResult(value, index, 'regionResults', 'regionId', `${jsonFieldPath(blockPath, 'range')} must be a valid cell range.`)
+    if (!Array.isArray(block.rows)) return invalidResult(value, index, 'regionResults', 'regionId', `${jsonFieldPath(blockPath, 'rows')} must be an array.`)
+    for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
+      const row = block.rows[rowIndex]
+      if (!Array.isArray(row)) return invalidResult(value, index, 'regionResults', 'regionId', `${blockPath}.rows[${rowIndex}] must be an array.`)
+      for (let cellIndex = 0; cellIndex < row.length; cellIndex++) {
+        if (typeof row[cellIndex] !== 'string') return invalidResult(value, index, 'regionResults', 'regionId', `${blockPath}.rows[${rowIndex}][${cellIndex}] must be a string; received ${describeJsonValue(row[cellIndex])}.`)
+      }
+    }
+  }
   return null
 }
 

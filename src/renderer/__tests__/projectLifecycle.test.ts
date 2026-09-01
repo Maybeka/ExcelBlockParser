@@ -16,7 +16,7 @@ const reader: WorkbookReader = { sheetNames: () => ['Sheet1'], getActiveSheet: (
 
 describe('project lifecycle coordinator', () => {
   it('rejects malformed JSON without producing a document', () => {
-    expect(decodeProjectDocument('{')).toEqual({ status: 'error', message: 'Invalid config file: failed to parse JSON' })
+    expect(decodeProjectDocument('{')).toEqual({ status: 'error', message: 'Invalid config file: Invalid JSON syntax at line 1, column 2.' })
   })
   it('rejects oversized project JSON before parsing', () => {
     const oversized = `{"padding":"${'x'.repeat(MAX_PROJECT_JSON_BYTES)}"}`
@@ -41,6 +41,34 @@ describe('project lifecycle coordinator', () => {
     expect(decoded).toEqual({
       status: 'error',
       message: 'Invalid project file: project.blocks[0] (label "Broken block") contains unsupported field "retiredSetting".',
+    })
+  })
+  it('reports the invalid block result path, identity, and unsupported field during import', () => {
+    const invalid = {
+      ...serializeProject(project, null),
+      blockResults: [{ blockId: 'legacy-result', label: 'Legacy rows', workbookId: 'a', data: [], rowCount: 0, range: 'A1:B2' }],
+    }
+    const decoded = decodeProjectDocument(JSON.stringify(invalid))
+    expect(decoded).toEqual({
+      status: 'error',
+      message: 'Invalid project file: blockResults[0] (blockId "legacy-result", label "Legacy rows") contains unsupported field "range".',
+    })
+  })
+  it('reports the invalid region result path, identity, and nested field during import', () => {
+    const invalid = {
+      ...serializeProject({ ...project, regions: [{
+        id: 'region-1', label: 'Region one', workbookId: 'a', range: null, activeSheet: null,
+        splitRules: [], blocks: [], collapsed: false, selectionLocked: false,
+      }] }, null),
+      regionResults: [{
+        regionId: 'region-1', label: 'Region one', workbookId: 'a',
+        blocks: [{ blockLabel: 'segment', rows: [], retiredRange: 'A1:B2' }],
+      }],
+    }
+    const decoded = decodeProjectDocument(JSON.stringify(invalid))
+    expect(decoded).toEqual({
+      status: 'error',
+      message: 'Invalid project file: regionResults[0] (regionId "region-1", label "Region one") regionResults[0].blocks[0] contains unsupported field "retiredRange".',
     })
   })
   it('resolves partial workbook availability without changing the project', async () => {

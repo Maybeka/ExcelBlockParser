@@ -19,6 +19,9 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'project.save': 'Save Project',
     'project.saveAs': 'Save Project As...',
     'project.settings': 'Project settings',
+    'project.validateJson': 'Validate Project JSON...',
+    'project.jsonValid': 'Valid Project v3 JSON',
+    'project.jsonInvalid': 'Project JSON is invalid',
     'project.python': 'Project Python',
     'project.close': 'Close Project',
     'project.actions': 'Project actions',
@@ -123,7 +126,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'app.showNavigation': 'Show workspace navigation', 'app.hideNavigation': 'Hide workspace navigation', 'app.showInspector': 'Show Extractions', 'app.hideInspector': 'Hide Extractions', 'app.projectWorkbooks': 'Project workbooks', 'app.windowControls': 'Window controls', 'app.resizeNavigation': 'Resize workspace navigation', 'app.workbookCanvas': 'Workbook canvas', 'app.refreshWorkbook': 'Refresh current workbook',
     'project.unavailableWorkbooks': '{count} workbook source{suffix} could not be opened. Reassign or remove them.', 'project.addSourcesFirst': 'Add workbook sources in Project settings before opening them.', 'project.notWorkbookSource': '"{name}" is not a workbook source in this project. Add it in Project settings.', 'project.alreadyConfigured': '"{name}" is already configured in this project.', 'project.notConfigured': '"{name}" is not configured as a project workbook.', 'project.openToAttach': 'Open {name} to attach it to the project.', 'project.thisWorkbook': 'this workbook', 'project.saved': 'Saved {name}', 'project.saveFailedRecovery': 'Unable to save the project. Your workspace recovery remains available.', 'project.saveFailed': 'Save failed: {message}',
     'dialog.moreValidation': '...and {count} more', 'preview.sourceUnavailable': 'Preview data source is unavailable', 'preview.loadFailed': 'Failed to load preview data',
-    'workbook.containerUnavailable': 'Workbook container is unavailable.', 'workbook.univerUnavailable': 'Spreadsheet engine is unavailable.', 'workbook.createFailed': 'Could not create the workbook.', 'workbook.initFailed': 'Spreadsheet initialization failed: {message}', 'workbook.readTimedOut': 'Reading the workbook timed out after 30 seconds.', 'workbook.convertTimedOut': 'Converting the workbook timed out after 30 seconds.', 'workbook.readonlyTools': 'Read-only workbook tools', 'workbook.copySelection': 'Copy selected cells', 'workbook.copySuccess': 'Selection copied', 'workbook.copyFailed': 'Could not copy the selection', 'workbook.search': 'Search workbook', 'workbook.searchPlaceholder': 'Find in workbook', 'workbook.searchCaseSensitive': 'Match case', 'workbook.searchWholeCell': 'Whole cell', 'workbook.searchAllSheets': 'All sheets', 'workbook.searchResults': 'Search results', 'workbook.searchNoResults': 'No results', 'workbook.searchPrevious': 'Previous match', 'workbook.searchNext': 'Next match',
+    'workbook.containerUnavailable': 'Workbook container is unavailable.', 'workbook.univerUnavailable': 'Spreadsheet engine is unavailable.', 'workbook.createFailed': 'Could not create the workbook.', 'workbook.initFailed': 'Spreadsheet initialization failed: {message}', 'workbook.readTimedOut': 'Reading the workbook timed out after 30 seconds.', 'workbook.convertTimedOut': 'Converting the workbook timed out after 30 seconds.', 'workbook.readonlyTools': 'Read-only workbook tools', 'workbook.copySelection': 'Copy selected cells', 'workbook.copySuccess': 'Selection copied', 'workbook.copyFailed': 'Could not copy the selection', 'workbook.search': 'Search workbook', 'workbook.searchPlaceholder': 'Find in workbook', 'workbook.searchCaseSensitive': 'Match case', 'workbook.searchWholeCell': 'Whole cell', 'workbook.searchAllSheets': 'All sheets', 'workbook.searchResults': 'Search results', 'workbook.searchNoResults': 'No results', 'workbook.searchPrevious': 'Previous match', 'workbook.searchNext': 'Next match', 'workbook.showOutlines': 'Show Excel outlines', 'workbook.showFrozenPanes': 'Show frozen panes',
   },
   'zh-CN': {
     'app.name': 'Excel Block Parser',
@@ -136,6 +139,9 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'project.save': '保存项目',
     'project.saveAs': '项目另存为...',
     'project.settings': '项目设置',
+    'project.validateJson': '校验项目 JSON...',
+    'project.jsonValid': '有效的项目 v3 JSON',
+    'project.jsonInvalid': '项目 JSON 无效',
     'project.python': '项目 Python',
     'project.close': '关闭项目',
     'project.actions': '项目操作',
@@ -240,7 +246,7 @@ const dictionaries: Record<AppLocale, Dictionary> = {
     'app.showNavigation': '显示工作区导航', 'app.hideNavigation': '隐藏工作区导航', 'app.showInspector': '显示提取配置', 'app.hideInspector': '隐藏提取配置', 'app.projectWorkbooks': '项目工作簿', 'app.windowControls': '窗口控制', 'app.resizeNavigation': '调整工作区导航宽度', 'app.workbookCanvas': '工作簿画布', 'app.refreshWorkbook': '刷新当前工作簿',
     'project.unavailableWorkbooks': '{count} 个工作簿来源无法打开。请重新指定或删除它们。', 'project.addSourcesFirst': '请先在项目设置中添加工作簿来源。', 'project.notWorkbookSource': '“{name}”不是此项目的工作簿来源。请在项目设置中添加它。', 'project.alreadyConfigured': '“{name}”已配置在此项目中。', 'project.notConfigured': '“{name}”未配置为项目工作簿。', 'project.openToAttach': '打开{name}以将其关联到项目。', 'project.thisWorkbook': '此工作簿', 'project.saved': '已保存{name}', 'project.saveFailedRecovery': '无法保存项目。工作区恢复数据仍然可用。', 'project.saveFailed': '保存失败：{message}',
     'dialog.moreValidation': '……另有 {count} 项', 'preview.sourceUnavailable': '预览数据来源不可用', 'preview.loadFailed': '加载预览数据失败',
-    'workbook.containerUnavailable': '工作簿容器不可用。', 'workbook.univerUnavailable': '表格引擎不可用。', 'workbook.createFailed': '无法创建工作簿。', 'workbook.initFailed': '表格初始化失败：{message}', 'workbook.readTimedOut': '读取工作簿在 30 秒后超时。', 'workbook.convertTimedOut': '转换工作簿在 30 秒后超时。', 'workbook.readonlyTools': '只读工作簿工具', 'workbook.copySelection': '复制选中单元格', 'workbook.copySuccess': '已复制选区', 'workbook.copyFailed': '无法复制选区', 'workbook.search': '搜索工作簿', 'workbook.searchPlaceholder': '在工作簿中查找', 'workbook.searchCaseSensitive': '区分大小写', 'workbook.searchWholeCell': '完整单元格', 'workbook.searchAllSheets': '所有工作表', 'workbook.searchResults': '搜索结果', 'workbook.searchNoResults': '无结果', 'workbook.searchPrevious': '上一个匹配项', 'workbook.searchNext': '下一个匹配项',
+    'workbook.containerUnavailable': '工作簿容器不可用。', 'workbook.univerUnavailable': '表格引擎不可用。', 'workbook.createFailed': '无法创建工作簿。', 'workbook.initFailed': '表格初始化失败：{message}', 'workbook.readTimedOut': '读取工作簿在 30 秒后超时。', 'workbook.convertTimedOut': '转换工作簿在 30 秒后超时。', 'workbook.readonlyTools': '只读工作簿工具', 'workbook.copySelection': '复制选中单元格', 'workbook.copySuccess': '已复制选区', 'workbook.copyFailed': '无法复制选区', 'workbook.search': '搜索工作簿', 'workbook.searchPlaceholder': '在工作簿中查找', 'workbook.searchCaseSensitive': '区分大小写', 'workbook.searchWholeCell': '完整单元格', 'workbook.searchAllSheets': '所有工作表', 'workbook.searchResults': '搜索结果', 'workbook.searchNoResults': '无结果', 'workbook.searchPrevious': '上一个匹配项', 'workbook.searchNext': '下一个匹配项', 'workbook.showOutlines': '显示 Excel 分组折叠', 'workbook.showFrozenPanes': '显示冻结窗格',
   },
 }
 
