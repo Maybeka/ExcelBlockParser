@@ -48,7 +48,7 @@ describe('Project v3 strict conformance', () => {
     ['missing block columns', value => { delete value.project.blocks[0].columns }],
     ['invalid column type', value => { value.project.blocks[0].columns[0].type = 'currency' }],
     ['invalid value mapping', value => { value.project.blocks[0].columns[0].valueMap[0].from = false }],
-    ['conflicting row filter fields', value => { value.project.blocks[0].ignoreRules = [] }],
+    ['retired row-rule array', value => { value.project.blocks[0].ignoreRules = [] }],
     ['empty row filter group', value => { value.project.blocks[0].rowFilter.condition = { type: 'all', conditions: [] } }],
     ['invalid not-in values', value => { value.project.blocks[0].rowFilter.condition = { type: 'rule', column: 'status', operator: 'notIn', value: 'deleted' } }],
     ['empty row filter column', value => { value.project.blocks[0].rowFilter.condition = { type: 'rule', column: '', operator: 'eq', value: 'active' } }],
@@ -101,27 +101,4 @@ describe('Project v3 strict conformance', () => {
     expect(loadProject(completeFixture).errors).toEqual([])
   })
 
-  it('normalizes the released v3 row-rule array into the canonical condition tree', () => {
-    const releasedV3 = clone(completeFixture)
-    delete releasedV3.project.blocks[0].rowFilter
-    ;(releasedV3.project.blocks[0] as any).ignoreRules = [
-      { column: 'status', operator: 'neq', value: 'deleted' },
-      { column: 'amount', operator: 'regex', value: '^\\d+$' },
-    ]
-    expect(validateSchema(releasedV3), JSON.stringify(validateSchema.errors)).toBe(true)
-    const loaded = loadProject(releasedV3)
-    expect(loaded.errors).toEqual([])
-    expect(loaded.project!.project.blocks[0].rowFilter).toEqual({
-      removeEmptyRows: true,
-      emptyCellConditions: { fullyStruck: true },
-      condition: {
-        type: 'all',
-        conditions: [
-          { type: 'rule', column: 'status', operator: 'neq', value: 'deleted' },
-          { type: 'rule', column: 'amount', operator: 'regex', value: '^\\d+$' },
-        ],
-      },
-    })
-    expect((loaded.project!.project.blocks[0] as any).ignoreRules).toBeUndefined()
-  })
 })

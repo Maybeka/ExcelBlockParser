@@ -1,11 +1,11 @@
 # Project JSON Contract
 
-## Stable Contract: Version 3
+## Current Development Format: Version 3
 
-The saved JSON document is the application project file and the public
-contract for downstream tools. Its filename, without `.json`, is the project
-name. Opening a file makes that filename authoritative; **Save Project As**
-therefore renames the project.
+The saved JSON document is the current application project format. It may
+change before the 2.0.0 compatibility commitment. Its filename, without
+`.json`, is the project name. Opening a file makes that filename authoritative;
+**Save Project As** therefore renames the project.
 
 The project contains both editor configuration and the most recent extraction
 result:
@@ -77,15 +77,12 @@ executed after an explicit user action and receives the current `data`,
 - **New Project** creates an unsaved project; its first Save opens Save As.
 - **Close Project** clears the active project and attached workbook runtime.
 
-## Compatibility
+## Development Compatibility
 
-Project v3 is the only supported project format. Versions 1 and 2 are rejected
-with an unsupported-version error; the application does not attempt partial or
-best-effort migration. All newly saved files use version 3.
-
-The rule-array form of `ignoreRules` emitted by v1.1.0 is accepted as part of
-the same v3 contract and normalized deterministically to `rowFilter`. Newly
-saved projects use only the structured `rowFilter` condition tree.
+Before 2.0.0, the application validates only the current v3 shape. Earlier
+development JSON files may be rejected, even when their `version` is `3`.
+Versions 1 and 2 are also unsupported. The application does not attempt
+partial or best-effort migration.
 
 The machine-readable current contract is
 [project-v3.schema.json](project-v3.schema.json).

@@ -105,7 +105,7 @@ The implemented application supports this general workflow:
 ### 3.5 Project persistence and reconciliation
 
 - Versioned v3 project serialization and deserialization.
-- Strict Project v3 import; versions 1 and 2 are explicitly unsupported.
+- Strict import of the current Project v3 shape; versions 1 and 2 are explicitly unsupported.
 - New, Open, Save, Save As, Settings, and Close project lifecycle controls.
 - Complete project persistence including workbook sources, configuration, and
   the most recent run output.
@@ -225,9 +225,9 @@ opening Gate C or weakening Block and Region extraction quality.
 
 - Block and Region use the admitted registration, lifecycle, transaction,
   diagnostics, execution, panel, preview, save-preparation, and navigation contracts.
-- Strict Project v3 schema/runtime conformance, complete golden round-trips,
+- Strict current Project v3 schema/runtime conformance and complete golden round-trips,
   malformed input, ownership, and persistence tests protect the current format.
-- Session v1/v2 import is removed; only Project v3 is supported.
+- Session v1/v2 import is removed; before 2.0.0 only the current Project v3 shape is supported.
 - External Structured Result Review remains a bounded development fixture with
   strict candidate validation and no filesystem, execution, or production navigation.
 - Runtime plugins, in-app LLM calls, and generated-code execution remain deferred.
