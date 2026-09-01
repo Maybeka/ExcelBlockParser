@@ -27,7 +27,7 @@ export function decodeProjectDocument(content: string, filePath: string | null =
     return { status: 'error', message: 'Invalid config file: failed to parse JSON' }
   }
   const loaded = loadProject(value)
-  if (!loaded.project) return { status: 'error', message: loaded.errors.join(' ') }
+  if (!loaded.project) return { status: 'error', message: loaded.errors.join('\n') }
   const fileName = filePath ? projectNameFromJsonPath(filePath) : null
   return {
     status: 'ok',

@@ -101,6 +101,17 @@ html, body, #root {
 .window-controls .ant-btn { align-items: center; border: 0; border-radius: 0; color: #536575; display: inline-flex; height: 100%; justify-content: center; min-width: 42px; }
 .window-controls .ant-btn:hover { background: #e8f1f7; color: #1e66f5; }
 .window-controls .window-control-close:hover { background: #e64553; color: #fff; }
+.about-dialog .ant-modal-body { padding-top: var(--space-3); }
+.about-dialog-brand { align-items: center; display: flex; gap: var(--space-3); }
+.about-dialog-icon { height: 44px; object-fit: contain; width: 44px; }
+.about-dialog-brand strong, .about-dialog-brand span { display: block; }
+.about-dialog-brand strong { color: var(--text-strong); font-size: 16px; }
+.about-dialog-brand span { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.about-dialog-details { border-bottom: 1px solid var(--border-subtle); border-top: 1px solid var(--border-subtle); margin: var(--space-4) 0 0; }
+.about-dialog-details > div { align-items: baseline; display: flex; gap: var(--space-3); justify-content: space-between; padding: 8px 0; }
+.about-dialog-details > div + div { border-top: 1px solid var(--border-subtle); }
+.about-dialog-details dt { color: var(--text-muted); font-size: 12px; }
+.about-dialog-details dd { color: var(--text-strong); font-size: 12px; margin: 0; text-align: right; }
 
 .workspace-layout { background: var(--fluent-canvas); display: flex; gap: 0; min-height: 0; overflow: hidden; padding: 6px; }
 .workspace-sidebar {

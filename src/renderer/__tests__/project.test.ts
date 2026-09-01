@@ -79,7 +79,8 @@ describe('project workspace', () => {
         blocks: [{ ...block('unmapped', 'sales'), workbookId: null }], regions: [], activeBlockId: 'unmapped', activeRegionId: null, focusMode: 'always-editable',
       }, data: {}, blockResults: [],
     })
-    expect(invalid.errors.join(' ')).toContain('has no workbook mapping')
+    expect(invalid.errors.join(' ')).toContain('project.blocks[0]')
+    expect(invalid.errors.join(' ')).toContain('field "workbookId" must be a non-empty string')
   })
 
   it('rejects an active item that belongs to another workbook', () => {

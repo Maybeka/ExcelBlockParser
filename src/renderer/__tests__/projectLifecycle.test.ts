@@ -27,6 +27,22 @@ describe('project lifecycle coordinator', () => {
     expect(decoded.status).toBe('ok')
     if (decoded.status === 'ok') expect(decoded.document.project.name).toBe('Renamed')
   })
+  it('reports the invalid Block path and field during import', () => {
+    const invalid = serializeProject({
+      ...project,
+      blocks: [{
+        id: 'broken', label: 'Broken block', workbookId: 'a', range: null, activeSheet: null,
+        headerRows: [], collapsed: false, selectionLocked: false, columns: [], dataSnapshot: null,
+        retiredSetting: true,
+      } as any],
+      activeBlockId: 'broken',
+    }, null)
+    const decoded = decodeProjectDocument(JSON.stringify(invalid))
+    expect(decoded).toEqual({
+      status: 'error',
+      message: 'Invalid project file: project.blocks[0] (label "Broken block") contains unsupported field "retiredSetting".',
+    })
+  })
   it('resolves partial workbook availability without changing the project', async () => {
     const result = await inspectProjectWorkbookSources(project, async path => path === '/a.xlsx' ? bridgeOk(new ArrayBuffer(1)) : bridgeError('not found'), async () => reader)
     expect(result?.availableIds).toEqual(['a'])

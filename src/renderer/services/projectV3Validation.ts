@@ -89,31 +89,43 @@ function validateRowFilter(value: unknown): boolean {
   return value.condition === null || validateRowFilterCondition(value.condition)
 }
 
+function blockPath(value: unknown, index: number, nested: boolean): string {
+  const path = nested ? `region.blocks[${index}]` : `project.blocks[${index}]`
+  return isRecord(value) && typeof value.label === 'string' && value.label
+    ? `${path} (label "${value.label}")`
+    : path
+}
+
+function invalidBlock(value: unknown, index: number, nested: boolean, reason: string): string {
+  return `Invalid project file: ${blockPath(value, index, nested)} ${reason}`
+}
+
 export function validateProjectBlock(value: unknown, index: number, nested = false): string | null {
-  if (!isRecord(value)) return `Invalid block at index ${index}: expected an object.`
+  if (!isRecord(value)) return invalidBlock(value, index, nested, 'must be an object.')
   const extra = unknownKey(value, blockKeys)
-  if (extra) return `Invalid block at index ${index}: unknown field "${extra}".`
-  if (typeof value.id !== 'string' || !value.id || typeof value.label !== 'string') return `Invalid block at index ${index}: id and label are invalid.`
-  if (!nested && (typeof value.workbookId !== 'string' || !value.workbookId)) return `Invalid project file: item "${value.label}" has no workbook mapping.`
-  if (nested && value.workbookId !== undefined && value.workbookId !== null && typeof value.workbookId !== 'string') return `Invalid block "${value.label}": workbookId is invalid.`
-  if (!Object.prototype.hasOwnProperty.call(value, 'range') || (value.range !== null && !validateRange(value.range))) return `Invalid block "${value.label}": range is invalid.`
-  if (!Object.prototype.hasOwnProperty.call(value, 'activeSheet') || (value.activeSheet !== null && typeof value.activeSheet !== 'string')) return `Invalid block "${value.label}": activeSheet is invalid.`
-  if (!Array.isArray(value.headerRows) || value.headerRows.some(row => !Number.isInteger(row) || Number(row) < 0) || new Set(value.headerRows).size !== value.headerRows.length) return `Invalid block "${value.label}": headerRows are invalid.`
-  if (typeof value.collapsed !== 'boolean' || typeof value.selectionLocked !== 'boolean') return `Invalid block "${value.label}": display state is invalid.`
-  if (!Array.isArray(value.columns) || !value.columns.every(validateColumn)) return `Invalid block "${value.label}": columns are invalid.`
-  if (!Object.prototype.hasOwnProperty.call(value, 'dataSnapshot') || (value.dataSnapshot !== null && (!Array.isArray(value.dataSnapshot) || value.dataSnapshot.some(row => !Array.isArray(row) || !row.every(isJsonValue))))) return `Invalid block "${value.label}": dataSnapshot is invalid.`
+  if (extra) return invalidBlock(value, index, nested, `contains unsupported field "${extra}".`)
+  if (typeof value.id !== 'string' || !value.id) return invalidBlock(value, index, nested, 'field "id" must be a non-empty string.')
+  if (typeof value.label !== 'string') return invalidBlock(value, index, nested, 'field "label" must be a string.')
+  if (!nested && (typeof value.workbookId !== 'string' || !value.workbookId)) return invalidBlock(value, index, nested, 'field "workbookId" must be a non-empty string.')
+  if (nested && value.workbookId !== undefined && value.workbookId !== null && typeof value.workbookId !== 'string') return invalidBlock(value, index, nested, 'field "workbookId" must be a string or null.')
+  if (!Object.prototype.hasOwnProperty.call(value, 'range') || (value.range !== null && !validateRange(value.range))) return invalidBlock(value, index, nested, 'field "range" must be null or a valid cell range.')
+  if (!Object.prototype.hasOwnProperty.call(value, 'activeSheet') || (value.activeSheet !== null && typeof value.activeSheet !== 'string')) return invalidBlock(value, index, nested, 'field "activeSheet" must be a string or null.')
+  if (!Array.isArray(value.headerRows) || value.headerRows.some(row => !Number.isInteger(row) || Number(row) < 0) || new Set(value.headerRows).size !== value.headerRows.length) return invalidBlock(value, index, nested, 'field "headerRows" must contain unique non-negative integers.')
+  if (typeof value.collapsed !== 'boolean' || typeof value.selectionLocked !== 'boolean') return invalidBlock(value, index, nested, 'fields "collapsed" and "selectionLocked" must be booleans.')
+  if (!Array.isArray(value.columns) || !value.columns.every(validateColumn)) return invalidBlock(value, index, nested, 'field "columns" contains an invalid column mapping.')
+  if (!Object.prototype.hasOwnProperty.call(value, 'dataSnapshot') || (value.dataSnapshot !== null && (!Array.isArray(value.dataSnapshot) || value.dataSnapshot.some(row => !Array.isArray(row) || !row.every(isJsonValue))))) return invalidBlock(value, index, nested, 'field "dataSnapshot" must be null or a JSON-value matrix.')
   if (value.headerSnapshot !== undefined) {
-    if (!Array.isArray(value.headerSnapshot)) return `Invalid block "${value.label}": headerSnapshot is invalid.`
+    if (!Array.isArray(value.headerSnapshot)) return invalidBlock(value, index, nested, 'field "headerSnapshot" must be an array.')
     const flat = value.headerSnapshot.every(item => typeof item === 'string')
     const matrix = value.headerSnapshot.every(row => Array.isArray(row) && row.every(item => typeof item === 'string'))
-    if (!flat && !matrix) return `Invalid block "${value.label}": headerSnapshot is invalid.`
+    if (!flat && !matrix) return invalidBlock(value, index, nested, 'field "headerSnapshot" must contain strings or rows of strings.')
   }
-  if (value.rowFilter !== undefined && !validateRowFilter(value.rowFilter)) return `Invalid block "${value.label}": rowFilter is invalid.`
-  if (value.skipEmptyColumns !== undefined && typeof value.skipEmptyColumns !== 'boolean') return `Invalid block "${value.label}": skipEmptyColumns is invalid.`
-  if (value.tags !== undefined && (!Array.isArray(value.tags) || !value.tags.every(validateTag))) return `Invalid block "${value.label}": tags are invalid.`
+  if (value.rowFilter !== undefined && !validateRowFilter(value.rowFilter)) return invalidBlock(value, index, nested, 'field "rowFilter" does not match the current filter format.')
+  if (value.skipEmptyColumns !== undefined && typeof value.skipEmptyColumns !== 'boolean') return invalidBlock(value, index, nested, 'field "skipEmptyColumns" must be a boolean.')
+  if (value.tags !== undefined && (!Array.isArray(value.tags) || !value.tags.every(validateTag))) return invalidBlock(value, index, nested, 'field "tags" contains an invalid tag.')
   if (value.computedProperties !== undefined && (!Array.isArray(value.computedProperties) || value.computedProperties.some(item => !isRecord(item)
     || Boolean(unknownKey(item, new Set(['id', 'label', 'expression'])))
-    || typeof item.id !== 'string' || !item.id || typeof item.label !== 'string' || typeof item.expression !== 'string'))) return `Invalid block "${value.label}": computedProperties are invalid.`
+    || typeof item.id !== 'string' || !item.id || typeof item.label !== 'string' || typeof item.expression !== 'string'))) return invalidBlock(value, index, nested, 'field "computedProperties" contains an invalid property.')
   return null
 }
 
