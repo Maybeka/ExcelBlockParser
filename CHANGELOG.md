@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.1 - 2026-09-01
+
+- Added a temporary Excel browser mode that hides workspace navigation and
+  Extractions, and suppresses Block, Region, and column highlights until the
+  prior workspace view is restored.
+
 ## 1.7.0 - 2026-09-01
 
 - Bounded the in-memory Univer cache to the active workbook and one recently
