@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.7 - 2026-09-01
+
+- Added read-only Excel display toggles for source workbook frozen panes and
+  collapsed outline rows and columns. These toggles do not modify the source
+  workbook or saved project data.
+- Added Project JSON validation from Project actions. The validator checks a
+  selected file without importing it and shows schema diagnostics in place.
+- Expanded import diagnostics for block and region results with precise JSON
+  paths, result identities, and field-level causes.
+
 ## 1.4.6 - 2026-09-01
 
 - Added an About dialog under Project actions with the build version, project

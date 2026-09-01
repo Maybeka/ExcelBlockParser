@@ -33,4 +33,32 @@ describe('XLSX workbook conversion', () => {
       textRuns: expect.any(Array),
     })
   })
+
+  it('captures frozen panes and the collapsed Excel outline state', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Data')
+    sheet.views = [{ state: 'frozen', xSplit: 2, ySplit: 1 }]
+    sheet.getCell('B2').value = 'outlined row and column'
+    sheet.getCell('C3').value = 'manually hidden row and column'
+    sheet.getRow(2).outlineLevel = 1
+    sheet.getRow(2).hidden = true
+    sheet.getRow(3).hidden = true
+    sheet.getColumn(2).outlineLevel = 1
+    sheet.getColumn(2).hidden = true
+    sheet.getColumn(3).hidden = true
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const converted = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'outlined.xlsx')
+    const data = converted.workbookData.sheets.Data!
+
+    expect(converted.sheetDisplaySettings.Data).toEqual({
+      freeze: { startRow: 1, startColumn: 2, xSplit: 2, ySplit: 1 },
+      outlinedHiddenRows: [1],
+      outlinedHiddenColumns: [1],
+    })
+    expect(data.rowData![1]).toMatchObject({ hd: 1 })
+    expect(data.rowData![2]).toMatchObject({ hd: 1 })
+    expect(data.columnData![1]).toMatchObject({ hd: 1 })
+    expect(data.columnData![2]).toMatchObject({ hd: 1 })
+  })
 })

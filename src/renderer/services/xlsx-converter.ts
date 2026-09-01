@@ -20,6 +20,13 @@ export interface ConversionResult {
   workbookData: IWorkbookData
   fonts: string[]
   sheetTabColors: Record<string, string>
+  sheetDisplaySettings: Record<string, SheetDisplaySettings>
+}
+
+export interface SheetDisplaySettings {
+  freeze: { startRow: number; startColumn: number; xSplit: number; ySplit: number } | null
+  outlinedHiddenRows: number[]
+  outlinedHiddenColumns: number[]
 }
 
 export async function convertXlsxToWorkbookData(
@@ -32,6 +39,7 @@ export async function convertXlsxToWorkbookData(
   const sheets: Record<string, Partial<IWorksheetData>> = {}
   const sheetOrder: string[] = []
   const sheetTabColors: Record<string, string> = {}
+  const sheetDisplaySettings: Record<string, SheetDisplaySettings> = {}
   const resolveColor = createColorResolver((workbook.model as { themes?: { theme1?: string } }).themes?.theme1)
   const styleMap = new Map<string, string>()
   const styles: Record<string, IStyleData> = {}
@@ -131,28 +139,59 @@ export async function convertXlsxToWorkbookData(
       }
     }
 
-    const columnData: Record<number, { w: number }> = {}
-    for (let c = 0; c <= maxCol; c++) {
+    // Outline members can be empty; ExcelJS still records them in the sheet
+    // dimensions, so do not limit this pass to cells with values.
+    const lastColumn = Math.max(maxCol, worksheet.columnCount - 1)
+    const lastRow = Math.max(maxRow, worksheet.rowCount - 1)
+    const columnData: Record<number, { w?: number; hd?: BooleanNumber }> = {}
+    const outlinedHiddenColumns: number[] = []
+    for (let c = 0; c <= lastColumn; c++) {
       const col = worksheet.getColumn(c + 1)
+      const column: { w?: number; hd?: BooleanNumber } = {}
       if (col?.width != null) {
-        columnData[c] = { w: col.width * 8 }
+        column.w = col.width * 8
+      }
+      if (col?.hidden) {
+        column.hd = BooleanNumber.TRUE
+        if (col.outlineLevel > 0) outlinedHiddenColumns.push(c)
+      }
+      if (Object.keys(column).length > 0) {
+        columnData[c] = column
       }
     }
 
-    const rowHeights: Record<number, { h: number }> = {}
-    for (let r = 0; r <= maxRow; r++) {
+    const rowHeights: Record<number, { h?: number; hd?: BooleanNumber }> = {}
+    const outlinedHiddenRows: number[] = []
+    for (let r = 0; r <= lastRow; r++) {
       const row = worksheet.getRow(r + 1)
+      const rowData: { h?: number; hd?: BooleanNumber } = {}
       if (row?.height != null) {
-        rowHeights[r] = { h: row.height * 1.333 }
+        rowData.h = row.height * 1.333
       }
+      if (row?.hidden) {
+        rowData.hd = BooleanNumber.TRUE
+        if (row.outlineLevel && row.outlineLevel > 0) outlinedHiddenRows.push(r)
+      }
+      if (Object.keys(rowData).length > 0) {
+        rowHeights[r] = rowData
+      }
+    }
+
+    const frozenView = worksheet.views?.find(view => view.state === 'frozen')
+    const xSplit = frozenView?.state === 'frozen' ? frozenView.xSplit ?? 0 : 0
+    const ySplit = frozenView?.state === 'frozen' ? frozenView.ySplit ?? 0 : 0
+    sheetDisplaySettings[sheetId] = {
+      freeze: xSplit || ySplit ? { startRow: ySplit, startColumn: xSplit, xSplit, ySplit } : null,
+      outlinedHiddenRows,
+      outlinedHiddenColumns,
     }
 
     sheets[sheetId] = {
       id: sheetId,
       name: worksheet.name || sheetId,
       ...(tabColor ? { tabColor } : {}),
-      rowCount: maxRow + 50,
-      columnCount: maxCol + 50,
+      rowCount: lastRow + 51,
+      columnCount: lastColumn + 51,
       cellData,
       ...(mergeData.length > 0 ? { mergeData } : {}),
       ...(Object.keys(columnData).length > 0 ? { columnData } : {}),
@@ -179,6 +218,7 @@ export async function convertXlsxToWorkbookData(
     },
     fonts: [...fontSet],
     sheetTabColors,
+    sheetDisplaySettings,
   }
 }
 

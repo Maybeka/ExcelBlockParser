@@ -1,11 +1,11 @@
 import { useRef, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Checkbox, Input, Spin, Tooltip, message, type InputRef } from 'antd'
-import { CloseOutlined, CopyOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
+import { CloseOutlined, CompressOutlined, CopyOutlined, LeftOutlined, PushpinOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
 import type { CellRange } from '../types'
-import { convertXlsxToWorkbookData } from '../services/xlsx-converter'
+import { convertXlsxToWorkbookData, type SheetDisplaySettings } from '../services/xlsx-converter'
 import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
@@ -44,6 +44,7 @@ interface CachedWorkbook {
   unitId: string
   path: string
   sheetNames: string[]
+  sheetDisplaySettings: Record<string, SheetDisplaySettings>
 }
 
 interface SearchMatch extends WorkbookSearchMatch {
@@ -90,6 +91,10 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false)
   const [searchWholeCell, setSearchWholeCell] = useState(false)
   const [searchAllSheets, setSearchAllSheets] = useState(false)
+  const [showOutlines, setShowOutlines] = useState(true)
+  const [showFrozenPanes, setShowFrozenPanes] = useState(true)
+  const displayModesRef = useRef({ showOutlines, showFrozenPanes })
+  displayModesRef.current = { showOutlines, showFrozenPanes }
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
   const [searchIndex, setSearchIndex] = useState(-1)
   const [searchRan, setSearchRan] = useState(false)
@@ -110,6 +115,24 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
   const renameObserverRef = useRef<MutationObserver | null>(null)
   const highlightDisposablesRef = useRef<Array<{ dispose: () => void }>>([])
   const workbookCacheRef = useRef<Map<string, CachedWorkbook>>(new Map())
+
+  const applyDisplayModes = (workbook: any, settings: Record<string, SheetDisplaySettings>) => {
+    const displayModes = displayModesRef.current
+    for (const [sheetName, sheetSettings] of Object.entries(settings)) {
+      const sheet = workbook.getSheetByName(sheetName)
+      if (!sheet) continue
+      try {
+        if (displayModes.showFrozenPanes && sheetSettings.freeze) sheet.setFreeze(sheetSettings.freeze)
+        else sheet.cancelFreeze()
+
+        applyOutlineVisibility(sheet, sheetSettings.outlinedHiddenRows, displayModes.showOutlines, 'row')
+        applyOutlineVisibility(sheet, sheetSettings.outlinedHiddenColumns, displayModes.showOutlines, 'column')
+      } catch {
+        // Display preferences are non-destructive; an individual sheet may not
+        // be ready while Univer is constructing the workbook.
+      }
+    }
+  }
 
   const copySelection = async () => {
     const api = univerAPIRef.current
@@ -334,6 +357,15 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
     }
   }, [activeColIndex, activeColumnItemId, activeSheet, hasFile, lockedRanges])
 
+  useEffect(() => {
+    const api = univerAPIRef.current
+    if (!api) return
+    for (const cached of workbookCacheRef.current.values()) {
+      const workbook = api.getWorkbook(cached.unitId)
+      if (workbook) applyDisplayModes(workbook, cached.sheetDisplaySettings)
+    }
+  }, [showOutlines, showFrozenPanes])
+
   const tryAttachListener = (targetWorkbook: any, sourceWorkbookId: string) => {
     try {
       selectionDisposableRef.current?.dispose()
@@ -509,7 +541,7 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
         selectionDisposableRef.current?.dispose()
         commandDisposableRef.current?.dispose()
 
-        const { workbookData, fonts, sheetTabColors } = await withTimeout(convertXlsxToWorkbookData(arrayBuffer, fileName), t('workbook.convertTimedOut'))
+        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings } = await withTimeout(convertXlsxToWorkbookData(arrayBuffer, fileName), t('workbook.convertTimedOut'))
 
         if (loadVersion !== loadVersionRef.current) return
 
@@ -537,7 +569,9 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
           unitId: newWorkbook.getId(),
           path: filePath,
           sheetNames: loadedSheetNames,
+          sheetDisplaySettings,
         })
+        applyDisplayModes(newWorkbook, sheetDisplaySettings)
         setHasFile(true)
         onFileLoaded(sourceWorkbookId, fileName, filePath, loadedSheetNames, sheetTabColors, loadedActiveSheetName)
         onLoadedWorkbookChange(sourceWorkbookId)
@@ -603,6 +637,12 @@ export function SpreadsheetPanel({ activeSheet, activeItemIds, activeColumnItemI
           </Tooltip>
           <Tooltip title={t('workbook.search')}>
             <Button aria-label={t('workbook.search')} aria-keyshortcuts="Control+F Meta+F" type="text" size="small" icon={<SearchOutlined />} onClick={() => setSearchOpen(current => !current)} />
+          </Tooltip>
+          <Tooltip title={t('workbook.showOutlines')}>
+            <Button aria-label={t('workbook.showOutlines')} aria-pressed={showOutlines} type="text" size="small" className={showOutlines ? 'is-active' : ''} icon={<CompressOutlined />} onClick={() => setShowOutlines(current => !current)} />
+          </Tooltip>
+          <Tooltip title={t('workbook.showFrozenPanes')}>
+            <Button aria-label={t('workbook.showFrozenPanes')} aria-pressed={showFrozenPanes} type="text" size="small" className={showFrozenPanes ? 'is-active' : ''} icon={<PushpinOutlined />} onClick={() => setShowFrozenPanes(current => !current)} />
           </Tooltip>
         </div>, toolbarContainer,
       )}
@@ -700,4 +740,26 @@ function colToA1(col: number): string {
     n = Math.floor(n / 26) - 1
   }
   return letter
+}
+
+function applyOutlineVisibility(sheet: any, indexes: number[], showOutlines: boolean, kind: 'row' | 'column') {
+  for (const [start, count] of contiguousRanges(indexes)) {
+    if (kind === 'row') {
+      if (showOutlines) sheet.hideRows(start, count)
+      else sheet.unhideRow(sheet.getRange(`${start + 1}:${start + count}`))
+    } else {
+      if (showOutlines) sheet.hideColumns(start, count)
+      else sheet.unhideColumn(sheet.getRange(`${colToA1(start)}:${colToA1(start + count - 1)}`))
+    }
+  }
+}
+
+function contiguousRanges(indexes: number[]): Array<[start: number, count: number]> {
+  const ranges: Array<[number, number]> = []
+  for (const index of [...new Set(indexes)].sort((a, b) => a - b)) {
+    const previous = ranges.at(-1)
+    if (previous && previous[0] + previous[1] === index) previous[1] += 1
+    else ranges.push([index, 1])
+  }
+  return ranges
 }

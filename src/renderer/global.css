@@ -185,7 +185,11 @@ html, body, #root {
 .workbook-empty-state span { font-size: 12px; line-height: 1.55; max-width: 330px; }
 .workbook-empty-state .ant-btn-primary { background: #3390ec; box-shadow: none; }
 .workbook-readonly-tools { align-items: center; display: flex; gap: 2px; }
+.workbook-readonly-tools .ant-btn.is-active { background: var(--m3-secondary-container); color: var(--fluent-accent); }
 .workbook-readonly-tools .ant-btn { color: var(--fluent-accent); }
+.json-validation-report { display: flex; flex-direction: column; gap: 12px; }
+.json-validation-report > strong { color: var(--fluent-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.json-validation-errors { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; white-space: pre-wrap; }
 .workbook-search { background: var(--m3-surface-container-lowest); border: 1px solid var(--fluent-stroke); border-radius: 8px; box-shadow: var(--fluent-elevation); display: flex; flex-direction: column; gap: 6px; max-height: min(560px, calc(100vh - 16px)); padding: 8px; position: fixed; width: min(380px, calc(100vw - 16px)); z-index: 1200; -webkit-app-region: no-drag; --wails-draggable: no-drag; }
 .workbook-search .ant-input-affix-wrapper { flex: 1; min-width: 0; }
 .workbook-search .ant-input-affix-wrapper .ant-input-suffix { margin-inline-end: -4px; }
