@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
+import ExcelJS from 'exceljs'
 import { closeElectronApp, launchElectronApp } from './electronLaunch'
 
 const root = process.cwd()
@@ -43,6 +44,222 @@ test('opens a real workbook through the Electron host bridge', async () => {
   } finally {
     await closeElectronApp(app, page)
     await rm(userDataDirectory, { recursive: true, force: true })
+  }
+})
+
+test('closes the frameless Electron window from the custom title bar', async () => {
+  const userDataDirectory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-close-'))
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+  })
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await Promise.all([
+      page.waitForEvent('close'),
+      page.locator('.window-control-close').click(),
+    ])
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(userDataDirectory, { recursive: true, force: true })
+  }
+})
+
+test('applies outline visibility changes without reloading the workbook', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-outline-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const workbookFile = resolve(directory, 'outlined.xlsx')
+  const projectPath = resolve(directory, 'outlined-project.json')
+  const source = new ExcelJS.Workbook()
+  const sheet = source.addWorksheet('Outline')
+  sheet.getCell('A1').value = 'Always visible'
+  sheet.getCell('A2').value = 'Grouped row'
+  sheet.getRow(2).outlineLevel = 1
+  sheet.getRow(2).hidden = true
+  sheet.getCell('B1').value = 'Always visible column'
+  sheet.getCell('B2').value = 'Grouped column'
+  sheet.getColumn(2).outlineLevel = 1
+  sheet.getColumn(2).hidden = true
+  await writeFile(workbookFile, Buffer.from(await source.xlsx.writeBuffer()))
+  await writeFile(projectPath, JSON.stringify({
+    version: 3,
+    exportedAt: '2026-09-01T00:00:00.000Z',
+    project: {
+      id: 'outlined-project', name: 'Outlined project', activeWorkbookId: 'outlined', activeBlockId: '', activeRegionId: null,
+      focusMode: 'always-editable',
+      workbooks: [{ id: 'outlined', name: 'outlined.xlsx', sourcePath: workbookFile, activeSheetName: 'Outline', sheetNames: ['Outline'] }],
+      blocks: [], regions: [],
+    },
+    data: {}, blockResults: [],
+  }), 'utf8')
+
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_IMPORT_PATH: projectPath,
+  })
+
+  const outlineState = () => page.evaluate(() => (window as any).__excelBlockParserOutlineState?.() ?? {})
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByRole('button', { name: 'Open Project' }).click()
+    await expect(page.getByRole('tab', { name: 'outlined.xlsx' })).toBeVisible()
+
+    await expect.poll(outlineState).toEqual({ 'row:1': false, 'column:1': false })
+
+    await page.getByRole('button', { name: 'Show Excel outlines' }).click()
+    await expect.poll(outlineState).toEqual({ 'row:1': true, 'column:1': true })
+    // Wait for Univer's canvas scheduler to paint its first sheet frame.
+    await page.waitForTimeout(1_000)
+
+    // Univer renders this affordance on its canvas rather than in the DOM.
+    // Probe its 12px row-header hit area in the fixed Electron test viewport.
+    const toggleRowOutline = async (expectedHidden: boolean) => {
+      for (let y = 120; y <= 148; y += 4) {
+        for (let x = 38; x <= 58; x += 4) {
+          await page.mouse.click(x, y)
+          await page.waitForTimeout(20)
+          if ((await outlineState())['row:1'] === expectedHidden) return true
+        }
+      }
+      return false
+    }
+
+    expect(await toggleRowOutline(false)).toBe(true)
+    await expect.poll(outlineState).toEqual({ 'row:1': false, 'column:1': true })
+
+    expect(await toggleRowOutline(true)).toBe(true)
+    await expect.poll(outlineState).toEqual({ 'row:1': true, 'column:1': true })
+
+    const toggleColumnOutline = async (expectedHidden: boolean) => {
+      for (let y = 88; y <= 112; y += 4) {
+        for (let x = 120; x <= 154; x += 4) {
+          await page.mouse.click(x, y)
+          await page.waitForTimeout(20)
+          if ((await outlineState())['column:1'] === expectedHidden) return true
+        }
+      }
+      return false
+    }
+
+    expect(await toggleColumnOutline(false)).toBe(true)
+    await expect.poll(outlineState).toEqual({ 'row:1': true, 'column:1': false })
+
+    expect(await toggleColumnOutline(true)).toBe(true)
+    await expect.poll(outlineState).toEqual({ 'row:1': true, 'column:1': true })
+
+    await page.getByRole('button', { name: 'Show Excel outlines' }).click()
+    await expect.poll(outlineState).toEqual({ 'row:1': false, 'column:1': false })
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('does not change sheets when toggling outlines from a sheet without groups', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-outline-sheet-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const workbookFile = resolve(directory, 'two-sheets.xlsx')
+  const projectPath = resolve(directory, 'two-sheets-project.json')
+  const source = new ExcelJS.Workbook()
+  source.addWorksheet('Plain').getCell('A1').value = 'No outline here'
+  const outlined = source.addWorksheet('Outlined')
+  outlined.getCell('A1').value = 'Visible'
+  outlined.getCell('A2').value = 'Grouped'
+  outlined.getRow(2).outlineLevel = 1
+  outlined.getRow(2).hidden = true
+  await writeFile(workbookFile, Buffer.from(await source.xlsx.writeBuffer()))
+  await writeFile(projectPath, JSON.stringify({
+    version: 3,
+    exportedAt: '2026-09-02T00:00:00.000Z',
+    project: {
+      id: 'two-sheets-project', name: 'Two sheets project', activeWorkbookId: 'two-sheets', activeBlockId: '', activeRegionId: null,
+      focusMode: 'always-editable',
+      workbooks: [{ id: 'two-sheets', name: 'two-sheets.xlsx', sourcePath: workbookFile, activeSheetName: 'Plain', sheetNames: ['Plain', 'Outlined'] }],
+      blocks: [], regions: [],
+    },
+    data: {}, blockResults: [],
+  }), 'utf8')
+
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_IMPORT_PATH: projectPath,
+  })
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByRole('button', { name: 'Open Project' }).click()
+    const plainSheet = page.getByRole('tab', { name: 'Plain', exact: true })
+    await expect(plainSheet).toHaveAttribute('aria-selected', 'true')
+
+    await page.getByRole('button', { name: 'Show Excel outlines' }).click()
+    await expect(plainSheet).toHaveAttribute('aria-selected', 'true')
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('keeps a nested outline collapsed when its parent is expanded', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-nested-outline-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const workbookFile = resolve(directory, 'nested.xlsx')
+  const projectPath = resolve(directory, 'nested-project.json')
+  const source = new ExcelJS.Workbook()
+  const sheet = source.addWorksheet('Outline')
+  for (let row = 1; row <= 6; row += 1) sheet.getCell(`A${row}`).value = `Row ${row}`
+  sheet.getRow(2).outlineLevel = 1
+  sheet.getRow(3).outlineLevel = 2
+  sheet.getRow(4).outlineLevel = 2
+  sheet.getRow(5).outlineLevel = 1
+  sheet.getRow(3).hidden = true
+  sheet.getRow(4).hidden = true
+  await writeFile(workbookFile, Buffer.from(await source.xlsx.writeBuffer()))
+  await writeFile(projectPath, JSON.stringify({
+    version: 3,
+    exportedAt: '2026-09-02T00:00:00.000Z',
+    project: {
+      id: 'nested-project', name: 'Nested project', activeWorkbookId: 'nested', activeBlockId: '', activeRegionId: null,
+      focusMode: 'always-editable',
+      workbooks: [{ id: 'nested', name: 'nested.xlsx', sourcePath: workbookFile, activeSheetName: 'Outline', sheetNames: ['Outline'] }],
+      blocks: [], regions: [],
+    },
+    data: {}, blockResults: [],
+  }), 'utf8')
+
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_IMPORT_PATH: projectPath,
+  })
+  const outlineState = () => page.evaluate(() => (window as any).__excelBlockParserOutlineState?.() ?? {})
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByRole('button', { name: 'Open Project' }).click()
+    await expect(page.getByRole('tab', { name: 'nested.xlsx' })).toBeVisible()
+    await page.getByRole('button', { name: 'Show Excel outlines' }).click()
+    await expect.poll(outlineState).toEqual({ 'row:1': false, 'row:2': true, 'row:3': true, 'row:4': false })
+    await page.waitForTimeout(1_000)
+
+    // The outer control sits at the left edge. Its collapse and re-expand must
+    // not overwrite the nested group's collapsed state.
+    await page.mouse.click(32, 134)
+    await expect.poll(outlineState).toEqual({ 'row:1': true, 'row:2': true, 'row:3': true, 'row:4': true })
+    // The nested control is not rendered while the outer group is collapsed.
+    await page.mouse.click(46, 158)
+    await page.waitForTimeout(100)
+    await expect.poll(outlineState).toEqual({ 'row:1': true, 'row:2': true, 'row:3': true, 'row:4': true })
+    await page.mouse.click(32, 134)
+    await expect.poll(outlineState).toEqual({ 'row:1': false, 'row:2': true, 'row:3': true, 'row:4': false })
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
   }
 })
 

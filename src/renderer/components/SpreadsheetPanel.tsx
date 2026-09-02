@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Checkbox, Input, Popover, Spin, Tooltip, message, type InputRef } from 'antd'
-import { CloseOutlined, CompressOutlined, CopyOutlined, LeftOutlined, MinusSquareOutlined, PlusSquareOutlined, PushpinOutlined, RightOutlined, SearchOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Input, Spin, Tooltip, message, type InputRef } from 'antd'
+import { CloseOutlined, CompressOutlined, CopyOutlined, LeftOutlined, PushpinOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
 import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type WorkbookDisplaySettings } from '../types'
@@ -9,7 +9,7 @@ import { convertXlsxToWorkbookData, type SheetDisplaySettings, type SheetOutline
 import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
-import { workbookCacheEvictions } from '../services/workbookCachePolicy'
+import { estimateWorkbookCacheBytes, workbookCacheEvictions } from '../services/workbookCachePolicy'
 import type { WorkbookLoadRequest } from '../services/workbookRuntime'
 import { useI18n } from '../i18n'
 
@@ -50,6 +50,7 @@ interface CachedWorkbook {
   sheetNames: string[]
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
   lastUsed: number
+  estimatedBytes: number
 }
 
 interface SearchMatch extends WorkbookSearchMatch {
@@ -121,7 +122,20 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
   const workbookCacheRef = useRef<Map<string, CachedWorkbook>>(new Map())
   const cacheAccessCounterRef = useRef(0)
   const outlineCollapsedRef = useRef<Map<string, Map<string, boolean>>>(new Map())
+  const applyingDisplayModesRef = useRef(false)
   const [outlineRevision, setOutlineRevision] = useState(0)
+  // Project-driven loads are requested before the effect starts reading and
+  // converting a workbook. Treat that interval as loading too, so a large
+  // project workbook never flashes the generic open-workbook empty state.
+  const requestedWorkbookIsCached = Boolean(
+    requestedWorkbook
+    && workbookCacheRef.current.get(requestedWorkbook.workbookId)?.path === requestedWorkbook.path
+    && univerAPIRef.current?.getWorkbook(workbookCacheRef.current.get(requestedWorkbook.workbookId)?.unitId ?? ''),
+  )
+  const projectWorkbookLoading = !error
+    && !requestedWorkbookIsCached
+    && Boolean(requestedWorkbook && requestedWorkbook.workbookId !== loadedWorkbookId)
+  const canvasLoading = loading || projectWorkbookLoading
 
   const outlineStateFor = (workbookId: string, sheetName: string, group: SheetOutlineGroup): boolean => {
     let workbookStates = outlineCollapsedRef.current.get(workbookId)
@@ -142,7 +156,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     const api = univerAPIRef.current
     if (!api) return
     const evictions = workbookCacheEvictions(
-      [...workbookCacheRef.current].map(([id, cached]) => ({ id, lastUsed: cached.lastUsed })),
+      [...workbookCacheRef.current].map(([id, cached]) => ({ id, lastUsed: cached.lastUsed, estimatedBytes: cached.estimatedBytes })),
       activeId,
     )
     for (const workbookId of evictions) {
@@ -154,20 +168,37 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     }
   }
 
-  const applyDisplayModes = (workbook: any, settings: Record<string, SheetDisplaySettings>, workbookId: string) => {
+  const applyDisplayModes = (
+    workbook: any,
+    settings: Record<string, SheetDisplaySettings>,
+    workbookId: string,
+    sheetName?: string | null,
+  ) => {
     const displayModes = displayModesRef.current
-    for (const [sheetName, sheetSettings] of Object.entries(settings)) {
-      const sheet = workbook.getSheetByName(sheetName)
-      if (!sheet) continue
-      try {
-        if (displayModes.showFrozenPanes && sheetSettings.freeze) sheet.setFreeze(sheetSettings.freeze)
-        else sheet.cancelFreeze()
+    // Univer treats row/column visibility as an edit command. Temporarily allow
+    // those internal view mutations, then immediately restore our read-only
+    // browser contract before returning control to the user.
+    applyingDisplayModesRef.current = true
+    workbook.setEditable(true)
+    try {
+      const targetSettings = sheetName
+        ? settings[sheetName] ? [[sheetName, settings[sheetName]]] : []
+        : Object.entries(settings)
+      for (const [targetSheetName, sheetSettings] of targetSettings) {
+        const sheet = workbook.getSheetByName(targetSheetName)
+        if (!sheet) continue
+        try {
+          if (displayModes.showFrozenPanes && sheetSettings.freeze) sheet.setFreeze(sheetSettings.freeze)
+          else sheet.cancelFreeze()
 
-        applyOutlineGroups(sheet, sheetSettings, displayModes.showOutlines, workbookId, sheetName, outlineStateFor)
-      } catch {
-        // Display preferences are non-destructive; an individual sheet may not
-        // be ready while Univer is constructing the workbook.
+          applyOutlineGroups(sheet, sheetSettings, displayModes.showOutlines, workbookId, targetSheetName, outlineStateFor)
+        } catch (error) {
+          console.error('[SpreadsheetPanel] Unable to apply workbook display modes:', error)
+        }
       }
+    } finally {
+      workbook.setEditable(false)
+      applyingDisplayModesRef.current = false
     }
   }
 
@@ -401,8 +432,40 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     if (!api || !activeWorkbookId || loadedWorkbookId !== activeWorkbookId) return
     const cached = workbookCacheRef.current.get(activeWorkbookId)
     const workbook = cached ? api.getWorkbook(cached.unitId) : null
-    if (workbook && cached) applyDisplayModes(workbook, cached.sheetDisplaySettings, activeWorkbookId)
-  }, [activeWorkbookId, loadedWorkbookId, outlineRevision, showOutlines, showFrozenPanes])
+    if (workbook && cached) {
+      applyDisplayModes(workbook, cached.sheetDisplaySettings, activeWorkbookId, activeSheet ?? workbook.getActiveSheet()?.getSheetName())
+    }
+  }, [activeWorkbookId, activeSheet, loadedWorkbookId, outlineRevision, showOutlines, showFrozenPanes])
+
+  useEffect(() => {
+    if (!window.navigator.webdriver) return
+
+    // Native smoke tests need to verify the facade's actual visibility state,
+    // rather than merely asserting that the outline control changed its icon.
+    ;(window as Window & { __excelBlockParserOutlineState?: () => Record<string, boolean> }).__excelBlockParserOutlineState = () => {
+      const api = univerAPIRef.current
+      const workbook = api?.getActiveWorkbook()
+      if (!api || !workbook) return {}
+      const cached = [...workbookCacheRef.current.values()].find(item => item.unitId === workbook.getId())
+      const sheet = workbook.getActiveSheet()
+      const settings = cached?.sheetDisplaySettings[sheet?.getSheetName() ?? '']
+      if (!sheet || !settings) return {}
+      const rawSheet = sheet.getSheet()
+      const state: Record<string, boolean> = {}
+      for (const group of settings.outlineGroups) {
+        for (let index = group.start; index <= group.end; index += 1) {
+          const hidden = group.axis === 'row'
+            ? rawSheet.getRowManager().getRow(index)?.hd === 1
+            : rawSheet.getColumnManager().getColumn(index)?.hd === 1
+          state[`${group.axis}:${index}`] = Boolean(hidden)
+        }
+      }
+      return state
+    }
+    return () => {
+      delete (window as Window & { __excelBlockParserOutlineState?: () => Record<string, boolean> }).__excelBlockParserOutlineState
+    }
+  }, [])
 
   const tryAttachListener = (targetWorkbook: any, sourceWorkbookId: string) => {
     try {
@@ -439,6 +502,38 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
 
       commandDisposableRef.current = workbook.onCommandExecuted((command: any) => {
         const commandId = (command as any)?.id?.toLowerCase() || ''
+        const params = (command as any)?.params
+        const outlineGroupId = params?.__excelBlockParserOutlineGroupId as string | undefined
+        const visibilityChange = commandId.includes('set-specific-rows-visible')
+          ? { axis: 'row' as const, collapsed: false }
+          : commandId.includes('set-col-visible-on-cols')
+            ? { axis: 'column' as const, collapsed: false }
+            : commandId.includes('set-rows-hidden')
+              ? { axis: 'row' as const, collapsed: true }
+              : commandId.includes('set-col-hidden')
+                ? { axis: 'column' as const, collapsed: true }
+                : null
+        const axis = visibilityChange?.axis ?? null
+        if (axis && !applyingDisplayModesRef.current) {
+          const sheet = params?.subUnitId ? workbook.getSheetBySheetId(params.subUnitId) : workbook.getActiveSheet()
+          const sheetName = sheet?.getSheetName()
+          const cached = workbookCacheRef.current.get(sourceWorkbookId)
+          const ranges = Array.isArray(params?.ranges) ? params.ranges : []
+          const groups = sheetName ? cached?.sheetDisplaySettings[sheetName]?.outlineGroups ?? [] : []
+          let changed = false
+          for (const group of groups) {
+            if (group.axis !== axis) continue
+            if (outlineGroupId && group.id !== outlineGroupId) continue
+            const overlaps = ranges.some((range: any) => axis === 'row'
+              ? rangesOverlap(group.start, group.end, range.startRow, range.endRow)
+              : rangesOverlap(group.start, group.end, range.startColumn, range.endColumn))
+            if (!overlaps) continue
+            outlineStateFor(sourceWorkbookId, sheetName!, group)
+            outlineCollapsedRef.current.get(sourceWorkbookId)?.set(`${sheetName}:${group.id}`, visibilityChange!.collapsed)
+            changed = true
+          }
+          if (changed) setOutlineRevision((revision) => revision + 1)
+        }
         if (commandId.includes('set-worksheet-active') || commandId.includes('set-worksheet-activate')) {
           const sheetName = workbook.getActiveSheet()?.getSheetName() ?? null
           onActiveSheetChangeRef.current(sourceWorkbookId, sheetName)
@@ -458,14 +553,38 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
       setError(t('workbook.containerUnavailable'))
       return
     }
+    let allowNativeCanvasViewAction: (() => void) | null = null
 
     try {
       initializedRef.current = true
 
       const { univerAPI: api } = setupUniver(containerRef.current, initialLocaleRef.current)
 
+      // Univer's header-unhide shapes invoke their command during pointer down,
+      // after its permission controller has already been installed. Briefly
+      // enable the workbook for that canvas interaction, then restore the
+      // browser's read-only state. The command guard below still rejects edits.
+      allowNativeCanvasViewAction = () => {
+        const workbook = univerAPIRef.current?.getActiveWorkbook()
+        if (!workbook) return
+        workbook.setEditable(true)
+        window.setTimeout(() => workbook.setEditable(false), 0)
+      }
+      containerRef.current.addEventListener('pointerdown', allowNativeCanvasViewAction, true)
+
       api.addEvent(api.Event.BeforeCommandExecute, (event) => {
         const eid = event.id.toLowerCase()
+        // Univer's native hidden-range marker executes one of these commands.
+        // Permit only that view operation while keeping all workbook edits blocked.
+        if (eid.includes('set-specific-rows-visible') || eid.includes('set-col-visible-on-cols') ||
+            eid.includes('set-rows-hidden') || eid.includes('set-col-hidden')) {
+          const target = (event as any).params?.unitId
+            ? univerAPIRef.current?.getWorkbook((event as any).params.unitId)
+            : univerAPIRef.current?.getActiveWorkbook()
+          target?.setEditable(true)
+          window.setTimeout(() => target?.setEditable(false), 0)
+          return
+        }
         if (eid.includes('edit') || eid.includes('clear') || eid.includes('delete') ||
             eid.includes('paste') || eid.includes('set-range') || eid.includes('setcell') ||
             eid.includes('fill') || eid.includes('drag') || eid.includes('resize') ||
@@ -519,6 +638,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     }
 
     return () => {
+      if (allowNativeCanvasViewAction) containerRef.current?.removeEventListener('pointerdown', allowNativeCanvasViewAction, true)
       selectionDisposableRef.current?.dispose()
       commandDisposableRef.current?.dispose()
       renameObserverRef.current?.disconnect()
@@ -611,9 +731,15 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
           sheetNames: loadedSheetNames,
           sheetDisplaySettings,
           lastUsed: ++cacheAccessCounterRef.current,
+          estimatedBytes: estimateWorkbookCacheBytes(arrayBuffer.byteLength, workbookData),
         })
         releaseExcessCachedWorkbooks(sourceWorkbookId)
-        applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId)
+        applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId, newWorkbook.getActiveSheet()?.getSheetName())
+        // Univer can complete its first sheet skeleton after createWorkbook.
+        // Reapply the view-only outline state on the next frame so a large
+        // imported workbook does not require a manual refresh before its group
+        // controls take effect.
+        window.requestAnimationFrame(() => applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId, newWorkbook.getActiveSheet()?.getSheetName()))
         setHasFile(true)
         onFileLoaded(sourceWorkbookId, fileName, filePath, loadedSheetNames, sheetTabColors, loadedActiveSheetName)
         onLoadedWorkbookChange(sourceWorkbookId)
@@ -671,39 +797,6 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
     setError(null)
   }, [closeSignal, setSheetNames])
 
-  const activeOutlineSheetName = (() => {
-    if (!activeWorkbookId || activeWorkbookId !== loadedWorkbookId) return null
-    const cached = workbookCacheRef.current.get(activeWorkbookId)
-    return activeSheet ?? cached?.sheetNames[0] ?? null
-  })()
-
-  const activeOutlineGroups = activeWorkbookId && activeOutlineSheetName
-    ? workbookCacheRef.current.get(activeWorkbookId)?.sheetDisplaySettings[activeOutlineSheetName]?.outlineGroups ?? []
-    : []
-
-  const toggleOutlineGroup = (group: SheetOutlineGroup) => {
-    if (!activeWorkbookId || !activeOutlineSheetName) return
-    const current = outlineStateFor(activeWorkbookId, activeOutlineSheetName, group)
-    outlineCollapsedRef.current.get(activeWorkbookId)?.set(`${activeOutlineSheetName}:${group.id}`, !current)
-    setOutlineRevision(version => version + 1)
-  }
-
-  const outlineGroupsContent = activeOutlineGroups.length > 0 && activeWorkbookId && activeOutlineSheetName ? (
-    <div className="workbook-outline-groups" aria-label={t('workbook.outlineGroups')}>
-      {activeOutlineGroups.map(group => {
-        const collapsed = outlineStateFor(activeWorkbookId, activeOutlineSheetName, group)
-        const rangeLabel = group.axis === 'row'
-          ? t('workbook.outlineRows', { start: group.start + 1, end: group.end + 1 })
-          : t('workbook.outlineColumns', { start: colToA1(group.start), end: colToA1(group.end) })
-        return <Button key={group.id} className="workbook-outline-group" size="small" type="text"
-          icon={collapsed ? <PlusSquareOutlined /> : <MinusSquareOutlined />}
-          onClick={() => toggleOutlineGroup(group)}>
-          <span className="workbook-outline-level">{group.level}</span>{rangeLabel}
-        </Button>
-      })}
-    </div>
-  ) : <div className="workbook-outline-groups-empty">{t('workbook.noOutlineGroups')}</div>
-
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
@@ -718,11 +811,6 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
           <Tooltip title={t('workbook.showOutlines')}>
             <Button aria-label={t('workbook.showOutlines')} aria-pressed={showOutlines} type="text" size="small" className={showOutlines ? 'is-active' : ''} icon={<CompressOutlined />} onClick={() => onDisplaySettingsChange({ ...displaySettings, showOutlines: !showOutlines })} />
           </Tooltip>
-          <Popover content={outlineGroupsContent} trigger="click" placement="bottomRight">
-            <Tooltip title={t('workbook.outlineGroups')}>
-              <Button aria-label={t('workbook.outlineGroups')} type="text" size="small" icon={<UnorderedListOutlined />} disabled={!showOutlines || activeOutlineGroups.length === 0} />
-            </Tooltip>
-          </Popover>
           <Tooltip title={t('workbook.showFrozenPanes')}>
             <Button aria-label={t('workbook.showFrozenPanes')} aria-pressed={showFrozenPanes} type="text" size="small" className={showFrozenPanes ? 'is-active' : ''} icon={<PushpinOutlined />} onClick={() => onDisplaySettingsChange({ ...displaySettings, showFrozenPanes: !showFrozenPanes })} />
           </Tooltip>
@@ -758,7 +846,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
           </div>
         </div>, document.body,
       )}
-      {!hasFile && !error && !loading && (
+      {!hasFile && !error && !canvasLoading && (
         <div className="workbook-empty-state">
           <div className="workbook-empty-icon">XLSX</div>
           <strong>{t('workbook.openBegin')}</strong>
@@ -766,9 +854,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, displaySetting
           <Button type="primary" onClick={onOpenWorkbook}>{t('workbook.open')}</Button>
         </div>
       )}
-      {loading && (
+      {canvasLoading && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(255,255,255,0.8)' }}>
-          <Spin size="large" />
+          <Spin size="large" tip={t('common.loading')} />
         </div>
       )}
       {error && (
@@ -824,6 +912,10 @@ function colToA1(col: number): string {
   return letter
 }
 
+function rangesOverlap(start: number, end: number, otherStart: number, otherEnd: number): boolean {
+  return start <= otherEnd && otherStart <= end
+}
+
 function applyOutlineGroups(
   sheet: any,
   settings: SheetDisplaySettings,
@@ -832,6 +924,16 @@ function applyOutlineGroups(
   sheetName: string,
   stateFor: (workbookId: string, sheetName: string, group: SheetOutlineGroup) => boolean,
 ) {
+  // This metadata is consumed by the local Univer table-header patch. It keeps
+  // every imported group available as a persistent native canvas control,
+  // including groups that currently start expanded.
+  sheet.getSheet().__excelBlockParserOutlineGroups = {
+    enabled: showOutlines,
+    groups: settings.outlineGroups.map(group => ({
+      ...group,
+      collapsed: showOutlines && stateFor(workbookId, sheetName, group),
+    })),
+  }
   for (const axis of ['row', 'column'] as const) {
     const groups = settings.outlineGroups.filter(group => group.axis === axis)
     if (groups.length === 0) {

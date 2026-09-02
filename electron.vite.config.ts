@@ -16,6 +16,11 @@ export default defineConfig({
     define: {
       'import.meta.env.APP_VERSION': JSON.stringify(appVersion),
     },
+    // Univer is locally patched after installation. Its optimized dependency
+    // bundle otherwise outlives the patched source during `npm run dev`.
+    optimizeDeps: {
+      force: true,
+    },
     resolve: {
       alias: {
         '@': resolve('src/renderer'),

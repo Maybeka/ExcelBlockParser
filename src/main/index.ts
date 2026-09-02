@@ -2,9 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { isSupportedWorkbookPath, MAX_PROJECT_BYTES, MAX_WORKBOOK_BYTES, sanitizeJsonFileName, withTimeout } from './fileSafety'
+import { WindowCloseGuard } from './windowCloseGuard'
 
 let mainWindow: BrowserWindow | null = null
+const mainWindowCloseGuard = new WindowCloseGuard()
 let previewWindow: BrowserWindow | null = null
+let isQuitting = false
 const previewDataStore = new Map<string, unknown>()
 const approvedWorkbookPaths = new Set<string>()
 const approvedWorkbookAliases = new Map<string, string>()
@@ -69,6 +72,7 @@ async function authorizeProjectSources(content: string, projectPath?: string): P
 }
 
 function createWindow(): void {
+  mainWindowCloseGuard.reset()
   mainWindow = new BrowserWindow({
     frame: false,
     width: 1400,
@@ -92,6 +96,23 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  mainWindow.on('close', (event) => {
+    if (!mainWindowCloseGuard.shouldPrompt) return
+    event.preventDefault()
+    if (mainWindow && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('window:close-requested')
+    }
+  })
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    mainWindowCloseGuard.reset()
+    if (previewWindow) {
+      previewWindow.close()
+      previewWindow = null
+    }
+  })
 }
 
 ipcMain.handle('log', (_event, level: string, ...args: unknown[]) => {
@@ -116,6 +137,12 @@ ipcMain.handle('window:toggleMaximize', (event) => {
 
 ipcMain.handle('window:close', (event) => {
   assertMainWindowSender(event)
+  mainWindow?.close()
+})
+
+ipcMain.handle('window:confirm-close', (event) => {
+  assertMainWindowSender(event)
+  mainWindowCloseGuard.confirm()
   mainWindow?.close()
 })
 
@@ -289,11 +316,16 @@ app.whenReady().then(() => {
   createWindow()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (isQuitting || BrowserWindow.getAllWindows().length > 0) return
+    createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
 })
 
 app.on('window-all-closed', () => {
   if (previewWindow) previewWindow.close()
-  if (process.platform !== 'darwin') app.quit()
+  app.quit()
 })

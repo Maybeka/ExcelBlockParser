@@ -27,12 +27,22 @@ export async function launchElectronApp(
   return { app, page }
 }
 
+export function waitForElectronExit(app: ElectronApplication, timeoutMs = 8000): Promise<void> {
+  const child = app.process()
+  if (!child || child.exitCode !== null) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Electron process did not exit')), timeoutMs)
+    child.once('exit', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+}
+
 export async function closeElectronApp(app: ElectronApplication, page: Page): Promise<void> {
-  await page.evaluate(() => {
-    window.addEventListener('beforeunload', event => {
-      event.stopImmediatePropagation()
-    }, true)
-  }).catch(() => undefined)
+  // The app owns its close confirmation in the renderer. Bypass that prompt
+  // during test teardown so every Electron child exits deterministically.
+  await page.evaluate(() => (window as any).electronAPI?.confirmCloseWindow?.()).catch(() => undefined)
   const child = app.process()
   try {
     await Promise.race([
