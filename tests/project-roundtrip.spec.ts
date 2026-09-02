@@ -35,7 +35,7 @@ test('saves a project and reopens its own exported JSON', async ({ page }) => {
   await page.getByRole('button', { name: 'Open Project' }).click()
   const confirmation = page.getByRole('dialog', { name: 'Open another project?' })
   await expect(confirmation).toBeVisible()
-  await confirmation.getByRole('button', { name: 'Open Project' }).click()
+  await confirmation.getByRole('button', { name: 'Discard and open' }).click()
 
   await page.getByRole('button', { name: 'Project actions' }).click()
   await page.getByRole('menuitem', { name: 'Project settings' }).click()
