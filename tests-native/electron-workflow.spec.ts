@@ -2,7 +2,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { access, copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { closeElectronApp, launchElectronApp } from './electronLaunch'
+import { closeElectronApp, launchElectronApp, waitForElectronExit } from './electronLaunch'
 
 const root = process.cwd()
 const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
@@ -177,12 +177,92 @@ test.describe('Electron native workflow', () => {
       await page.getByRole('menuitem', { name: 'Close Project' }).click()
       const confirmation = page.getByRole('dialog', { name: 'Close project?' })
       await expect(confirmation.getByText('Unsaved project changes will be discarded.')).toBeVisible()
-      await confirmation.getByRole('button', { name: 'Close Project' }).click()
+      await confirmation.getByRole('button', { name: 'Discard and close' }).click()
       await expect(confirmation).toBeHidden()
       await expect(page.getByRole('tab', { name: 'test_data.xlsx' })).toBeHidden()
       await page.getByRole('button', { name: 'Project actions' }).click()
       await expect(page.getByRole('menuitem', { name: 'Close Project' })).toHaveAttribute('aria-disabled', 'true')
-      await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
+    } finally {
+      await closeElectronApp(app, page)
+    }
+  })
+
+  test('confirms before closing the application with unsaved project changes', async () => {
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath })
+    try {
+      await addWorkbookSource(page, 'test_data.xlsx')
+      await page.locator('.window-control-close').click()
+      const confirmation = page.getByRole('dialog', { name: 'Close application?' })
+      await expect(confirmation).toBeVisible()
+      await confirmation.getByRole('button', { name: 'Cancel' }).click()
+      await expect(confirmation).toBeHidden()
+      await expect(page.getByText('Excel Block Parser')).toBeVisible()
+      await page.locator('.window-control-close').click()
+      await expect(confirmation).toBeVisible()
+      const closed = page.waitForEvent('close')
+      await confirmation.getByRole('button', { name: 'Discard and close' }).click().catch(() => undefined)
+      await closed
+    } finally {
+      await closeElectronApp(app, page)
+    }
+  })
+
+  test('quits after discard and still prompts when a new launch recovers the workspace', async () => {
+    const first = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath })
+    try {
+      await addWorkbookSource(first.page, 'test_data.xlsx')
+      await expect.poll(async () => {
+        const result = await first.page.evaluate(async () => (window as any).electronAPI.loadRecovery())
+        return result?.status === 'ok' && Boolean(result.value)
+      }).toBe(true)
+
+      await first.page.locator('.window-control-close').click()
+      const confirmation = first.page.getByRole('dialog', { name: 'Close application?' })
+      await expect(confirmation).toBeVisible()
+      const closed = first.page.waitForEvent('close')
+      const exited = waitForElectronExit(first.app)
+      await confirmation.getByRole('button', { name: 'Discard and close' }).click().catch(() => undefined)
+      await closed
+      await exited
+    } catch (error) {
+      await closeElectronApp(first.app, first.page)
+      throw error
+    }
+
+    const second = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath }, true)
+    try {
+      const recoveryDialog = second.page.getByRole('dialog', { name: 'Recover unsaved workspace?' })
+      await expect(recoveryDialog).toBeVisible()
+      await recoveryDialog.getByRole('button', { name: 'Recover' }).click()
+      const settings = second.page.getByRole('dialog', { name: 'Project settings' })
+      await second.page.waitForTimeout(150)
+      if (await settings.isVisible().catch(() => false)) {
+        await settings.getByRole('button', { name: 'Done' }).click()
+      }
+
+      await second.page.locator('.window-control-close').click()
+      const secondConfirmation = second.page.getByRole('dialog', { name: 'Close application?' })
+      await expect(secondConfirmation).toBeVisible()
+      await secondConfirmation.getByRole('button', { name: 'Cancel' }).click()
+    } finally {
+      await closeElectronApp(second.app, second.page)
+    }
+  })
+
+  test('confirms before opening a new project file', async () => {
+    const { app, page } = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath, ELECTRON_E2E_IMPORT_PATH: projectFixturePath })
+    try {
+      await addWorkbookSource(page, 'test_data.xlsx')
+      await page.getByRole('button', { name: 'Open Project' }).click()
+      const confirmation = page.getByRole('dialog', { name: 'Open another project?' })
+      await expect(confirmation).toBeVisible()
+      await confirmation.getByRole('button', { name: 'Cancel' }).click()
+      await expect(confirmation).toBeHidden()
+      await expect(page.getByRole('tab', { name: 'test_data.xlsx' })).toBeVisible()
+
+      await page.getByRole('button', { name: 'Open Project' }).click()
+      await confirmation.getByRole('button', { name: 'Discard and open' }).click()
+      await expect(page.getByRole('dialog', { name: 'Project settings' })).toBeVisible()
     } finally {
       await closeElectronApp(app, page)
     }
@@ -402,6 +482,41 @@ test.describe('Electron native workflow', () => {
       await settings.getByRole('button', { name: 'Reassign' }).click()
       await settings.getByRole('button', { name: 'Done' }).click()
       await expect(second.page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
+      await second.page.evaluate(async () => (window as any).electronAPI.clearRecovery())
+    } finally {
+      await closeElectronApp(second.app, second.page)
+    }
+  })
+
+  test('treats a recovered workspace as unsaved before closing the application', async () => {
+    const recovery = await readFile(projectFixturePath, 'utf8')
+    const first = await launch()
+    try {
+      await first.page.evaluate(async (content) => {
+        const api = (window as any).electronAPI
+        await api.clearRecovery()
+        await api.saveRecovery(content)
+      }, recovery)
+    } finally {
+      await closeElectronApp(first.app, first.page)
+    }
+
+    const second = await launch({ ELECTRON_E2E_OPEN_PATH: workbookPath }, true)
+    try {
+      const recoveryDialog = second.page.getByRole('dialog', { name: 'Recover unsaved workspace?' })
+      await expect(recoveryDialog).toBeVisible()
+      await recoveryDialog.getByRole('button', { name: 'Recover' }).click()
+      const settings = second.page.getByRole('dialog', { name: 'Project settings' })
+      await expect(settings.getByText('Unavailable', { exact: true })).toBeVisible()
+      await settings.getByRole('button', { name: 'Reassign' }).click()
+      await settings.getByRole('button', { name: 'Done' }).click()
+      await expect(second.page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
+
+      await second.page.locator('.window-control-close').click()
+      const confirmation = second.page.getByRole('dialog', { name: 'Close application?' })
+      await expect(confirmation).toBeVisible()
+      await expect(confirmation.getByRole('button', { name: 'Discard and close' })).toBeVisible()
+      await confirmation.getByRole('button', { name: 'Cancel' }).click()
       await second.page.evaluate(async () => (window as any).electronAPI.clearRecovery())
     } finally {
       await closeElectronApp(second.app, second.page)

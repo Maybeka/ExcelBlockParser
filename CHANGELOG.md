@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.2 - 2026-09-03
+
+- Confirmed unsaved project changes before closing the application, with
+  discard, save, or cancel. A recovered workspace stays unsaved until the user
+  writes a project file.
+- Quit the process after that confirmation on macOS as well, matching Wails
+  production instead of leaving a Dock-resident empty session.
+- Replaced the two-workbook Univer cache cap with an estimated 384 MiB data
+  budget so several small workbooks can stay warm without retaining unbounded
+  large sheets.
+- Reapplied Excel outline groups after canvas layout, surfaced a refresh action
+  when the outline view cannot be applied, and patched Univer nested-outline
+  rendering for Electron development.
+
 ## 1.7.1 - 2026-09-01
 
 - Added a temporary Excel browser mode that hides workspace navigation and

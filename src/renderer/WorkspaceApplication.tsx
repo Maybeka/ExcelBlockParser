@@ -60,6 +60,8 @@ interface PendingSourceConfirmation {
   resolve: (response: ProjectExecutionResponse) => void
 }
 
+type PendingExitAction = 'open' | 'close' | 'quit'
+
 export function WorkspaceApplication() {
   const { locale, setLocale, t } = useI18n()
   const appVersion = import.meta.env.APP_VERSION ?? 'development'
@@ -77,12 +79,10 @@ export function WorkspaceApplication() {
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null)
   const [pendingSaveAs, setPendingSaveAs] = useState(false)
   const [activeColIndex, setActiveColIndex] = useState<number | null>(null)
-  const [showImportWarning, setShowImportWarning] = useState(false)
   const [pendingProjectReset, setPendingProjectReset] = useState<'new' | 'close' | null>(null)
-  const [pendingImportContent, setPendingImportContent] = useState<string | null>(null)
+  const [pendingExitAction, setPendingExitAction] = useState<PendingExitAction | null>(null)
+  const [pendingExitAfterSave, setPendingExitAfterSave] = useState<PendingExitAction | null>(null)
   const [featurePanelPrototypeSearch, setFeaturePanelPrototypeSearch] = useState(() => window.location.search)
-  const [pendingImportProjectName, setPendingImportProjectName] = useState<string | null>(null)
-  const [pendingImportProjectPath, setPendingImportProjectPath] = useState<string | null>(null)
   const [reconcilingItem, setReconcilingItem] = useState<WorkspaceReconciliationItem | null>(null)
   const reconcilingItemRef = useRef(reconcilingItem)
   reconcilingItemRef.current = reconcilingItem
@@ -229,7 +229,12 @@ export function WorkspaceApplication() {
     setHistoryVersion(version => version + 1)
   }, [restoreWorkspace, workspaceSnapshot])
 
-  const applyImportContent = useCallback((content: string, projectName?: string | null, projectPath?: string | null) => {
+  const applyImportContent = useCallback((
+    content: string,
+    projectName?: string | null,
+    projectPath?: string | null,
+    restoredFromRecovery = false,
+  ) => {
     const decoded = decodeProjectDocument(content, projectPath ?? null)
     if (decoded.status === 'error') { setImportError(decoded.message); return }
     const importedProject = projectName ? { ...decoded.document.project, name: projectName } : decoded.document.project
@@ -244,7 +249,8 @@ export function WorkspaceApplication() {
 
     historyRef.current.reset()
     setHistoryVersion(version => version + 1)
-    setHasUnsavedChanges(false)
+    // A recovered workspace has not been persisted as the user's active project.
+    setHasUnsavedChanges(restoredFromRecovery)
 
     void (async () => {
       const availability = await inspectProjectWorkbookSources(
@@ -341,7 +347,19 @@ export function WorkspaceApplication() {
   }, [successNotice])
 
   useEffect(() => {
-    if (e2eMode || automatedSession || !hasUnsavedChanges) return
+    const bridge = getBridge()
+    if (!bridge.onCloseRequested || !bridge.confirmCloseWindow) return
+    return bridge.onCloseRequested(() => {
+      if (hasUnsavedChanges) {
+        setPendingExitAction('quit')
+        return
+      }
+      void bridge.confirmCloseWindow()
+    })
+  }, [hasUnsavedChanges])
+
+  useEffect(() => {
+    if (window.electronAPI || e2eMode || automatedSession || !hasUnsavedChanges) return
     const confirmClose = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue = ''
@@ -568,7 +586,7 @@ export function WorkspaceApplication() {
   const handleParse = useCallback(() => { void runProjectExtraction(true) }, [runProjectExtraction])
   const preparePythonInput = useCallback(() => runProjectExtraction(false), [runProjectExtraction])
 
-  const saveProjectToDisk = useCallback(async (saveAs: boolean) => {
+  const saveProjectToDisk = useCallback(async (saveAs: boolean): Promise<boolean> => {
     try {
       const projectForSave = await builtInFeatureRegistry.captureForSave(projectRef.current, projectRef.current.activeWorkbookId, spreadsheet)
       const result = await saveProjectDocument(
@@ -583,13 +601,16 @@ export function WorkspaceApplication() {
         historyRef.current.markSaved()
         void getBridge().clearRecovery()
         showSuccessNotice(t('project.saved', { name: result.project.name }), 1800)
+        return true
       } else if (result.status === 'error') {
         message.error(result.message || t('project.saveFailedRecovery'))
         console.error('Save failed:', result.message)
       }
+      return false
     } catch (err) {
       message.error(t('project.saveFailed', { message: err instanceof Error ? err.message : String(err) }))
       console.error('Save failed:', err)
+      return false
     }
   }, [parseResult, projectFilePath, showSuccessNotice, spreadsheet])
 
@@ -606,7 +627,7 @@ export function WorkspaceApplication() {
     await saveProjectRef.current(saveAs)
   }, [])
 
-  const handleImportConfig = useCallback(async () => {
+  const openProjectPicker = useCallback(async () => {
     setImportError(null)
     try {
       const result = await getBridge().openJson()
@@ -619,21 +640,22 @@ export function WorkspaceApplication() {
       const decoded = decodeProjectDocument(result.value.content, result.value.filePath)
       if (decoded.status === 'error') { setImportError(decoded.message); return }
 
-      if (projectFilePath || projectRef.current.workbooks.length > 0 || hasUnsavedChanges) {
-        setPendingImportContent(result.value.content)
-        setPendingImportProjectName(decoded.document.project.name)
-        setPendingImportProjectPath(result.value.filePath)
-        setShowImportWarning(true)
-      } else {
-        applyImportContent(result.value.content, decoded.document.project.name, result.value.filePath)
-      }
+      applyImportContent(result.value.content, decoded.document.project.name, result.value.filePath)
     } catch (err) {
       const detail = err instanceof SyntaxError ? err.message : String(err)
       const prefix = err instanceof SyntaxError ? 'Invalid config file' : 'Unable to import config'
       setImportError(`${prefix}: ${detail}`)
       console.error('Import failed:', err)
     }
-  }, [applyImportContent, hasUnsavedChanges, projectFilePath])
+  }, [applyImportContent])
+
+  const handleImportConfig = useCallback(() => {
+    if (projectFilePath || projectRef.current.workbooks.length > 0 || hasUnsavedChanges) {
+      setPendingExitAction('open')
+      return
+    }
+    void openProjectPicker()
+  }, [hasUnsavedChanges, openProjectPicker, projectFilePath])
 
   const handleValidateProjectJson = useCallback(async () => {
     try {
@@ -655,16 +677,6 @@ export function WorkspaceApplication() {
     }
   }, [])
 
-  const handleConfirmImport = useCallback(() => {
-    if (pendingImportContent) {
-      applyImportContent(pendingImportContent, pendingImportProjectName, pendingImportProjectPath)
-    }
-    setShowImportWarning(false)
-    setPendingImportContent(null)
-    setPendingImportProjectName(null)
-    setPendingImportProjectPath(null)
-  }, [pendingImportContent, pendingImportProjectName, pendingImportProjectPath])
-
   const resetProject = useCallback((openSettings = false) => {
     setProject(builtInFeatureRegistry.initialize(createProject()))
     setProjectFilePath(null)
@@ -681,10 +693,6 @@ export function WorkspaceApplication() {
     setPendingProjectRemoval(null)
     setImportError(null)
     setValidationErrors(null)
-    setPendingImportContent(null)
-    setPendingImportProjectName(null)
-    setPendingImportProjectPath(null)
-    setShowImportWarning(false)
     setDiagnosticsOpen(false)
     setHasUnsavedChanges(false)
     historyRef.current.reset()
@@ -694,12 +702,40 @@ export function WorkspaceApplication() {
   }, [updateWorkbookRuntime])
 
   const requestProjectReset = useCallback((action: 'new' | 'close') => {
+    if (action === 'close') {
+      if (projectFilePath || projectRef.current.workbooks.length > 0 || hasUnsavedChanges) setPendingExitAction('close')
+      else resetProject(false)
+      return
+    }
     if (projectFilePath || projectRef.current.workbooks.length > 0 || hasUnsavedChanges) {
       setPendingProjectReset(action)
       return
     }
     resetProject(action === 'new')
   }, [hasUnsavedChanges, projectFilePath, resetProject])
+
+  const completeExitAction = useCallback((action: PendingExitAction) => {
+    if (action === 'open') {
+      void openProjectPicker()
+      return
+    }
+    if (action === 'close') {
+      resetProject(false)
+      return
+    }
+    void getBridge().confirmCloseWindow?.()
+  }, [openProjectPicker, resetProject])
+
+  const saveAndCompleteExit = useCallback(async (action: PendingExitAction) => {
+    const errors = builtInFeatureRegistry.validate(projectRef.current)
+    if (errors.length > 0) {
+      setPendingExitAfterSave(action)
+      setPendingSaveAs(false)
+      setValidationErrors(errors)
+      return
+    }
+    if (await saveProjectRef.current(false)) completeExitAction(action)
+  }, [completeExitAction])
 
   const { token } = theme.useToken()
 
@@ -1124,34 +1160,44 @@ export function WorkspaceApplication() {
         )}
       </Modal>
       <Modal
-        title={t('dialog.openProject.title')}
-        open={showImportWarning}
-        onCancel={() => { setShowImportWarning(false); setPendingImportContent(null); setPendingImportProjectName(null); setPendingImportProjectPath(null) }}
-        onOk={handleConfirmImport}
-        okText={t('project.open')}
-        okButtonProps={{ danger: true }}
-        cancelText={t('common.cancel')}
-      >
-        <p>
-          {t('dialog.openProject.body')}
-        </p>
-        <p>{t('dialog.irreversible')}</p>
-      </Modal>
-      <Modal
-        title={pendingProjectReset === 'new' ? t('dialog.newProject.title') : t('dialog.closeProject.title')}
-        open={pendingProjectReset !== null}
+        title={t('dialog.newProject.title')}
+        open={pendingProjectReset === 'new'}
         onCancel={() => setPendingProjectReset(null)}
         onOk={() => {
           const action = pendingProjectReset
           setPendingProjectReset(null)
           if (action) resetProject(action === 'new')
         }}
-        okText={pendingProjectReset === 'new' ? t('project.new') : t('project.close')}
-        okButtonProps={{ danger: pendingProjectReset === 'close' }}
+        okText={t('project.new')}
         cancelText={t('common.cancel')}
       >
-        <p>{pendingProjectReset === 'new'
-          ? t('dialog.newProject.body') : t('dialog.closeProject.body')}</p>
+        <p>{t('dialog.newProject.body')}</p>
+        {hasUnsavedChanges && <p>{t('dialog.unsavedDiscarded')}</p>}
+      </Modal>
+      <Modal
+        title={pendingExitAction === 'open'
+          ? t('dialog.openProject.title')
+          : pendingExitAction === 'close' ? t('dialog.closeProject.title') : t('dialog.closeApplication.title')}
+        open={pendingExitAction !== null}
+        zIndex={1401}
+        onCancel={() => setPendingExitAction(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setPendingExitAction(null)}>{t('common.cancel')}</Button>,
+          <Button key="discard" danger onClick={() => {
+            const action = pendingExitAction
+            setPendingExitAction(null)
+            if (action) completeExitAction(action)
+          }}>{pendingExitAction === 'open' ? t('dialog.discardOpen') : t('dialog.discardClose')}</Button>,
+          <Button key="save" type="primary" onClick={() => {
+            const action = pendingExitAction
+            setPendingExitAction(null)
+            if (action) void saveAndCompleteExit(action)
+          }}>{pendingExitAction === 'open' ? t('dialog.saveOpen') : t('dialog.saveClose')}</Button>,
+        ]}
+      >
+        <p>{pendingExitAction === 'open'
+          ? t('dialog.openProject.body')
+          : pendingExitAction === 'close' ? t('dialog.closeProject.body') : t('dialog.closeApplication.body')}</p>
         {hasUnsavedChanges && <p>{t('dialog.unsavedDiscarded')}</p>}
       </Modal>
       <Modal
@@ -1213,7 +1259,7 @@ export function WorkspaceApplication() {
         okText={t('dialog.recover')}
         cancelText={t('dialog.discard')}
         onOk={() => {
-          if (recoveryContent) applyImportContent(recoveryContent)
+          if (recoveryContent) applyImportContent(recoveryContent, null, null, true)
           setRecoveryContent(null)
         }}
         onCancel={() => {
@@ -1227,8 +1273,15 @@ export function WorkspaceApplication() {
       <Modal
         title={t('dialog.validation')}
         open={validationErrors !== null}
-        onCancel={() => setValidationErrors(null)}
-        onOk={() => { setValidationErrors(null); void saveProjectRef.current(pendingSaveAs) }}
+        onCancel={() => { setValidationErrors(null); setPendingExitAfterSave(null) }}
+        onOk={() => {
+          const exitAction = pendingExitAfterSave
+          setValidationErrors(null)
+          setPendingExitAfterSave(null)
+          void saveProjectRef.current(pendingSaveAs).then(saved => {
+            if (saved && exitAction) completeExitAction(exitAction)
+          })
+        }}
         okText={t('dialog.saveAnyway')}
         cancelText={t('common.cancel')}
       >

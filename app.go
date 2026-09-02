@@ -43,6 +43,13 @@ func (a *App) startup(ctx context.Context) {
 	a.recoveryDir = filepath.Join(baseDir, "Excel Block Parser")
 }
 
+// Quit closes the Wails application from the renderer-owned title bar. Keeping
+// this as a bound method avoids relying on the optional window.runtime global,
+// which is not present in every Wails/WebView2 startup path.
+func (a *App) Quit() {
+	runtime.Quit(a.ctx)
+}
+
 func (a *App) authorizeProjectSources(content, projectPath string) {
 	var document struct {
 		Version int `json:"version"`

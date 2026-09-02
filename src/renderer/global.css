@@ -188,10 +188,6 @@ html, body, #root {
 .workbook-readonly-tools { align-items: center; display: flex; gap: 2px; }
 .workbook-readonly-tools .ant-btn.is-active { background: var(--m3-secondary-container); color: var(--fluent-accent); }
 .workbook-readonly-tools .ant-btn { color: var(--fluent-accent); }
-.workbook-outline-groups { display: flex; flex-direction: column; min-width: 164px; padding: 2px; }
-.workbook-outline-groups-empty { color: var(--fluent-text-muted); font-size: 12px; padding: 8px; }
-.workbook-outline-group.ant-btn { height: 28px; justify-content: flex-start; padding-inline: 6px; text-align: left; width: 100%; }
-.workbook-outline-level { align-items: center; background: var(--m3-secondary-container); border-radius: 50%; color: var(--fluent-accent); display: inline-flex; font-size: 10px; font-weight: 700; height: 16px; justify-content: center; margin-right: 5px; min-width: 16px; }
 .json-validation-report { display: flex; flex-direction: column; gap: 12px; }
 .json-validation-report > strong { color: var(--fluent-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .json-validation-errors { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; white-space: pre-wrap; }

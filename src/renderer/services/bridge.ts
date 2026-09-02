@@ -22,6 +22,8 @@ export interface BridgeAPI {
   minimizeWindow: () => Promise<void>
   toggleWindowMaximize: () => Promise<boolean>
   closeWindow: () => Promise<void>
+  confirmCloseWindow?: () => Promise<void>
+  onCloseRequested?: (callback: () => void) => () => void
   log: (level: string, ...args: unknown[]) => void
   openPreviewWindow: (blockId: string) => Promise<void>
   setPreviewData: (blockId: string, data: unknown) => Promise<void>
@@ -46,6 +48,7 @@ export interface WailsGoAPI {
       SaveRecovery: (data: string) => Promise<void>
       LoadRecovery: () => Promise<string | null>
       ClearRecovery: () => Promise<void>
+      Quit?: () => Promise<void>
       OpenPreviewWindow: (blockId: string) => Promise<void>
       SetPreviewData: (blockId: string, data: unknown) => Promise<void>
       GetPreviewData: (blockId: string) => Promise<unknown>
@@ -134,7 +137,13 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     clearRecovery: async () => { try { await App.ClearRecovery(); return bridgeOk(undefined) } catch (error) { return bridgeError(error) } },
     minimizeWindow: async () => { runtime?.WindowMinimise?.() },
     toggleWindowMaximize: async () => { runtime?.WindowToggleMaximise?.(); return false },
-    closeWindow: async () => { runtime?.Quit?.() },
+    closeWindow: async () => {
+      if (typeof App.Quit === 'function') {
+        await App.Quit()
+        return
+      }
+      runtime?.Quit?.()
+    },
     log: (level: string, ...args: unknown[]) => {
       console.log(`[${level}]`, ...args)
     },

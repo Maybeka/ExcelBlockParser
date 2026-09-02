@@ -14,6 +14,8 @@ export interface ElectronAPI {
   minimizeWindow: () => Promise<void>
   toggleWindowMaximize: () => Promise<boolean>
   closeWindow: () => Promise<void>
+  confirmCloseWindow: () => Promise<void>
+  onCloseRequested: (callback: () => void) => () => void
   log: (level: string, ...args: unknown[]) => void
   openPreviewWindow: (blockId: string) => Promise<void>
   setPreviewData: (blockId: string, data: unknown) => Promise<void>
@@ -67,6 +69,12 @@ const api: ElectronAPI = {
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   toggleWindowMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
+  confirmCloseWindow: () => ipcRenderer.invoke('window:confirm-close'),
+  onCloseRequested: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('window:close-requested', handler)
+    return () => ipcRenderer.removeListener('window:close-requested', handler)
+  },
   log: (level: string, ...args: unknown[]) => ipcRenderer.invoke('log', level, ...args),
   openPreviewWindow: (blockId) => ipcRenderer.invoke('preview:open', blockId),
   setPreviewData: (blockId, data) => ipcRenderer.invoke('preview:setData', blockId, data),
