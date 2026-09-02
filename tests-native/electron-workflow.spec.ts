@@ -44,7 +44,7 @@ async function importIntoOpenWorkbook(page: Page): Promise<void> {
     return null
   }).not.toBeNull()
   if (await replaceDialog.isVisible().catch(() => false)) {
-    await replaceDialog.getByRole('button', { name: 'Open Project' }).click()
+    await replaceDialog.getByRole('button', { name: 'Discard and open' }).click()
   }
   await expect.poll(async () => (
     await importedBlock.isVisible().catch(() => false)
