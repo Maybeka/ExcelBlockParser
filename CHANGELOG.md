@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.7 - 2026-09-05
+
+- Added the esbuild version required by Vitest's bundled Vite runtime so clean
+  Windows release installs resolve the dependency tree correctly.
+
 ## 1.7.6 - 2026-09-05
 
 - Regenerated the dependency lockfile so clean Windows release installs include

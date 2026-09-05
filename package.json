@@ -1,6 +1,6 @@
 {
   "name": "excel-block-parser",
-  "version": "1.7.6",
+  "version": "1.7.7",
   "description": "Load Excel, select a block, configure parsing, export JSON",
   "author": "Excel Block Parser contributors",
   "main": "./out/main/index.js",
@@ -133,6 +133,7 @@
     "electron": "^33.0.0",
     "electron-builder": "^25.1.0",
     "electron-vite": "^2.3.0",
+    "esbuild": "^0.28.2",
     "playwright": "^1.60.0",
     "tree-sitter-python": "^0.25.0",
     "typescript": "^5.5.0",
