@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.6 - 2026-09-05
+
+- Regenerated the dependency lockfile so clean Windows release installs include
+  the esbuild platform packages required by `npm ci`.
+
 ## 1.7.5 - 2026-09-05
 
 - Added Wails, Electron, and Univer runtime versions to the About dialog.
