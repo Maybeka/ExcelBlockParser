@@ -1,4 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import type { ChildProcess } from 'node:child_process'
 import { resolve } from 'node:path'
 
 const root = process.cwd()
@@ -28,7 +29,10 @@ export async function launchElectronApp(
 }
 
 export function waitForElectronExit(app: ElectronApplication, timeoutMs = 8000): Promise<void> {
-  const child = app.process()
+  return waitForProcessExit(app.process(), timeoutMs)
+}
+
+function waitForProcessExit(child: ChildProcess | undefined, timeoutMs = 8000): Promise<void> {
   if (!child || child.exitCode !== null) return Promise.resolve()
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Electron process did not exit')), timeoutMs)
@@ -51,7 +55,9 @@ export async function closeElectronApp(app: ElectronApplication, page: Page): Pr
         setTimeout(() => reject(new Error('Electron close timed out')), 3000)
       }),
     ])
+    await waitForProcessExit(child, 3000)
   } catch {
     child?.kill()
+    await waitForProcessExit(child, 3000).catch(() => undefined)
   }
 }

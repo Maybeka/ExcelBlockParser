@@ -28,7 +28,7 @@ test.describe('M3 workspace layout', () => {
 
     const dialog = page.getByRole('dialog', { name: 'About Excel Block Parser' })
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByText(/^v\d+\.\d+\.\d+$/)).toBeVisible()
+    await expect(dialog.locator('.about-dialog-brand span')).toHaveText(/^v\d+\.\d+\.\d+$/)
     await expect(dialog.getByText('Current development v3')).toBeVisible()
   })
 

@@ -65,6 +65,9 @@ type PendingExitAction = 'open' | 'close' | 'quit'
 export function WorkspaceApplication() {
   const { locale, setLocale, t } = useI18n()
   const appVersion = import.meta.env.APP_VERSION ?? 'development'
+  const electronVersion = import.meta.env.ELECTRON_VERSION ?? 'unknown'
+  const univerVersion = import.meta.env.UNIVER_VERSION ?? 'unknown'
+  const wailsVersion = import.meta.env.WAILS_VERSION ?? 'unknown'
   const e2eMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')
   const automatedSession = typeof window !== 'undefined' && Boolean(window.navigator?.webdriver)
   const { univerAPI, sheetNames } = useUniver()
@@ -119,6 +122,8 @@ export function WorkspaceApplication() {
   const [inspectorHidden, setInspectorHidden] = useState(false)
   const [workbookBrowserMode, setWorkbookBrowserMode] = useState(false)
   const browserModeRestoreRef = useRef<{ sidebarHidden: boolean; inspectorHidden: boolean } | null>(null)
+  const [browserModeTooltipOpen, setBrowserModeTooltipOpen] = useState(false)
+  const browserModeTooltipTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(272)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
@@ -321,6 +326,8 @@ export function WorkspaceApplication() {
   }, [])
 
   const toggleWorkbookBrowserMode = useCallback(() => {
+    setBrowserModeTooltipOpen(false)
+    if (browserModeTooltipTimerRef.current) window.clearTimeout(browserModeTooltipTimerRef.current)
     if (!activeWorkbookId) return
     if (workbookBrowserMode) {
       const restore = browserModeRestoreRef.current
@@ -339,6 +346,21 @@ export function WorkspaceApplication() {
     setInspectorHidden(true)
     setWorkbookBrowserMode(true)
   }, [activeWorkbookId, inspectorHidden, sidebarHidden, workbookBrowserMode])
+
+  const handleBrowserModeTooltipOpenChange = useCallback((open: boolean) => {
+    if (browserModeTooltipTimerRef.current) window.clearTimeout(browserModeTooltipTimerRef.current)
+    setBrowserModeTooltipOpen(open)
+    if (open) {
+      browserModeTooltipTimerRef.current = window.setTimeout(() => {
+        setBrowserModeTooltipOpen(false)
+        browserModeTooltipTimerRef.current = null
+      }, 1200)
+    }
+  }, [])
+
+  useEffect(() => () => {
+    if (browserModeTooltipTimerRef.current) window.clearTimeout(browserModeTooltipTimerRef.current)
+  }, [])
 
   useEffect(() => {
     if (!successNotice) return
@@ -1009,8 +1031,9 @@ export function WorkspaceApplication() {
         </div>
         <dl className="about-dialog-details">
           <div><dt>{t('about.format')}</dt><dd>{t('about.formatValue')}</dd></div>
-          <div><dt>{t('about.productionRuntime')}</dt><dd>{t('about.productionRuntimeValue')}</dd></div>
-          <div><dt>{t('about.developmentRuntime')}</dt><dd>{t('about.developmentRuntimeValue')}</dd></div>
+          <div><dt>{t('about.wails')}</dt><dd>v{wailsVersion}</dd></div>
+          <div><dt>{t('about.electron')}</dt><dd>v{electronVersion}</dd></div>
+          <div><dt>{t('about.univer')}</dt><dd>v{univerVersion}</dd></div>
         </dl>
       </Modal>
       <Layout.Content className="workspace-layout">
@@ -1035,7 +1058,7 @@ export function WorkspaceApplication() {
                   <div className="canvas-heading-title"><strong>{t('workbook.title')}</strong><div ref={setWorkbookToolbarContainer} /></div>
                   <div className="canvas-heading-actions">
                     <span>{currentFileName ?? 'Choose a file to begin'}</span>
-                    <Tooltip title={workbookBrowserMode ? t('workbook.exitBrowserMode') : t('workbook.enterBrowserMode')}>
+                    <Tooltip title={workbookBrowserMode ? t('workbook.exitBrowserMode') : t('workbook.enterBrowserMode')} open={browserModeTooltipOpen} onOpenChange={handleBrowserModeTooltipOpenChange}>
                       <Button aria-label={workbookBrowserMode ? t('workbook.exitBrowserMode') : t('workbook.enterBrowserMode')} aria-pressed={workbookBrowserMode}
                         size="small" type="text" className={workbookBrowserMode ? 'is-active' : ''}
                         icon={workbookBrowserMode ? <EyeInvisibleOutlined /> : <EyeOutlined />}

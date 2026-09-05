@@ -607,7 +607,14 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
               applyingDisplayModesRef.current = true
               workbook.setEditable(true)
               try {
-                const protectedIndexes = new Set<number>(axis === 'row' ? sheetSettings.sourceHiddenRows : sheetSettings.sourceHiddenColumns)
+                const groupsForAxis = sheetSettings.outlineGroups.filter(group => group.axis === axis)
+                const outlineIndexes = new Set(groupsForAxis.flatMap(group =>
+                  Array.from({ length: group.end - group.start + 1 }, (_, offset) => group.start + offset),
+                ))
+                const sourceHidden = axis === 'row' ? sheetSettings.sourceHiddenRows : sheetSettings.sourceHiddenColumns
+                const protectedIndexes = new Set<number>(sourceHidden.filter(index =>
+                  displayModesRef.current.showOutlines || !outlineIndexes.has(index),
+                ))
                 if (axis === 'row') nativeFilterHiddenRowsFor(sheet).forEach(row => protectedIndexes.add(row))
                 if (displayModesRef.current.showOutlines) {
                   for (const group of sheetSettings.outlineGroups) {
@@ -1071,7 +1078,13 @@ function applyOutlineGroups(
   for (const axis of ['row', 'column'] as const) {
     const groups = settings.outlineGroups.filter(group => group.axis === axis)
     const lastIndex = axis === 'row' ? settings.lastRow : settings.lastColumn
-    const hidden = new Set<number>(axis === 'row' ? settings.sourceHiddenRows : settings.sourceHiddenColumns)
+    const outlineIndexes = new Set(groups.flatMap(group =>
+      Array.from({ length: group.end - group.start + 1 }, (_, offset) => group.start + offset),
+    ))
+    const sourceHidden = axis === 'row' ? settings.sourceHiddenRows : settings.sourceHiddenColumns
+    // A disabled outline view reveals rows/columns hidden solely by an Excel
+    // outline, while retaining ordinary source-hidden cells.
+    const hidden = new Set<number>(sourceHidden.filter(index => showOutlines || !outlineIndexes.has(index)))
     for (const group of groups) {
       const collapsed = showOutlines && stateFor(workbookId, sheetName, group)
       for (let index = group.start; index <= group.end; index += 1) {

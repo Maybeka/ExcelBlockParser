@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.5 - 2026-09-05
+
+- Added Wails, Electron, and Univer runtime versions to the About dialog.
+- Automatically dismiss the temporary Excel browser-mode hint after it appears,
+  and when the mode is turned off.
+- Made disabled outline display reveal rows and columns hidden solely by Excel
+  grouping, while retaining ordinary source-hidden cells.
+
 ## 1.7.4 - 2026-09-05
 
 - Improved workbook rendering for embedded images, formulas, rich values, and
