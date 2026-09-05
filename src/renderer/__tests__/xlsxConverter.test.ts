@@ -53,6 +53,10 @@ describe('XLSX workbook conversion', () => {
 
     expect(converted.sheetDisplaySettings.Data).toEqual({
       freeze: { startRow: 1, startColumn: 2, xSplit: 2, ySplit: 1 },
+      lastRow: 2,
+      lastColumn: 2,
+      sourceHiddenRows: [1, 2],
+      sourceHiddenColumns: [1, 2],
       outlinedHiddenRows: [1],
       outlinedHiddenColumns: [1],
       outlineGroups: [
@@ -71,5 +75,44 @@ describe('XLSX workbook conversion', () => {
       { id: 'row:1:1:4', axis: 'row', start: 1, end: 4, level: 1, initialCollapsed: false },
       { id: 'row:2:2:3', axis: 'row', start: 2, end: 3, level: 2, initialCollapsed: true },
     ])
+  })
+
+  it('converts formulas and object cell values to displayable Univer data', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Data')
+    sheet.getCell('A1').value = 2
+    sheet.getCell('A2').value = { formula: 'A1*2', result: 4 }
+    sheet.getCell('A3').value = { text: 'Project home', hyperlink: 'https://example.test' }
+    sheet.getCell('A4').value = { error: '#DIV/0!' } as ExcelJS.CellValue
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const converted = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'values.xlsx')
+    const cells = converted.workbookData.sheets.Data!.cellData!
+
+    expect(cells[1]![0]).toMatchObject({ f: '=A1*2', v: 4 })
+    expect(cells[2]![0]).toMatchObject({ v: 'Project home' })
+    expect(cells[3]![0]).toMatchObject({ v: '#DIV/0!' })
+    expect(Object.values(cells).flatMap(row => Object.values(row)).some(cell => cell.v === '[object Object]')).toBe(false)
+  })
+
+  it('extracts embedded worksheet images with their anchored positions', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const imageId = workbook.addImage({
+      base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2L8kAAAAASUVORK5CYII=',
+      extension: 'png',
+    })
+    const sheet = workbook.addWorksheet('Data')
+    sheet.addImage(imageId, { tl: { col: 1, row: 2 }, ext: { width: 120, height: 60 } })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const converted = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'images.xlsx')
+
+    expect(converted.images).toEqual([expect.objectContaining({
+      sheetName: 'Data',
+      source: expect.stringMatching(/^data:image\/png;base64,/),
+      from: { column: 1, columnOffset: 0, row: 2, rowOffset: 0 },
+      width: 120,
+      height: 60,
+    })])
   })
 })

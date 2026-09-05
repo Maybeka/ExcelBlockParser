@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import ExcelJS from 'exceljs'
+import { strToU8, unzipSync, zipSync } from 'fflate'
 import { closeElectronApp, launchElectronApp } from './electronLaunch'
 
 const root = process.cwd()
@@ -15,6 +16,26 @@ function block(id: string, label: string, workbookId: string, sheet: string) {
     range: { startRow: 0, startCol: 0, endRow: 2, endCol: 1, a1Notation: 'A1:B3' },
     headerRows: [0], collapsed: false, selectionLocked: true, columns: [], dataSnapshot: null,
   }
+}
+
+async function writeOfficeMathWorkbook(path: string): Promise<void> {
+  const workbook = new ExcelJS.Workbook()
+  workbook.addWorksheet('Math')
+  const base = await workbook.xlsx.writeBuffer()
+  const files = unzipSync(new Uint8Array(base as ArrayBuffer))
+  const xlsx = zipSync({
+    ...files,
+    'xl/workbook.xml': strToU8(`<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Math" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+    'xl/_rels/workbook.xml.rels': strToU8(officeMathRelationships('rId1', 'worksheets/sheet1.xml')),
+    'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><drawing r:id="rId1"/></worksheet>`),
+    'xl/worksheets/_rels/sheet1.xml.rels': strToU8(officeMathRelationships('rId1', '../drawings/drawing1.xml')),
+    'xl/drawings/drawing1.xml': strToU8(`<?xml version="1.0"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>5</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:sp><xdr:txBody><a:p><m:oMath><m:f><m:num><m:r><m:t>x</m:t></m:r></m:num><m:den><m:r><m:t>y</m:t></m:r></m:den></m:f></m:oMath></a:p></xdr:txBody></xdr:sp></xdr:twoCellAnchor></xdr:wsDr>`),
+  })
+  await writeFile(path, xlsx)
+}
+
+function officeMathRelationships(id: string, target: string): string {
+  return `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="${target}"/></Relationships>`
 }
 
 test('opens a real workbook through the Electron host bridge', async () => {
@@ -36,6 +57,9 @@ test('opens a real workbook through the Electron host bridge', async () => {
     const settings = page.getByRole('dialog', { name: 'Project settings' })
     await settings.getByRole('button', { name: 'Add workbook source' }).click()
     await expect(page.getByRole('tab', { name: 'test_data.xlsx' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Filter worksheet' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Enter Excel browser mode' }).click()
+    await expect(page.getByRole('button', { name: 'Filter worksheet' })).toHaveCount(1)
     await settings.getByRole('button', { name: 'Done' }).click()
     await expect(settings).toBeHidden()
 
@@ -44,6 +68,35 @@ test('opens a real workbook through the Electron host bridge', async () => {
   } finally {
     await closeElectronApp(app, page)
     await rm(userDataDirectory, { recursive: true, force: true })
+  }
+})
+
+test('renders an Office Math drawing from an XLSX workbook', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-omml-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const mathWorkbookPath = resolve(directory, 'office-math.xlsx')
+  await writeOfficeMathWorkbook(mathWorkbookPath)
+  const warnings: string[] = []
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_OPEN_PATH: mathWorkbookPath,
+  })
+
+  try {
+    page.on('console', message => {
+      if (message.text().includes('Unable to render workbook image') || message.text().includes('[OfficeMath]')) warnings.push(message.text())
+    })
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
+    await page.getByRole('button', { name: 'Project actions' }).click()
+    await page.getByRole('menuitem', { name: 'Project settings' }).click()
+    const settings = page.getByRole('dialog', { name: 'Project settings' })
+    await settings.getByRole('button', { name: 'Add workbook source' }).click()
+    await expect(page.getByRole('tab', { name: 'office-math.xlsx' })).toBeVisible()
+    await expect.poll(() => warnings).toEqual([])
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
   }
 })
 
@@ -257,6 +310,11 @@ test('keeps a nested outline collapsed when its parent is expanded', async () =>
     await expect.poll(outlineState).toEqual({ 'row:1': true, 'row:2': true, 'row:3': true, 'row:4': true })
     await page.mouse.click(32, 134)
     await expect.poll(outlineState).toEqual({ 'row:1': false, 'row:2': true, 'row:3': true, 'row:4': false })
+    // Once its parent is expanded, the nested control changes only its own
+    // group. This also guards against the selection jump caused by the old
+    // selection-changing Univer commands.
+    await page.mouse.click(46, 158)
+    await expect.poll(outlineState).toEqual({ 'row:1': false, 'row:2': false, 'row:3': false, 'row:4': false })
   } finally {
     await closeElectronApp(app, page)
     await rm(directory, { recursive: true, force: true })

@@ -4,8 +4,6 @@ import { resolve } from 'node:path'
 const target = resolve(process.cwd(), 'node_modules/@univerjs/sheets-ui/lib/es/index.js')
 const source = await readFile(target, 'utf8')
 
-if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V3')) process.exit(0)
-
 function replaceOnce(input, search, replacement) {
   if (!input.includes(search)) throw new Error(`Univer outline patch is incompatible with @univerjs/sheets-ui 0.22.0: missing ${search.slice(0, 80)}`)
   return input.replace(search, replacement)
@@ -31,8 +29,77 @@ function upgradeV2ToV3(input) {
   return upgraded
 }
 
+function upgradeV3ToV4(input) {
+  let upgraded = input.replace('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V3', 'EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V4')
+  upgraded = replaceOnce(
+    upgraded,
+    'collapsed ? SetSpecificRowsVisibleCommand.id : SetRowHiddenCommand.id',
+    'collapsed ? SetRowVisibleMutation.id : SetRowHiddenMutation.id',
+  )
+  upgraded = replaceOnce(
+    upgraded,
+    'collapsed ? SetSpecificColsVisibleCommand.id : SetColHiddenCommand.id',
+    'collapsed ? SetColVisibleMutation.id : SetColHiddenMutation.id',
+  )
+  return upgraded
+}
+
+function upgradeV4ToV5(input) {
+  let upgraded = input.replace('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V4', 'EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V5')
+  upgraded = replaceOnce(
+    upgraded,
+    '\t\tconst maxRowOutlineLevel = outlineGroups.reduce',
+    `\t\tconst toggleOutlineGroup = (group, collapsed) => {
+\t\t\tgroup.collapsed = !collapsed;
+\t\t\tconst range = group.axis === "row" ? { startRow: group.start, endRow: group.end, startColumn: 0, endColumn: worksheet.getColumnCount() - 1 } : { startColumn: group.start, endColumn: group.end, startRow: 0, endRow: worksheet.getRowCount() - 1 };
+\t\t\tconst commandId = group.axis === "row" ? collapsed ? SetRowVisibleMutation.id : SetRowHiddenMutation.id : collapsed ? SetColVisibleMutation.id : SetColHiddenMutation.id;
+\t\t\tthis._commandService.executeCommand(commandId, { unitId: workbook.getUnitId(), subUnitId: worksheet.getSheetId(), ranges: [range], __excelBlockParserOutlineGroupId: group.id });
+\t\t\tif (!collapsed) return;
+\t\t\toutlineGroups.filter((child) => child.axis === group.axis && child.level > group.level && child.start >= group.start && child.end <= group.end && child.collapsed).forEach((child) => {
+\t\t\t\tconst childRange = child.axis === "row" ? { startRow: child.start, endRow: child.end, startColumn: 0, endColumn: worksheet.getColumnCount() - 1 } : { startColumn: child.start, endColumn: child.end, startRow: 0, endRow: worksheet.getRowCount() - 1 };
+\t\t\t\tconst childCommandId = child.axis === "row" ? SetRowHiddenMutation.id : SetColHiddenMutation.id;
+\t\t\t\tthis._commandService.executeCommand(childCommandId, { unitId: workbook.getUnitId(), subUnitId: worksheet.getSheetId(), ranges: [childRange], __excelBlockParserOutlineGroupId: child.id });
+\t\t\t});
+\t\t};
+\t\tconst maxRowOutlineLevel = outlineGroups.reduce`,
+  )
+  upgraded = replaceOnce(
+    upgraded,
+    `}, () => this._commandService.executeCommand(collapsed ? SetRowVisibleMutation.id : SetRowHiddenMutation.id, {
+\t\t\t\tunitId: workbook.getUnitId(),
+\t\t\t\tsubUnitId: worksheet.getSheetId(),
+\t\t\t\tranges: [range],
+\t\t\t\t__excelBlockParserOutlineGroupId: group.id
+\t\t\t}));`,
+    '}, () => toggleOutlineGroup(group, collapsed));',
+  )
+  upgraded = replaceOnce(
+    upgraded,
+    `}, () => this._commandService.executeCommand(collapsed ? SetColVisibleMutation.id : SetColHiddenMutation.id, {
+\t\t\t\tunitId: workbook.getUnitId(),
+\t\t\t\tsubUnitId: worksheet.getSheetId(),
+\t\t\t\tranges: [range],
+\t\t\t\t__excelBlockParserOutlineGroupId: group.id
+\t\t\t}));`,
+    '}, () => toggleOutlineGroup(group, collapsed));',
+  )
+  return upgraded
+}
+
+if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V5')) process.exit(0)
+
 if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V2')) {
-  await writeFile(target, upgradeV2ToV3(source))
+  await writeFile(target, upgradeV4ToV5(upgradeV3ToV4(upgradeV2ToV3(source))))
+  process.exit(0)
+}
+
+if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V3')) {
+  await writeFile(target, upgradeV4ToV5(upgradeV3ToV4(source)))
+  process.exit(0)
+}
+
+if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V4')) {
+  await writeFile(target, upgradeV4ToV5(source))
   process.exit(0)
 }
 
@@ -222,7 +289,7 @@ const newControllerBodyV2 = newControllerBody
     'ranges: [range],\n\t\t\t\t__excelBlockParserOutlineGroupId: group.id\n\t\t\t}));\n\t\t}) : hiddenColRanges.map',
   )
 
-const newControllerBodyV3 = upgradeV2ToV3(newControllerBodyV2)
+const newControllerBodyV5 = upgradeV4ToV5(upgradeV3ToV4(upgradeV2ToV3(newControllerBodyV2)))
 
-patched = replaceOnce(patched, oldControllerBody, newControllerBodyV3)
+patched = replaceOnce(patched, oldControllerBody, newControllerBodyV5)
 await writeFile(target, patched)

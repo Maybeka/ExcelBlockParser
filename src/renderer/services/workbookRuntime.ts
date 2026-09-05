@@ -14,6 +14,7 @@ export interface WorkbookRuntimeState {
   loadGeneration: number
   requestSequence: number
   closeSignal: number
+  projectLoading: boolean
 }
 
 export interface WorkbookDetachPlan {
@@ -31,6 +32,7 @@ export function createWorkbookRuntimeState(): WorkbookRuntimeState {
     loadGeneration: 0,
     requestSequence: 0,
     closeSignal: 0,
+    projectLoading: false,
   }
 }
 
@@ -44,7 +46,7 @@ export function resetWorkbookRuntime(state: WorkbookRuntimeState): WorkbookRunti
 }
 
 export function beginWorkbookProjectLoad(state: WorkbookRuntimeState): WorkbookRuntimeState {
-  return resetWorkbookRuntime(state)
+  return { ...resetWorkbookRuntime(state), projectLoading: true }
 }
 
 export function authorizeWorkbookPath(state: WorkbookRuntimeState, workbookId: string, path: string): WorkbookRuntimeState {
@@ -110,7 +112,7 @@ export function replaceAvailableWorkbooks(
   activeWorkbookId: string | null,
   activeSheetName?: string | null,
 ): WorkbookRuntimeState {
-  let next: WorkbookRuntimeState = { ...state, paths: { ...paths }, openWorkbookIds: [...openWorkbookIds] }
+  let next: WorkbookRuntimeState = { ...state, paths: { ...paths }, openWorkbookIds: [...openWorkbookIds], projectLoading: false }
   if (activeWorkbookId && paths[activeWorkbookId]) {
     next = requestWorkbookLoad(next, activeWorkbookId, paths[activeWorkbookId], activeSheetName)
   }

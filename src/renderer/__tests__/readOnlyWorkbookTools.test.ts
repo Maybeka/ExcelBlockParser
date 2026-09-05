@@ -25,4 +25,5 @@ describe('read-only workbook tools', () => {
       { name: 'Products', values: [['Ada'], ['Kit']] },
     ], 'Ada').map(match => `${match.sheetName}!${match.range.a1Notation}`)).toEqual(['Sheet1!A1', 'Products!A1'])
   })
+
 })

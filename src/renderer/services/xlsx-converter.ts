@@ -11,6 +11,7 @@ import {
 import type { IStyleData } from '@univerjs/core'
 import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
+import { extractOfficeMathDrawings } from './officeMath'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
 type ExcelColor = { argb?: string; theme?: number | string; indexed?: number | string; tint?: number | string; auto?: boolean | number | string }
@@ -21,10 +22,23 @@ export interface ConversionResult {
   fonts: string[]
   sheetTabColors: Record<string, string>
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
+  images: ConvertedWorkbookImage[]
+}
+
+export interface ConvertedWorkbookImage {
+  sheetName: string
+  source: string
+  from: { column: number; columnOffset: number; row: number; rowOffset: number }
+  width: number
+  height: number
 }
 
 export interface SheetDisplaySettings {
   freeze: { startRow: number; startColumn: number; xSplit: number; ySplit: number } | null
+  lastRow: number
+  lastColumn: number
+  sourceHiddenRows: number[]
+  sourceHiddenColumns: number[]
   outlinedHiddenRows: number[]
   outlinedHiddenColumns: number[]
   outlineGroups: SheetOutlineGroup[]
@@ -76,11 +90,13 @@ export async function convertXlsxToWorkbookData(
 ): Promise<ConversionResult> {
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(arrayBuffer)
+  const officeMathDrawings = await extractOfficeMathDrawings(arrayBuffer, workbook)
 
   const sheets: Record<string, Partial<IWorksheetData>> = {}
   const sheetOrder: string[] = []
   const sheetTabColors: Record<string, string> = {}
   const sheetDisplaySettings: Record<string, SheetDisplaySettings> = {}
+  const images: ConvertedWorkbookImage[] = []
   const resolveColor = createColorResolver((workbook.model as { themes?: { theme1?: string } }).themes?.theme1)
   const styleMap = new Map<string, string>()
   const styles: Record<string, IStyleData> = {}
@@ -129,14 +145,18 @@ export async function convertXlsxToWorkbookData(
               resolveColor,
             )
           } else if (typeof cell.value === 'object') {
-            univerCell.v = cell.text
+            const value = normalizeExcelValue(cell.value)
+            if (value !== undefined) univerCell.v = value
           } else {
             univerCell.v = typeof cell.value === 'string' ? normalizeLineBreaks(cell.value) : cell.value as number | boolean
           }
         }
 
-        if (cell.type === ExcelJS.ValueType.Formula && cell.result != null) {
-          univerCell.v = cell.result as string | number | boolean
+        if (cell.type === ExcelJS.ValueType.Formula) {
+          const formula = getFormula(cell.value)
+          if (formula) univerCell.f = formula.startsWith('=') ? formula : `=${formula}`
+          const result = normalizeExcelValue(cell.result)
+          if (result !== undefined) univerCell.v = result
         }
 
         if (cell.type) {
@@ -185,6 +205,7 @@ export async function convertXlsxToWorkbookData(
     const lastColumn = Math.max(maxCol, worksheet.columnCount - 1)
     const lastRow = Math.max(maxRow, worksheet.rowCount - 1)
     const columnData: Record<number, { w?: number; hd?: BooleanNumber }> = {}
+    const sourceHiddenColumns: number[] = []
     const outlinedHiddenColumns: number[] = []
     const columnOutlineLevels: number[] = []
     for (let c = 0; c <= lastColumn; c++) {
@@ -196,6 +217,7 @@ export async function convertXlsxToWorkbookData(
       }
       if (col?.hidden) {
         column.hd = BooleanNumber.TRUE
+        sourceHiddenColumns.push(c)
         if (col.outlineLevel > 0) outlinedHiddenColumns.push(c)
       }
       if (Object.keys(column).length > 0) {
@@ -204,6 +226,7 @@ export async function convertXlsxToWorkbookData(
     }
 
     const rowHeights: Record<number, { h?: number; hd?: BooleanNumber }> = {}
+    const sourceHiddenRows: number[] = []
     const outlinedHiddenRows: number[] = []
     const rowOutlineLevels: number[] = []
     for (let r = 0; r <= lastRow; r++) {
@@ -215,6 +238,7 @@ export async function convertXlsxToWorkbookData(
       }
       if (row?.hidden) {
         rowData.hd = BooleanNumber.TRUE
+        sourceHiddenRows.push(r)
         if (row.outlineLevel && row.outlineLevel > 0) outlinedHiddenRows.push(r)
       }
       if (Object.keys(rowData).length > 0) {
@@ -227,6 +251,10 @@ export async function convertXlsxToWorkbookData(
     const ySplit = frozenView?.state === 'frozen' ? frozenView.ySplit ?? 0 : 0
     sheetDisplaySettings[sheetId] = {
       freeze: xSplit || ySplit ? { startRow: ySplit, startColumn: xSplit, xSplit, ySplit } : null,
+      lastRow,
+      lastColumn,
+      sourceHiddenRows,
+      sourceHiddenColumns,
       outlinedHiddenRows,
       outlinedHiddenColumns,
       outlineGroups: [
@@ -245,6 +273,18 @@ export async function convertXlsxToWorkbookData(
       ...(mergeData.length > 0 ? { mergeData } : {}),
       ...(Object.keys(columnData).length > 0 ? { columnData } : {}),
       ...(Object.keys(rowHeights).length > 0 ? { rowData: rowHeights } : {}),
+    }
+
+    for (const image of worksheet.getImages()) {
+      const source = workbookImageToDataUri(workbook.getImage(Number(image.imageId)))
+      const range = image.range as ExcelJS.ImageRange & { ext?: { width: number; height: number } }
+      if (!source || !range?.tl) continue
+      const from = anchorToImagePosition(range.tl, worksheet)
+      const size = range.ext
+        ? { width: range.ext.width, height: range.ext.height }
+        : imageRangeSize(range, worksheet)
+      if (size.width <= 0 || size.height <= 0) continue
+      images.push({ sheetName: worksheet.name || sheetId, source, from, ...size })
     }
   })
 
@@ -268,7 +308,77 @@ export async function convertXlsxToWorkbookData(
     fonts: [...fontSet],
     sheetTabColors,
     sheetDisplaySettings,
+    images: [...images, ...officeMathDrawings],
   }
+}
+
+function getFormula(value: ExcelJS.CellValue): string | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  if ('formula' in value && typeof value.formula === 'string') return value.formula
+  if ('sharedFormula' in value && typeof value.sharedFormula === 'string') return value.sharedFormula
+  return undefined
+}
+
+function normalizeExcelValue(value: unknown): string | number | boolean | undefined {
+  if (value == null) return undefined
+  if (value instanceof Date) return dateToExcelSerial(value)
+  if (typeof value === 'string') return normalizeLineBreaks(value)
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (typeof value !== 'object') return undefined
+  if ('error' in value && typeof value.error === 'string') return value.error
+  if ('text' in value && typeof value.text === 'string') return normalizeLineBreaks(value.text)
+  if ('result' in value) return normalizeExcelValue(value.result)
+  return undefined
+}
+
+function workbookImageToDataUri(image: ExcelJS.Image | undefined): string | undefined {
+  if (!image) return undefined
+  if (image.base64) return image.base64.startsWith('data:') ? image.base64 : `data:image/${image.extension};base64,${image.base64}`
+  if (!image.buffer) return undefined
+  const bytes = image.buffer instanceof ArrayBuffer
+    ? new Uint8Array(image.buffer)
+    : new Uint8Array(image.buffer.buffer, image.buffer.byteOffset, image.buffer.byteLength)
+  let binary = ''
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+  }
+  return `data:image/${image.extension};base64,${btoa(binary)}`
+}
+
+function anchorToImagePosition(anchor: ExcelJS.Anchor, worksheet: ExcelJS.Worksheet): ConvertedWorkbookImage['from'] {
+  const column = Math.max(0, Math.floor(anchor.col))
+  const row = Math.max(0, Math.floor(anchor.row))
+  return {
+    column,
+    columnOffset: Math.round((anchor.col - column) * columnPixelWidth(worksheet, column)),
+    row,
+    rowOffset: Math.round((anchor.row - row) * rowPixelHeight(worksheet, row)),
+  }
+}
+
+function imageRangeSize(range: ExcelJS.ImageRange, worksheet: ExcelJS.Worksheet): { width: number; height: number } {
+  if (!range.br) return { width: 0, height: 0 }
+  const start = anchorToImagePosition(range.tl, worksheet)
+  const end = anchorToImagePosition(range.br, worksheet)
+  return {
+    width: Math.max(0, imageAxisDistance(start.column, start.columnOffset, end.column, end.columnOffset, column => columnPixelWidth(worksheet, column))),
+    height: Math.max(0, imageAxisDistance(start.row, start.rowOffset, end.row, end.rowOffset, row => rowPixelHeight(worksheet, row))),
+  }
+}
+
+function imageAxisDistance(start: number, startOffset: number, end: number, endOffset: number, sizeAt: (index: number) => number): number {
+  if (end < start || (end === start && endOffset <= startOffset)) return 0
+  let size = -startOffset + endOffset
+  for (let index = start; index < end; index += 1) size += sizeAt(index)
+  return size
+}
+
+function columnPixelWidth(worksheet: ExcelJS.Worksheet, index: number): number {
+  return (worksheet.getColumn(index + 1).width ?? 8.43) * 8
+}
+
+function rowPixelHeight(worksheet: ExcelJS.Worksheet, index: number): number {
+  return (worksheet.getRow(index + 1).height ?? 15) * 1.333
 }
 
 function dateToExcelSerial(date: Date): number {

@@ -105,7 +105,7 @@ export function WorkspaceApplication() {
     setWorkbookRuntime(next)
     return next
   }, [])
-  const { requestedWorkbook, loadedWorkbookId, openWorkbookIds, closeSignal } = workbookRuntime
+  const { requestedWorkbook, projectLoading, loadedWorkbookId, openWorkbookIds, closeSignal } = workbookRuntime
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null)
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false)
   const [pythonProjectOpen, setPythonProjectOpen] = useState(false)
@@ -1050,6 +1050,7 @@ export function WorkspaceApplication() {
                 <SpreadsheetPanel
                   activeWorkbookId={activeWorkbookId}
                   activeSheet={activeSheetName}
+                  workbookBrowserMode={workbookBrowserMode}
                   displaySettings={activeWorkbookDisplaySettings}
                   onDisplaySettingsChange={handleWorkbookDisplaySettingsChange}
                   activeItemIds={workbookBrowserMode ? [] : activeCanvasItemIds}
@@ -1061,6 +1062,7 @@ export function WorkspaceApplication() {
                   }}
                   loadSignal={loadSignal}
                   requestedWorkbook={requestedWorkbook}
+                  projectLoading={projectLoading}
                   loadedWorkbookId={loadedWorkbookId}
                   openWorkbookIds={openWorkbookIds}
                   onFileLoaded={handleFileLoaded}

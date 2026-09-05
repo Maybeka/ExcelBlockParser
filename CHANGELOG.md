@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.4 - 2026-09-05
+
+- Improved workbook rendering for embedded images, formulas, rich values, and
+  Office Math drawings, while retaining temporary, read-only presentation.
+- Added project-load progress state so large configured workbooks do not flash
+  an unrelated empty-workbook action before conversion begins.
+- Updated the local Univer outline controller for nested groups and added an
+  Excel browser-only native filter action for a selected range.
+
 ## 1.7.3 - 2026-09-05
 
 - Added Wails native-window close interception so the Windows production build

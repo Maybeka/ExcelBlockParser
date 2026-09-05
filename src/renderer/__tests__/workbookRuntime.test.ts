@@ -27,6 +27,7 @@ describe('workbook runtime state', () => {
 
   it('invalidates stale async project loads', () => {
     const first = beginWorkbookProjectLoad(createWorkbookRuntimeState())
+    expect(first.projectLoading).toBe(true)
     const generation = first.loadGeneration
     const second = beginWorkbookProjectLoad(first)
     expect(isCurrentWorkbookLoad(second, generation)).toBe(false)
@@ -62,6 +63,7 @@ describe('workbook runtime state', () => {
       'Summary',
     )
     expect(state.openWorkbookIds).toEqual(['sales', 'costs'])
+    expect(state.projectLoading).toBe(false)
     expect(state.requestedWorkbook).toMatchObject({ workbookId: 'costs', path: '/costs.xlsx', sheetName: 'Summary' })
   })
 
