@@ -13,6 +13,8 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
         SaveRecovery: vi.fn(async () => undefined),
         LoadRecovery: vi.fn(async () => '{"version":3}'),
         ClearRecovery: vi.fn(async () => undefined),
+        RequestClose: vi.fn(async () => undefined),
+        ConfirmQuit: vi.fn(async () => undefined),
         OpenPreviewWindow: vi.fn(async () => undefined),
         SetPreviewData: vi.fn(async () => undefined),
         GetPreviewData: vi.fn(async () => ({ blockId: 'block' })),
@@ -46,6 +48,8 @@ describe('Wails bridge contract', () => {
     await bridge.setPreviewData('block', { blockId: 'block' })
     expect(await bridge.getPreviewData('block')).toEqual({ blockId: 'block' })
     await bridge.closePreviewWindow()
+    await bridge.closeWindow()
+    await bridge.confirmCloseWindow?.()
     expect(await bridge.cancelPythonRun()).toEqual({ status: 'ok', value: true })
     const pythonPackage = { entryPath: 'main.py', files: [{ path: 'main.py', source: 'def process(context): pass' }] }
     expect(await bridge.runProjectPython(pythonPackage, '{"data":{}}')).toEqual({
@@ -60,6 +64,8 @@ describe('Wails bridge contract', () => {
     expect(app.OpenXlsx).toHaveBeenCalledOnce()
     expect(app.ReadFile).toHaveBeenCalledWith('/tmp/workbook.xlsx')
     expect(app.ClosePreviewWindow).toHaveBeenCalledOnce()
+    expect(app.RequestClose).toHaveBeenCalledOnce()
+    expect(app.ConfirmQuit).toHaveBeenCalledOnce()
     expect(app.RunProjectPython).toHaveBeenCalledWith(pythonPackage, '{"data":{}}')
     expect(app.ExportPythonArtifacts).toHaveBeenCalledWith('Demo', '[{"path":"output.py","content":"pass\\n","encoding":"utf-8"}]')
   })

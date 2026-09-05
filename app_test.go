@@ -63,6 +63,30 @@ func TestAppRecoveryLifecycle(t *testing.T) {
 	}
 }
 
+func TestAppBeforeCloseDefersUntilRendererConfirms(t *testing.T) {
+	events := make([]string, 0, 1)
+	app := &App{
+		ctx: context.Background(),
+		emitEvent: func(_ context.Context, event string, _ ...interface{}) {
+			events = append(events, event)
+		},
+	}
+
+	if prevent := app.beforeClose(context.Background()); !prevent {
+		t.Fatal("native close should be deferred for renderer confirmation")
+	}
+	if len(events) != 1 || events[0] != "window:close-requested" {
+		t.Fatalf("close events = %#v", events)
+	}
+
+	app.closeMu.Lock()
+	app.closeConfirmed = true
+	app.closeMu.Unlock()
+	if prevent := app.beforeClose(context.Background()); prevent {
+		t.Fatal("confirmed close should be allowed")
+	}
+}
+
 func TestRecoveryReauthorizesEveryDeclaredWorkbook(t *testing.T) {
 	directory := t.TempDir()
 	first := writeTestFile(t, directory, "first.xlsx", "first")

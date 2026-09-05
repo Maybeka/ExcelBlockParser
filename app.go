@@ -6,19 +6,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
-	ctx           context.Context
-	previewData   map[string]interface{}
-	previewOpen   bool
-	filePolicy    filePolicy
-	projectPaths  map[string]bool
-	recoveryDir   string
-	emitEvent     func(context.Context, string, ...interface{})
-	pythonRuntime pythonRuntimeRunner
+	ctx            context.Context
+	previewData    map[string]interface{}
+	previewOpen    bool
+	filePolicy     filePolicy
+	projectPaths   map[string]bool
+	recoveryDir    string
+	emitEvent      func(context.Context, string, ...interface{})
+	pythonRuntime  pythonRuntimeRunner
+	closeMu        sync.Mutex
+	closeConfirmed bool
 }
 
 // CancelPythonRun requests KeyboardInterrupt for the active project run.
@@ -43,10 +46,32 @@ func (a *App) startup(ctx context.Context) {
 	a.recoveryDir = filepath.Join(baseDir, "Excel Block Parser")
 }
 
-// Quit closes the Wails application from the renderer-owned title bar. Keeping
-// this as a bound method avoids relying on the optional window.runtime global,
-// which is not present in every Wails/WebView2 startup path.
-func (a *App) Quit() {
+// beforeClose asks the renderer to resolve unsaved state before Wails exits.
+// Returning true prevents the current native close request.
+func (a *App) beforeClose(_ context.Context) bool {
+	a.closeMu.Lock()
+	if a.closeConfirmed {
+		a.closeConfirmed = false
+		a.closeMu.Unlock()
+		return false
+	}
+	a.closeMu.Unlock()
+	if a.emitEvent != nil {
+		a.emit("window:close-requested")
+	}
+	return true
+}
+
+// RequestClose starts the same close flow for the renderer-owned title bar.
+func (a *App) RequestClose() {
+	_ = a.beforeClose(a.ctx)
+}
+
+// ConfirmQuit permits the next Wails close request after renderer confirmation.
+func (a *App) ConfirmQuit() {
+	a.closeMu.Lock()
+	a.closeConfirmed = true
+	a.closeMu.Unlock()
 	runtime.Quit(a.ctx)
 }
 

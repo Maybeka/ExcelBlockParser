@@ -48,7 +48,8 @@ export interface WailsGoAPI {
       SaveRecovery: (data: string) => Promise<void>
       LoadRecovery: () => Promise<string | null>
       ClearRecovery: () => Promise<void>
-      Quit?: () => Promise<void>
+      RequestClose: () => Promise<void>
+      ConfirmQuit: () => Promise<void>
       OpenPreviewWindow: (blockId: string) => Promise<void>
       SetPreviewData: (blockId: string, data: unknown) => Promise<void>
       GetPreviewData: (blockId: string) => Promise<unknown>
@@ -63,7 +64,7 @@ export interface WailsGoAPI {
 interface WailsRuntimeAPI {
   WindowMinimise?: () => void
   WindowToggleMaximise?: () => void
-  Quit?: () => void
+  EventsOn?: (eventName: string, callback: () => void) => () => void
 }
 
 declare global {
@@ -80,6 +81,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
   const requiredMethods = [
     'OpenXlsx', 'ReadFile', 'SaveJson', 'SaveJsonToPath', 'OpenJson',
     'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
+    'RequestClose', 'ConfirmQuit',
     'OpenPreviewWindow', 'SetPreviewData', 'GetPreviewData', 'ClosePreviewWindow',
     'CancelPythonRun', 'RunProjectPython', 'ExportPythonArtifacts',
   ] as const
@@ -138,12 +140,10 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     minimizeWindow: async () => { runtime?.WindowMinimise?.() },
     toggleWindowMaximize: async () => { runtime?.WindowToggleMaximise?.(); return false },
     closeWindow: async () => {
-      if (typeof App.Quit === 'function') {
-        await App.Quit()
-        return
-      }
-      runtime?.Quit?.()
+      await App.RequestClose()
     },
+    confirmCloseWindow: async () => { await App.ConfirmQuit() },
+    onCloseRequested: (callback) => runtime?.EventsOn?.('window:close-requested', callback) ?? (() => {}),
     log: (level: string, ...args: unknown[]) => {
       console.log(`[${level}]`, ...args)
     },

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.3 - 2026-09-05
+
+- Added Wails native-window close interception so the Windows production build
+  now uses the same save, discard, or cancel confirmation flow as Electron.
+
 ## 1.7.2 - 2026-09-03
 
 - Confirmed unsaved project changes before closing the application, with
