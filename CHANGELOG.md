@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.8-test.4 - 2026-09-08
+
+- Fixed legacy Equation Editor 3.0 VML preview relationships using the
+  real-world `o:relid` attribute used by Excel embedded objects.
+- Added a Compound File reader for cached `OlePres` preview streams, including
+  mini-FAT storage, so legacy equation EMF and WMF previews can be recovered
+  when VML does not directly reference an image.
+- Restored saved sheet selections with Univer's `subUnitId` parameter, avoiding
+  an unintended switch to the last sheet while opening a project.
+
 ## 1.7.8-test.3 - 2026-09-07
 
 - Restored embedded workbook images in the read-only workbook canvas and added

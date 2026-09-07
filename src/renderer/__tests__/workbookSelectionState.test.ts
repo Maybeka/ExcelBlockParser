@@ -22,8 +22,8 @@ describe('workbook selection restoration', () => {
     }, workbook, { First: 'C4', Second: 'D5' })
 
     expect(calls).toEqual([
-      { command: 'sheet.command.select-range', params: { unitId: 'workbook-1', subUnit: 'first', range: { a1Notation: 'C4' } } },
-      { command: 'sheet.command.select-range', params: { unitId: 'workbook-1', subUnit: 'second', range: { a1Notation: 'D5' } } },
+      { command: 'sheet.command.select-range', params: { unitId: 'workbook-1', subUnitId: 'first', range: { a1Notation: 'C4' } } },
+      { command: 'sheet.command.select-range', params: { unitId: 'workbook-1', subUnitId: 'second', range: { a1Notation: 'D5' } } },
     ])
   })
 

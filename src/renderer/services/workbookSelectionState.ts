@@ -32,7 +32,7 @@ export function restoreWorkbookSelections(
     try {
       api.syncExecuteCommand('sheet.command.select-range', {
         unitId: workbook.getId(),
-        subUnit: sheet.getSheetId(),
+        subUnitId: sheet.getSheetId(),
         range: sheet.getRange(a1Notation).getRange(),
       })
     } catch {
@@ -41,7 +41,7 @@ export function restoreWorkbookSelections(
       try {
         api.syncExecuteCommand('sheet.command.select-range', {
           unitId: workbook.getId(),
-          subUnit: sheet.getSheetId(),
+          subUnitId: sheet.getSheetId(),
           range: sheet.getRange('A1').getRange(),
         })
       } catch { /* sheet skeleton may still be initializing */ }

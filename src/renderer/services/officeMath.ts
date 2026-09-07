@@ -158,24 +158,30 @@ async function extractLegacyEquationDrawings(
       const imageRelationshipId = imageData ? getRelationshipId(imageData) : null
       const imageTarget = imageRelationshipId ? vmlRelationships.get(imageRelationshipId) : undefined
       const geometry = shape ? legacyShapeGeometry(shape, worksheet) : null
-      if (!shape || !imageTarget || !geometry) {
-        console.warn('[Equation.3] Unable to resolve a positioned preview image.', { sheetName, shapeId: object.getAttribute('shapeId') })
+      if (!shape || !geometry) {
+        console.warn('[Equation.3] Unable to resolve a positioned equation object.', { sheetName, shapeId: object.getAttribute('shapeId') })
         continue
       }
 
-      const previewPath = resolvePackagePath(vmlPath, imageTarget)
-      const previewBytes = files.get(previewPath)
-      if (!previewBytes) continue
-      const extension = previewPath.split('.').pop()?.toLowerCase() ?? ''
-      let source = imageDataUri(previewBytes, extension)
-      if (!source && rasterizeLegacyPreview && ['emf', 'wmf'].includes(extension)) {
-        try {
-          const rasterized = await rasterizeLegacyPreview(toArrayBuffer(previewBytes), extension)
-          if (rasterized) source = imageDataUri(new Uint8Array(rasterized), 'png')
-        } catch (error) {
-          console.warn('[Equation.3] Unable to rasterize preview image.', { sheetName, extension, error })
-        }
+      const vmlPreview = imageTarget ? files.get(resolvePackagePath(vmlPath, imageTarget)) : undefined
+      const vmlExtension = imageTarget?.split('.').pop()?.toLowerCase() ?? ''
+      // Some Excel versions put only the placement in VML. The preview itself
+      // then lives in the OLE compound file (normally its OlePres stream).
+      const objectRelationshipId = getRelationshipId(object)
+      const objectTarget = objectRelationshipId ? worksheetRelationships.get(objectRelationshipId) : undefined
+      const objectBytes = objectTarget ? files.get(resolvePackagePath(worksheetPath, objectTarget)) : undefined
+      const embeddedPreview = !vmlPreview && objectBytes ? findEmbeddedOlePreview(objectBytes) : undefined
+      const previewBytes = vmlPreview ?? embeddedPreview?.bytes
+      const extension = vmlPreview ? vmlExtension : embeddedPreview?.extension ?? ''
+      if (!previewBytes) {
+        console.warn('[Equation.3] No preview image was found in the VML or OLE object.', {
+          sheetName,
+          shapeId: object.getAttribute('shapeId'),
+          oleObject: objectTarget,
+        })
+        continue
       }
+      const source = await legacyPreviewSource(previewBytes, extension, rasterizeLegacyPreview, { sheetName, extension })
       if (!source) {
         console.warn('[Equation.3] Preview format is not renderable in this runtime.', { sheetName, extension })
         continue
@@ -184,6 +190,169 @@ async function extractLegacyEquationDrawings(
     }
   }
   return drawings
+}
+
+async function legacyPreviewSource(
+  previewBytes: Uint8Array,
+  extension: string,
+  rasterizeLegacyPreview: LegacyEquationRasterizer | undefined,
+  context: { sheetName: string; extension: string },
+): Promise<string | undefined> {
+  let source = imageDataUri(previewBytes, extension)
+  if (!source && rasterizeLegacyPreview && ['emf', 'wmf'].includes(extension)) {
+    try {
+      const rasterized = await rasterizeLegacyPreview(toArrayBuffer(previewBytes), extension)
+      if (rasterized) source = imageDataUri(new Uint8Array(rasterized), 'png')
+    } catch (error) {
+      console.warn('[Equation.3] Unable to rasterize preview image.', { ...context, error })
+    }
+  }
+  return source
+}
+
+interface EmbeddedOlePreview {
+  bytes: Uint8Array
+  extension: 'png' | 'jpg' | 'gif' | 'bmp' | 'emf' | 'wmf'
+}
+
+/**
+ * Equation Editor 3.0 is an OLE compound document. Its cached presentation is
+ * commonly a WMF/EMF payload in its OlePres000 presentation stream. Scanning for a validated image
+ * header also supports producer variants which store the stream in mini FAT
+ * sectors without requiring a full CFB parser in the renderer.
+ */
+export function findEmbeddedOlePreview(bytes: Uint8Array): EmbeddedOlePreview | undefined {
+  const presentationStreams = readCompoundFileStreams(bytes)
+    .filter(stream => /^\u0001OlePres\d+$/i.test(stream.name))
+    .map(stream => stream.bytes)
+  for (const stream of presentationStreams) {
+    const preview = findImagePayload(stream)
+    if (preview) return preview
+  }
+  // Retain this fallback for producer variants with a malformed compound-file
+  // directory. It is intentionally secondary: mini-FAT streams are not safe to
+  // recover by scanning the container as a whole.
+  return findImagePayload(bytes)
+}
+
+interface CompoundFileStream {
+  name: string
+  bytes: Uint8Array
+}
+
+function readCompoundFileStreams(bytes: Uint8Array): CompoundFileStream[] {
+  const freeSector = 0xffffffff
+  const endOfChain = 0xfffffffe
+  if (!matches(bytes, 0, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return []
+  const sectorSize = 1 << readUint16(bytes, 0x1e)
+  const miniSectorSize = 1 << readUint16(bytes, 0x20)
+  if (![512, 4096].includes(sectorSize) || miniSectorSize !== 64) return []
+  const firstDirectorySector = readUint32(bytes, 0x30)
+  const miniStreamCutoff = readUint32(bytes, 0x38)
+  const firstMiniFatSector = readUint32(bytes, 0x3c)
+  const miniFatSectorCount = readUint32(bytes, 0x40)
+  const firstDifatSector = readUint32(bytes, 0x44)
+  const difatSectorCount = readUint32(bytes, 0x48)
+  const sector = (id: number) => {
+    const offset = (id + 1) * sectorSize
+    return offset >= sectorSize && offset + sectorSize <= bytes.length ? bytes.subarray(offset, offset + sectorSize) : undefined
+  }
+  const difat: number[] = []
+  for (let index = 0; index < 109; index += 1) {
+    const id = readUint32(bytes, 0x4c + index * 4)
+    if (id !== freeSector) difat.push(id)
+  }
+  let difatSector = firstDifatSector
+  for (let count = 0; count < difatSectorCount && difatSector !== endOfChain && difatSector !== freeSector; count += 1) {
+    const data = sector(difatSector)
+    if (!data) return []
+    for (let index = 0; index < sectorSize / 4 - 1; index += 1) {
+      const id = readUint32(data, index * 4)
+      if (id !== freeSector) difat.push(id)
+    }
+    difatSector = readUint32(data, sectorSize - 4)
+  }
+  const fat = concatBytes(difat.map(sector).filter((value): value is Uint8Array => !!value))
+  if (fat.length === 0) return []
+  const fatAt = (id: number) => id >= 0 && id * 4 + 4 <= fat.length ? readUint32(fat, id * 4) : endOfChain
+  const readChain = (start: number, unitSize: number, next: (id: number) => number, source: (id: number) => Uint8Array | undefined, maximum = 1_000_000) => {
+    const parts: Uint8Array[] = []
+    const seen = new Set<number>()
+    for (let id = start; id !== endOfChain && id !== freeSector && !seen.has(id) && seen.size < maximum; id = next(id)) {
+      const value = source(id)
+      if (!value) return new Uint8Array()
+      seen.add(id)
+      parts.push(value.subarray(0, unitSize))
+    }
+    return concatBytes(parts)
+  }
+  const directory = readChain(firstDirectorySector, sectorSize, fatAt, sector)
+  if (directory.length === 0) return []
+  const entries: Array<{ name: string; type: number; start: number; size: number }> = []
+  for (let offset = 0; offset + 128 <= directory.length; offset += 128) {
+    const length = readUint16(directory, offset + 64)
+    const type = directory[offset + 66] ?? 0
+    if (![2, 5].includes(type) || length < 2 || length > 64) continue
+    const name = new TextDecoder('utf-16le').decode(directory.subarray(offset, offset + length - 2))
+    const size = readUint32(directory, offset + 120) + readUint32(directory, offset + 124) * 0x1_0000_0000
+    entries.push({ name, type, start: readUint32(directory, offset + 116), size })
+  }
+  const root = entries.find(entry => entry.type === 5)
+  if (!root) return []
+  const miniStream = readChain(root.start, sectorSize, fatAt, sector).subarray(0, root.size)
+  const miniFat = readChain(firstMiniFatSector, sectorSize, fatAt, sector).subarray(0, miniFatSectorCount * sectorSize)
+  const miniFatAt = (id: number) => id >= 0 && id * 4 + 4 <= miniFat.length ? readUint32(miniFat, id * 4) : endOfChain
+  const miniSector = (id: number) => {
+    const offset = id * miniSectorSize
+    return offset >= 0 && offset + miniSectorSize <= miniStream.length ? miniStream.subarray(offset, offset + miniSectorSize) : undefined
+  }
+  return entries.filter(entry => entry.type === 2).map(entry => ({
+    name: entry.name,
+    bytes: (entry.size < miniStreamCutoff
+      ? readChain(entry.start, miniSectorSize, miniFatAt, miniSector)
+      : readChain(entry.start, sectorSize, fatAt, sector)).subarray(0, entry.size),
+  }))
+}
+
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  const output = new Uint8Array(parts.reduce((size, part) => size + part.length, 0))
+  let offset = 0
+  for (const part of parts) {
+    output.set(part, offset)
+    offset += part.length
+  }
+  return output
+}
+
+function findImagePayload(bytes: Uint8Array): EmbeddedOlePreview | undefined {
+  for (let offset = 0; offset < bytes.length - 8; offset += 1) {
+    if (matches(bytes, offset, [0x89, 0x50, 0x4e, 0x47])) return { bytes: bytes.subarray(offset), extension: 'png' }
+    if (matches(bytes, offset, [0xff, 0xd8, 0xff])) return { bytes: bytes.subarray(offset), extension: 'jpg' }
+    if (matches(bytes, offset, [0x47, 0x49, 0x46, 0x38])) return { bytes: bytes.subarray(offset), extension: 'gif' }
+    if (matches(bytes, offset, [0x42, 0x4d])) {
+      const size = readUint32(bytes, offset + 2)
+      return { bytes: bytes.subarray(offset, validEmbeddedLength(bytes, offset, size)), extension: 'bmp' }
+    }
+    // ENHMETAFILEHEADER: record type 1 and the ASCII signature " EMF" at +40.
+    if (readUint32(bytes, offset) === 1 && matches(bytes, offset + 40, [0x20, 0x45, 0x4d, 0x46])) {
+      return { bytes: bytes.subarray(offset, validEmbeddedLength(bytes, offset, readUint32(bytes, offset + 48))), extension: 'emf' }
+    }
+    const placeableWmf = matches(bytes, offset, [0xd7, 0xcd, 0xc6, 0x9a])
+    const metaOffset = placeableWmf ? offset + 22 : offset
+    if (metaOffset + 18 <= bytes.length && (readUint16(bytes, metaOffset) === 1 || readUint16(bytes, metaOffset) === 2) && readUint16(bytes, metaOffset + 2) === 9) {
+      const size = readUint32(bytes, metaOffset + 6) * 2 + (placeableWmf ? 22 : 0)
+      if (size >= 18) return { bytes: bytes.subarray(offset, validEmbeddedLength(bytes, offset, size)), extension: 'wmf' }
+    }
+  }
+  return undefined
+}
+
+function matches(bytes: Uint8Array, offset: number, signature: number[]): boolean {
+  return offset >= 0 && offset + signature.length <= bytes.length && signature.every((value, index) => bytes[offset + index] === value)
+}
+
+function validEmbeddedLength(bytes: Uint8Array, offset: number, length: number): number {
+  return Number.isFinite(length) && length > 0 && offset + length <= bytes.length ? offset + length : bytes.length
 }
 
 function isEquationEditorObject(programId: string | null): boolean {
@@ -464,7 +633,10 @@ function elementsByName(root: Document | Element, localName: string): Element[] 
 }
 
 function getRelationshipId(element: Element): string | null {
-  return element.getAttribute('r:id') ?? element.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')
+  return element.getAttribute('r:id')
+    ?? element.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')
+    ?? element.getAttribute('o:relid')
+    ?? element.getAttributeNS('urn:schemas-microsoft-com:office:office', 'relid')
 }
 
 function relationshipPathFor(partPath: string): string {

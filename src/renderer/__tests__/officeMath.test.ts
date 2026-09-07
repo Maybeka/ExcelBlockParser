@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs'
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom'
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import { describe, expect, it, vi } from 'vitest'
-import { extractEquationDrawings, extractOfficeMathDefinitions, packageMayContainOfficeMathDrawing } from '../services/officeMath'
+import { extractEquationDrawings, extractOfficeMathDefinitions, findEmbeddedOlePreview, packageMayContainOfficeMathDrawing } from '../services/officeMath'
 
 describe('Office Math extraction', () => {
   it('skips package inflation when the ZIP directory has no drawing XML', () => {
@@ -52,7 +52,7 @@ describe('Office Math extraction', () => {
       'xl/_rels/workbook.xml.rels': strToU8(relationships('rId1', 'worksheets/sheet1.xml')),
       'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><legacyDrawing r:id="rId2"/><oleObjects><oleObject progId="Equation.3" shapeId="1025" r:id="rId1"/></oleObjects></worksheet>`),
       'xl/worksheets/_rels/sheet1.xml.rels': strToU8(`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>`),
-      'xl/drawings/vmlDrawing1.vml': strToU8(`<?xml version="1.0"?><xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><v:shape id="_x0000_s1025"><v:imagedata r:id="rId1"/><x:ClientData ObjectType="Pict"><x:Anchor>1, 0, 2, 0, 3, 0, 5, 0</x:Anchor></x:ClientData></v:shape></xml>`),
+      'xl/drawings/vmlDrawing1.vml': strToU8(`<?xml version="1.0"?><xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:o="urn:schemas-microsoft-com:office:office"><v:shape id="_x0000_s1025"><v:imagedata o:relid="rId1"/><x:ClientData ObjectType="Pict"><x:Anchor>1, 0, 2, 0, 3, 0, 5, 0</x:Anchor></x:ClientData></v:shape></xml>`),
       'xl/drawings/_rels/vmlDrawing1.vml.rels': strToU8(`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/></Relationships>`),
       'xl/embeddings/oleObject1.bin': Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0]),
       'xl/media/image1.png': Uint8Array.from([0x89, 0x50, 0x4e, 0x47]),
@@ -84,7 +84,7 @@ describe('Office Math extraction', () => {
       'xl/_rels/workbook.xml.rels': strToU8(relationships('rId1', 'worksheets/sheet1.xml')),
       'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><legacyDrawing r:id="rId2"/><oleObjects><oleObject progId="Equation.3" shapeId="1025" r:id="rId1"/></oleObjects></worksheet>`),
       'xl/worksheets/_rels/sheet1.xml.rels': strToU8(`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>`),
-      'xl/drawings/vmlDrawing1.vml': strToU8(`<?xml version="1.0"?><xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><v:shape id="_x0000_s1025"><v:imagedata r:id="rId1"/><x:ClientData ObjectType="Pict"><x:Anchor>0, 0, 0, 0, 2, 0, 3, 0</x:Anchor></x:ClientData></v:shape></xml>`),
+      'xl/drawings/vmlDrawing1.vml': strToU8(`<?xml version="1.0"?><xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:o="urn:schemas-microsoft-com:office:office"><v:shape id="_x0000_s1025"><v:imagedata o:relid="rId1"/><x:ClientData ObjectType="Pict"><x:Anchor>0, 0, 0, 0, 2, 0, 3, 0</x:Anchor></x:ClientData></v:shape></xml>`),
       'xl/drawings/_rels/vmlDrawing1.vml.rels': strToU8(`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.emf"/></Relationships>`),
       'xl/embeddings/oleObject1.bin': Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0]),
       'xl/media/image1.emf': Uint8Array.from([1, 2, 3]),
@@ -104,8 +104,105 @@ describe('Office Math extraction', () => {
       Object.assign(globalThis, { DOMParser: originalParser })
     }
   })
+
+  it('uses a presentation cached inside the OLE object when VML has no image relationship', async () => {
+    const workbook = new ExcelJS.Workbook()
+    workbook.addWorksheet('Legacy')
+    const base = await workbook.xlsx.writeBuffer()
+    const olePresentation = new Uint8Array(80)
+    olePresentation[0] = 1 // EMR_HEADER
+    olePresentation.set([0x20, 0x45, 0x4d, 0x46], 40) // ENHMETAHEADER signature
+    olePresentation[48] = 64 // ENHMETAHEADER nBytes
+    const files = zipSync({
+      ...Object.fromEntries(Object.entries(unzipSync(new Uint8Array(base as ArrayBuffer)))),
+      'xl/workbook.xml': strToU8(`<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Legacy" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+      'xl/_rels/workbook.xml.rels': strToU8(relationships('rId1', 'worksheets/sheet1.xml')),
+      'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><legacyDrawing r:id="rId2"/><oleObjects><oleObject progId="Equation.3" shapeId="1025" r:id="rId1"/></oleObjects></worksheet>`),
+      'xl/worksheets/_rels/sheet1.xml.rels': strToU8(`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>`),
+      'xl/drawings/vmlDrawing1.vml': strToU8(`<?xml version="1.0"?><xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel"><v:shape id="_x0000_s1025"><x:ClientData ObjectType="Pict"><x:Anchor>0, 0, 0, 0, 2, 0, 3, 0</x:Anchor></x:ClientData></v:shape></xml>`),
+      'xl/embeddings/oleObject1.bin': olePresentation,
+    })
+    const originalParser = globalThis.DOMParser
+    Object.assign(globalThis, { DOMParser: XmlDomParser })
+    try {
+      const rasterize = vi.fn(async (_preview: ArrayBuffer, extension: string) => {
+        expect(extension).toBe('emf')
+        return Uint8Array.from([0x89, 0x50, 0x4e, 0x47]).buffer
+      })
+      const drawings = await extractEquationDrawings(files.buffer.slice(files.byteOffset, files.byteOffset + files.byteLength), workbook, rasterize)
+      expect(rasterize).toHaveBeenCalledOnce()
+      expect(drawings[0]?.source).toBe('data:image/png;base64,iVBORw==')
+    } finally {
+      Object.assign(globalThis, { DOMParser: originalParser })
+    }
+  })
+
+  it('finds an Equation Editor WMF presentation embedded in its OLE object', () => {
+    const presentation = Uint8Array.from([
+      0, 0, 0, 0, 0, 0,
+      // Placeable WMF header followed by a minimal METAHEADER with mtSize=9.
+      0xd7, 0xcd, 0xc6, 0x9a, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      1, 0, 9, 0, 0, 3, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ])
+
+    const preview = findEmbeddedOlePreview(presentation)
+
+    expect(preview).toEqual(expect.objectContaining({ extension: 'wmf' }))
+    expect(preview?.bytes[0]).toBe(0xd7)
+  })
+
+  it('reads a presentation stored in an OLE compound-file stream', () => {
+    const presentation = new Uint8Array(64)
+    presentation.set([0xd7, 0xcd, 0xc6, 0x9a], 0)
+    presentation.set([1, 0, 9, 0, 0, 3, 9, 0], 22)
+
+    expect(findEmbeddedOlePreview(compoundFileWithPresentation(presentation))).toEqual(expect.objectContaining({ extension: 'wmf' }))
+  })
 })
 
 function relationships(id: string, target: string): string {
   return `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="${target}"/></Relationships>`
+}
+
+function compoundFileWithPresentation(presentation: Uint8Array): Uint8Array {
+  const sectorSize = 512
+  const bytes = new Uint8Array(sectorSize * 4)
+  bytes.set([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
+  writeUint16(bytes, 0x1c, 0xfffe)
+  writeUint16(bytes, 0x1e, 9)
+  writeUint16(bytes, 0x20, 6)
+  writeUint32(bytes, 0x2c, 1) // one FAT sector
+  writeUint32(bytes, 0x30, 0) // directory sector
+  writeUint32(bytes, 0x38, 4096)
+  writeUint32(bytes, 0x3c, 0xfffffffe)
+  writeUint32(bytes, 0x44, 0xfffffffe)
+  writeUint32(bytes, 0x4c, 1) // FAT sector id
+  for (let offset = 0x50; offset < 512; offset += 4) writeUint32(bytes, offset, 0xffffffff)
+  writeDirectoryEntry(bytes, 512, 'Root Entry', 5, 0xfffffffe, 0)
+  writeDirectoryEntry(bytes, 640, '\u0001OlePres000', 2, 2, 4096)
+  writeUint32(bytes, 1024, 0xfffffffe)
+  writeUint32(bytes, 1028, 0xfffffffe)
+  writeUint32(bytes, 1032, 0xfffffffe)
+  bytes.set(presentation, 1536)
+  return bytes
+}
+
+function writeDirectoryEntry(bytes: Uint8Array, offset: number, name: string, type: number, start: number, size: number): void {
+  for (let index = 0; index < name.length; index += 1) writeUint16(bytes, offset + index * 2, name.charCodeAt(index))
+  writeUint16(bytes, offset + 64, name.length * 2 + 2)
+  bytes[offset + 66] = type
+  writeUint32(bytes, offset + 116, start)
+  writeUint32(bytes, offset + 120, size)
+}
+
+function writeUint16(bytes: Uint8Array, offset: number, value: number): void {
+  bytes[offset] = value & 0xff
+  bytes[offset + 1] = value >>> 8
+}
+
+function writeUint32(bytes: Uint8Array, offset: number, value: number): void {
+  bytes[offset] = value & 0xff
+  bytes[offset + 1] = value >>> 8
+  bytes[offset + 2] = value >>> 16
+  bytes[offset + 3] = value >>> 24
 }
