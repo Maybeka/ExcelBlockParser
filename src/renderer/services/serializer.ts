@@ -1,4 +1,4 @@
-import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type ExportedProject, type ParseResult, type ProjectConfig, type RegionParseResult } from '../types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, DEFAULT_WORKBOOK_LOAD_SETTINGS, type ExportedProject, type ParseResult, type ProjectConfig, type RegionParseResult } from '../types'
 import { isRecord, validateProjectV3Document } from './projectV3Validation'
 
 export const CURRENT_PROJECT_VERSION = 3 as const
@@ -35,6 +35,7 @@ export function serializeProject(project: ProjectConfig, parseResult: ParseResul
     exportedAt: new Date().toISOString(),
     project: {
       ...project,
+      ...(project.workbookLoadSettings ? { workbookLoadSettings: { ...DEFAULT_WORKBOOK_LOAD_SETTINGS, ...project.workbookLoadSettings } } : {}),
       workbooks: project.workbooks.map(workbook => ({
         ...workbook,
         displaySettings: { ...DEFAULT_WORKBOOK_DISPLAY_SETTINGS, ...workbook.displaySettings },

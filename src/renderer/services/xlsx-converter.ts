@@ -11,7 +11,7 @@ import {
 import type { IStyleData } from '@univerjs/core'
 import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
-import { extractOfficeMathDrawings } from './officeMath'
+import { extractOfficeMathDrawings, stripEmbeddedImagesFromXlsx } from './officeMath'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
 type ExcelColor = { argb?: string; theme?: number | string; indexed?: number | string; tint?: number | string; auto?: boolean | number | string }
@@ -23,6 +23,20 @@ export interface ConversionResult {
   sheetTabColors: Record<string, string>
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
   images: ConvertedWorkbookImage[]
+  metrics: WorkbookConversionMetrics
+}
+
+export interface WorkbookConversionOptions {
+  parseImages?: boolean
+  parseOfficeMath?: boolean
+}
+
+export interface WorkbookConversionMetrics {
+  excelJsLoadMs: number
+  officeMathMs: number
+  worksheetConversionMs: number
+  imageExtractionMs: number
+  totalMs: number
 }
 
 export interface ConvertedWorkbookImage {
@@ -87,10 +101,16 @@ export function deriveOutlineGroups(
 export async function convertXlsxToWorkbookData(
   arrayBuffer: ArrayBuffer,
   fileName: string,
+  options: WorkbookConversionOptions = {},
 ): Promise<ConversionResult> {
+  const startedAt = performance.now()
   const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(arrayBuffer)
-  const officeMathDrawings = await extractOfficeMathDrawings(arrayBuffer, workbook)
+  const loadBuffer = options.parseImages === false ? stripEmbeddedImagesFromXlsx(arrayBuffer) : arrayBuffer
+  await workbook.xlsx.load(loadBuffer, options.parseImages === false ? { ignoreNodes: ['drawing', 'picture'] } : undefined)
+  const excelJsLoadMs = performance.now() - startedAt
+  const officeMathStartedAt = performance.now()
+  const officeMathDrawings = options.parseOfficeMath === false ? [] : await extractOfficeMathDrawings(arrayBuffer, workbook)
+  const officeMathMs = performance.now() - officeMathStartedAt
 
   const sheets: Record<string, Partial<IWorksheetData>> = {}
   const sheetOrder: string[] = []
@@ -101,6 +121,7 @@ export async function convertXlsxToWorkbookData(
   const styleMap = new Map<string, string>()
   const styles: Record<string, IStyleData> = {}
   let styleCounter = 0
+  let imageExtractionMs = 0
 
   function registerStyle(style: IStyleData): string {
     const key = stableStringify(style)
@@ -112,6 +133,7 @@ export async function convertXlsxToWorkbookData(
     return id
   }
 
+  const worksheetConversionStartedAt = performance.now()
   workbook.eachSheet((worksheet, sheetIndex) => {
     const sheetId = worksheet.name || `Sheet${sheetIndex}`
     sheetOrder.push(sheetId)
@@ -275,18 +297,23 @@ export async function convertXlsxToWorkbookData(
       ...(Object.keys(rowHeights).length > 0 ? { rowData: rowHeights } : {}),
     }
 
-    for (const image of worksheet.getImages()) {
-      const source = workbookImageToDataUri(workbook.getImage(Number(image.imageId)))
-      const range = image.range as ExcelJS.ImageRange & { ext?: { width: number; height: number } }
-      if (!source || !range?.tl) continue
-      const from = anchorToImagePosition(range.tl, worksheet)
-      const size = range.ext
-        ? { width: range.ext.width, height: range.ext.height }
-        : imageRangeSize(range, worksheet)
-      if (size.width <= 0 || size.height <= 0) continue
-      images.push({ sheetName: worksheet.name || sheetId, source, from, ...size })
+    if (options.parseImages !== false) {
+      const imageExtractionStartedAt = performance.now()
+      for (const image of worksheet.getImages()) {
+        const source = workbookImageToDataUri(workbook.getImage(Number(image.imageId)))
+        const range = image.range as ExcelJS.ImageRange & { ext?: { width: number; height: number } }
+        if (!source || !range?.tl) continue
+        const from = anchorToImagePosition(range.tl, worksheet)
+        const size = range.ext
+          ? { width: range.ext.width, height: range.ext.height }
+          : imageRangeSize(range, worksheet)
+        if (size.width <= 0 || size.height <= 0) continue
+        images.push({ sheetName: worksheet.name || sheetId, source, from, ...size })
+      }
+      imageExtractionMs += performance.now() - imageExtractionStartedAt
     }
   })
+  const worksheetConversionMs = performance.now() - worksheetConversionStartedAt
 
   const fontSet = new Set<string>()
   for (const style of Object.values(styles)) {
@@ -309,6 +336,13 @@ export async function convertXlsxToWorkbookData(
     sheetTabColors,
     sheetDisplaySettings,
     images: [...images, ...officeMathDrawings],
+    metrics: {
+      excelJsLoadMs,
+      officeMathMs,
+      worksheetConversionMs,
+      imageExtractionMs,
+      totalMs: performance.now() - startedAt,
+    },
   }
 }
 

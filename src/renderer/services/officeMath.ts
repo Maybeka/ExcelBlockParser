@@ -1,4 +1,4 @@
-import { strFromU8, unzipSync } from 'fflate'
+import { inflateSync, strFromU8, unzipSync } from 'fflate'
 import type ExcelJS from 'exceljs'
 
 const EMUS_PER_PIXEL = 9525
@@ -42,12 +42,15 @@ export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbo
 
 export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook): OfficeMathDefinition[] {
   if (typeof DOMParser === 'undefined') return []
-  const files = unzipSync(new Uint8Array(arrayBuffer))
-  const drawingPaths = Object.keys(files).filter(path => path.startsWith('xl/drawings/') && path.endsWith('.xml'))
-  if (!drawingPaths.some(path => decodeXml(files[path]).includes('oMath'))) return []
+  const bytes = new Uint8Array(arrayBuffer)
+  const packageEntries = readZipEntries(bytes)
+  // Most workbooks do not contain DrawingML at all. Avoid inflating every part
+  // of a large XLSX package just to establish that it cannot contain OMML.
+  if (packageEntries && ![...packageEntries.keys()].some(isDrawingXmlPathText)) return []
+  const files = packageEntries ? new SelectiveZipReader(bytes, packageEntries) : new LegacyZipReader(bytes)
 
-  const workbookDocument = parseXml(files['xl/workbook.xml'])
-  const workbookRelationships = parseRelationships(files['xl/_rels/workbook.xml.rels'])
+  const workbookDocument = parseXml(files.get('xl/workbook.xml'))
+  const workbookRelationships = parseRelationships(files.get('xl/_rels/workbook.xml.rels'))
   if (!workbookDocument) return []
 
   const definitions: OfficeMathDefinition[] = []
@@ -59,15 +62,15 @@ export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook:
     if (!sheetName || !sheetTarget || !worksheet) continue
 
     const worksheetPath = resolvePackagePath('xl/workbook.xml', sheetTarget)
-    const worksheetDocument = parseXml(files[worksheetPath])
-    const worksheetRelationships = parseRelationships(files[relationshipPathFor(worksheetPath)])
-    if (!worksheetDocument) continue
+    const worksheetRelationships = parseRelationships(files.get(relationshipPathFor(worksheetPath)))
+    const drawingTargets = new Set(
+      [...worksheetRelationships.values()]
+        .map(target => resolvePackagePath(worksheetPath, target))
+        .filter(isDrawingXmlPathText),
+    )
 
-    for (const drawing of elementsByName(worksheetDocument, 'drawing')) {
-      const drawingRelationshipId = getRelationshipId(drawing)
-      const drawingTarget = drawingRelationshipId ? worksheetRelationships.get(drawingRelationshipId) : undefined
-      if (!drawingTarget) continue
-      const drawingDocument = parseXml(files[resolvePackagePath(worksheetPath, drawingTarget)])
+    for (const drawingTarget of drawingTargets) {
+      const drawingDocument = parseXml(files.get(drawingTarget))
       if (!drawingDocument) continue
 
       for (const math of elementsByName(drawingDocument, 'oMath')) {
@@ -79,6 +82,187 @@ export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook:
     }
   }
   return definitions
+}
+
+/**
+ * Inspect only the ZIP central directory. Returning true on an unfamiliar or
+ * malformed package keeps extraction conservative: it may do extra work, but
+ * never drops a possible Office Math drawing.
+ */
+export function packageMayContainOfficeMathDrawing(arrayBuffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(arrayBuffer)
+  const entries = readZipEntries(bytes)
+  return !entries || [...entries.keys()].some(isDrawingXmlPathText)
+}
+
+interface ZipEntry {
+  compressionMethod: number
+  compressedSize: number
+  offset: number
+  centralOffset: number
+}
+
+interface ZipReader {
+  get(path: string): Uint8Array | undefined
+}
+
+class SelectiveZipReader implements ZipReader {
+  private readonly cache = new Map<string, Uint8Array | undefined>()
+
+  constructor(private readonly bytes: Uint8Array, private readonly entries: Map<string, ZipEntry>) {}
+
+  get(path: string): Uint8Array | undefined {
+    if (this.cache.has(path)) return this.cache.get(path)
+    const entry = this.entries.get(path)
+    const value = entry ? readZipEntry(this.bytes, entry) : undefined
+    this.cache.set(path, value)
+    return value
+  }
+
+}
+
+class LegacyZipReader implements ZipReader {
+  private readonly files: Record<string, Uint8Array>
+
+  constructor(bytes: Uint8Array) {
+    this.files = unzipSync(bytes)
+  }
+
+  get(path: string): Uint8Array | undefined {
+    return this.files[path]
+  }
+
+}
+
+function readZipEntries(bytes: Uint8Array): Map<string, ZipEntry> | null {
+  const directory = centralDirectory(bytes)
+  if (!directory) return null
+  const entries = new Map<string, ZipEntry>()
+  let offset = directory.offset
+  const end = directory.offset + directory.size
+  while (offset < end) {
+    if (offset + 46 > bytes.length || readUint32(bytes, offset) !== 0x02014b50) return null
+    const compressionMethod = readUint16(bytes, offset + 10)
+    const compressedSize = readUint32(bytes, offset + 20)
+    const nameLength = readUint16(bytes, offset + 28)
+    const extraLength = readUint16(bytes, offset + 30)
+    const commentLength = readUint16(bytes, offset + 32)
+    const localHeaderOffset = readUint32(bytes, offset + 42)
+    const nameStart = offset + 46
+    const next = nameStart + nameLength + extraLength + commentLength
+    if (next > bytes.length || next > end || compressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) return null
+    entries.set(strFromU8(bytes.subarray(nameStart, nameStart + nameLength)), {
+      compressionMethod,
+      compressedSize,
+      offset: localHeaderOffset,
+      centralOffset: offset,
+    })
+    offset = next
+  }
+  return offset === end ? entries : null
+}
+
+function readZipEntry(bytes: Uint8Array, entry: ZipEntry): Uint8Array | undefined {
+  if (entry.offset + 30 > bytes.length || readUint32(bytes, entry.offset) !== 0x04034b50) return undefined
+  const nameLength = readUint16(bytes, entry.offset + 26)
+  const extraLength = readUint16(bytes, entry.offset + 28)
+  const start = entry.offset + 30 + nameLength + extraLength
+  const end = start + entry.compressedSize
+  if (end > bytes.length) return undefined
+  const compressed = bytes.subarray(start, end)
+  if (entry.compressionMethod === 0) return compressed.slice()
+  if (entry.compressionMethod === 8) return inflateSync(compressed)
+  return undefined
+}
+
+function centralDirectory(bytes: Uint8Array): { offset: number; size: number; endOffset: number } | null {
+  // The end-of-central-directory comment is limited to 65535 bytes.
+  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 0xffff - 22); offset -= 1) {
+    if (readUint32(bytes, offset) !== 0x06054b50) continue
+    const size = readUint32(bytes, offset + 12)
+    const directoryOffset = readUint32(bytes, offset + 16)
+    // ZIP64 stores sentinel values here. Fall back to the full parser there.
+    if (size === 0xffffffff || directoryOffset === 0xffffffff || directoryOffset + size > bytes.length) return null
+    return { offset: directoryOffset, size, endOffset: offset }
+  }
+  return null
+}
+
+/**
+ * Produces an XLSX package that ExcelJS can load without image or drawing
+ * parts. It copies compressed entries directly; no worksheet XML or cell data
+ * is inflated just to disable image parsing for diagnostics.
+ */
+export function stripEmbeddedImagesFromXlsx(arrayBuffer: ArrayBuffer): ArrayBuffer {
+  const bytes = new Uint8Array(arrayBuffer)
+  const directory = centralDirectory(bytes)
+  const entries = readZipEntries(bytes)
+  if (!directory || !entries || entries.size > 0xffff) return arrayBuffer
+
+  const ordered = [...entries.entries()]
+    .map(([path, entry]) => ({ path, entry }))
+    .sort((left, right) => left.entry.offset - right.entry.offset)
+  const kept = ordered.filter(({ path }) => !path.startsWith('xl/media/') && !path.startsWith('xl/drawings/'))
+  if (kept.length === ordered.length) return arrayBuffer
+
+  const localParts: Uint8Array[] = []
+  const newOffsets = new Map<ZipEntry, number>()
+  let localSize = 0
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index]!
+    if (!kept.includes(current)) continue
+    const nextOffset = ordered[index + 1]?.entry.offset ?? directory.offset
+    if (current.entry.offset >= nextOffset || nextOffset > bytes.length) return arrayBuffer
+    newOffsets.set(current.entry, localSize)
+    const part = bytes.slice(current.entry.offset, nextOffset)
+    localParts.push(part)
+    localSize += part.length
+  }
+
+  const centralParts: Uint8Array[] = []
+  let centralSize = 0
+  const centralOrdered = [...entries.entries()]
+    .map(([path, entry]) => ({ path, entry }))
+    .sort((left, right) => left.entry.centralOffset - right.entry.centralOffset)
+  for (let index = 0; index < centralOrdered.length; index += 1) {
+    const current = centralOrdered[index]!
+    const offset = newOffsets.get(current.entry)
+    if (offset === undefined) continue
+    const nextOffset = centralOrdered[index + 1]?.entry.centralOffset ?? directory.offset + directory.size
+    if (current.entry.centralOffset >= nextOffset || nextOffset > bytes.length) return arrayBuffer
+    const part = bytes.slice(current.entry.centralOffset, nextOffset)
+    new DataView(part.buffer, part.byteOffset, part.byteLength).setUint32(42, offset, true)
+    centralParts.push(part)
+    centralSize += part.length
+  }
+
+  const endPart = bytes.slice(directory.endOffset)
+  if (endPart.length < 22 || localSize > 0xffffffff || centralSize > 0xffffffff) return arrayBuffer
+  const endView = new DataView(endPart.buffer, endPart.byteOffset, endPart.byteLength)
+  endView.setUint16(8, kept.length, true)
+  endView.setUint16(10, kept.length, true)
+  endView.setUint32(12, centralSize, true)
+  endView.setUint32(16, localSize, true)
+
+  const output = new Uint8Array(localSize + centralSize + endPart.length)
+  let outputOffset = 0
+  for (const part of [...localParts, ...centralParts, endPart]) {
+    output.set(part, outputOffset)
+    outputOffset += part.length
+  }
+  return output.buffer
+}
+
+function isDrawingXmlPathText(path: string): boolean {
+  return path.startsWith('xl/drawings/') && path.endsWith('.xml')
+}
+
+function readUint16(bytes: Uint8Array, offset: number): number {
+  return bytes[offset]! | (bytes[offset + 1]! << 8)
+}
+
+function readUint32(bytes: Uint8Array, offset: number): number {
+  return (bytes[offset]! | (bytes[offset + 1]! << 8) | (bytes[offset + 2]! << 16) | (bytes[offset + 3]! << 24)) >>> 0
 }
 
 function parseXml(bytes: Uint8Array | undefined): Document | null {

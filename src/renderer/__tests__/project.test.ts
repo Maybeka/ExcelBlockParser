@@ -40,6 +40,12 @@ describe('project workspace', () => {
     expect(project.blocks).toEqual([])
     expect(project.activeBlockId).toBe('')
     expect(project.activeWorkbookId).toBeNull()
+    expect(project.workbookLoadSettings).toEqual({
+      parseImages: true,
+      parseOfficeMath: true,
+      performanceLogging: false,
+    })
+    expect(serializeProject(project, null).project.workbookLoadSettings).toEqual(project.workbookLoadSettings)
   })
 
   it('derives project names and export file names from the same base name', () => {
@@ -69,6 +75,7 @@ describe('project workspace', () => {
       { showOutlines: false, showFrozenPanes: false },
       { showOutlines: false, showFrozenPanes: false },
     ])
+    expect(loaded.project?.project.workbookLoadSettings).toBeUndefined()
   })
 
   it('rejects legacy session versions explicitly', () => {

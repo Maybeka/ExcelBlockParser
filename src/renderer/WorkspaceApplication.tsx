@@ -1,8 +1,8 @@
 import { Suspense, lazy, useState, useCallback, useRef, useMemo, useEffect, type PointerEvent as ReactPointerEvent } from 'react'
-import { Badge, Button, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
+import { Badge, Button, Checkbox, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
 import { BorderOutlined, CheckCircleOutlined, CodeOutlined, EyeInvisibleOutlined, EyeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, MoreOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
-import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseResult, type ProjectConfig, type ProjectWorkbook, type WorkbookDisplaySettings } from './types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, DEFAULT_WORKBOOK_LOAD_SETTINGS, type CellRange, type ParseResult, type ProjectConfig, type ProjectWorkbook, type WorkbookDisplaySettings, type WorkbookLoadSettings } from './types'
 import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
 import { gateBPrototypePanel } from './features/panel/gateBPrototypePanels'
 import type { WorkspaceFeaturePanelContext, WorkspaceReconciliationItem } from './features/panel/workspacePanel'
@@ -193,6 +193,7 @@ export function WorkspaceApplication() {
     () => projectWorkbooks.find(workbook => workbook.id === activeWorkbookId)?.displaySettings ?? DEFAULT_WORKBOOK_DISPLAY_SETTINGS,
     [activeWorkbookId, projectWorkbooks],
   )
+  const workbookLoadSettings = project.workbookLoadSettings ?? DEFAULT_WORKBOOK_LOAD_SETTINGS
   const setProjectActiveSheet = useCallback((sheetName: string | null) => {
     setProject(current => setActiveWorkbookSheet(current, sheetName))
   }, [])
@@ -213,6 +214,12 @@ export function WorkspaceApplication() {
       ...current,
       workbooks: current.workbooks.map(workbook => workbook.id === workbookId ? { ...workbook, displaySettings } : workbook),
     }))
+    setHasUnsavedChanges(true)
+  }, [rememberWorkspace, setHasUnsavedChanges])
+
+  const handleWorkbookLoadSettingsChange = useCallback((workbookLoadSettings: WorkbookLoadSettings) => {
+    rememberWorkspace()
+    setProject(current => ({ ...current, workbookLoadSettings }))
     setHasUnsavedChanges(true)
   }, [rememberWorkspace, setHasUnsavedChanges])
 
@@ -1074,6 +1081,7 @@ export function WorkspaceApplication() {
                   activeWorkbookId={activeWorkbookId}
                   activeSheet={activeSheetName}
                   workbookBrowserMode={workbookBrowserMode}
+                  workbookLoadSettings={workbookLoadSettings}
                   displaySettings={activeWorkbookDisplaySettings}
                   onDisplaySettingsChange={handleWorkbookDisplaySettingsChange}
                   activeItemIds={workbookBrowserMode ? [] : activeCanvasItemIds}
@@ -1263,6 +1271,22 @@ export function WorkspaceApplication() {
                 { value: 'zh-CN', label: t('language.chinese') },
               ]} />
             </label>
+          </section>
+          <section className="project-settings-section">
+            <h3>{t('settings.workbookDiagnostics')}</h3>
+            <label className="project-settings-field">
+              <span>{t('settings.parseImages')}</span>
+              <Checkbox checked={workbookLoadSettings.parseImages} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, parseImages: event.target.checked })}>{t('settings.enabled')}</Checkbox>
+            </label>
+            <label className="project-settings-field">
+              <span>{t('settings.parseOfficeMath')}</span>
+              <Checkbox checked={workbookLoadSettings.parseOfficeMath} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, parseOfficeMath: event.target.checked })}>{t('settings.enabled')}</Checkbox>
+            </label>
+            <label className="project-settings-field">
+              <span>{t('settings.performanceLogging')}</span>
+              <Checkbox checked={workbookLoadSettings.performanceLogging} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, performanceLogging: event.target.checked })}>{t('settings.enabled')}</Checkbox>
+            </label>
+            <p className="project-settings-hint">{t('settings.workbookDiagnosticsHint')}</p>
           </section>
         </div>
       </Modal>

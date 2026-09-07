@@ -35,8 +35,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $assets = Get-ChildItem -Path release-wails -File | ForEach-Object { $_.FullName }
-          gh release create $env:GITHUB_REF_NAME $assets `
-            --verify-tag `
-            --title "Excel Block Parser $env:GITHUB_REF_NAME" `
-            --generate-notes `
-            --notes "Unsigned Windows 11 x64 Wails release. Verify the bundled SHA-256 checksum before use."
+          $releaseArgs = @(
+            'release', 'create', $env:GITHUB_REF_NAME
+            '--verify-tag'
+            '--title', "Excel Block Parser $env:GITHUB_REF_NAME"
+            '--generate-notes'
+            '--notes', 'Unsigned Windows 11 x64 Wails release. Verify the bundled SHA-256 checksum before use.'
+          )
+          if ($env:GITHUB_REF_NAME -match '-') { $releaseArgs += '--prerelease' }
+          gh @releaseArgs $assets

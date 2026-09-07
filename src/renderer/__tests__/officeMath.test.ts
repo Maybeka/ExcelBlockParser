@@ -2,9 +2,17 @@ import ExcelJS from 'exceljs'
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom'
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { extractOfficeMathDefinitions } from '../services/officeMath'
+import { extractOfficeMathDefinitions, packageMayContainOfficeMathDrawing } from '../services/officeMath'
 
 describe('Office Math extraction', () => {
+  it('skips package inflation when the ZIP directory has no drawing XML', () => {
+    const noDrawings = zipSync({ 'xl/worksheets/sheet1.xml': strToU8('<worksheet/>') })
+    const drawing = zipSync({ 'xl/drawings/drawing1.xml': strToU8('<drawing/>') })
+
+    expect(packageMayContainOfficeMathDrawing(noDrawings.buffer.slice(noDrawings.byteOffset, noDrawings.byteOffset + noDrawings.byteLength))).toBe(false)
+    expect(packageMayContainOfficeMathDrawing(drawing.buffer.slice(drawing.byteOffset, drawing.byteOffset + drawing.byteLength))).toBe(true)
+  })
+
   it('reads an OMML formula from an XLSX drawing and preserves its anchor', async () => {
     const workbook = new ExcelJS.Workbook()
     workbook.addWorksheet('Math')

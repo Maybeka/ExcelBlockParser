@@ -114,5 +114,15 @@ describe('XLSX workbook conversion', () => {
       width: 120,
       height: 60,
     })])
+
+    const withoutImages = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'images.xlsx', { parseImages: false })
+    expect(withoutImages.images).toEqual([])
+    expect(withoutImages.metrics).toMatchObject({
+      excelJsLoadMs: expect.any(Number),
+      officeMathMs: expect.any(Number),
+      worksheetConversionMs: expect.any(Number),
+      imageExtractionMs: 0,
+      totalMs: expect.any(Number),
+    })
   })
 })

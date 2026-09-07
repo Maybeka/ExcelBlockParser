@@ -1,4 +1,4 @@
-import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type ProjectConfig, type ProjectWorkbook } from '../types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, DEFAULT_WORKBOOK_LOAD_SETTINGS, type ProjectConfig, type ProjectWorkbook } from '../types'
 import type { BuiltInFeatureRegistry, WorkbookLoadedEvent } from '../features/core/projectFeature'
 import { createPythonPackage } from './pythonPackage'
 
@@ -51,6 +51,7 @@ export function createProject(name = 'Untitled project'): ProjectConfig {
     activeBlockId: '',
     activeRegionId: null,
     focusMode: 'always-editable',
+    workbookLoadSettings: { ...DEFAULT_WORKBOOK_LOAD_SETTINGS },
     pythonScript: createPythonPackage(),
   }
 }

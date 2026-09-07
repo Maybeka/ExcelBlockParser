@@ -242,7 +242,7 @@ export function validateProjectV3Document(value: unknown): string[] {
   if (typeof value.exportedAt !== 'string' || Number.isNaN(Date.parse(value.exportedAt)) || new Date(value.exportedAt).toISOString() !== value.exportedAt) documentErrors.push('Invalid project file: exportedAt must be an ISO date-time.')
   if (!isRecord(value.project)) return ['Invalid project file: missing project object.']
   const project = value.project
-  const projectExtra = unknownKey(project, new Set(['id', 'name', 'workbooks', 'activeWorkbookId', 'blocks', 'regions', 'activeBlockId', 'activeRegionId', 'focusMode', 'pythonScript']))
+  const projectExtra = unknownKey(project, new Set(['id', 'name', 'workbooks', 'activeWorkbookId', 'blocks', 'regions', 'activeBlockId', 'activeRegionId', 'focusMode', 'workbookLoadSettings', 'pythonScript']))
   if (projectExtra) return [`Invalid project file: unknown project field "${projectExtra}".`]
   if (typeof project.id !== 'string' || !project.id || typeof project.name !== 'string' || !project.name
     || !Array.isArray(project.workbooks) || !Array.isArray(project.blocks) || !Array.isArray(project.regions)
@@ -250,6 +250,11 @@ export function validateProjectV3Document(value: unknown): string[] {
     || typeof project.activeBlockId !== 'string'
     || (project.activeRegionId !== null && typeof project.activeRegionId !== 'string')
     || (project.focusMode !== 'always-editable' && project.focusMode !== 'activate-first')) return ['Invalid project file: project fields are incomplete or invalid.']
+  if (project.workbookLoadSettings !== undefined && (!isRecord(project.workbookLoadSettings)
+    || Boolean(unknownKey(project.workbookLoadSettings, new Set(['parseImages', 'parseOfficeMath', 'performanceLogging'])))
+    || typeof project.workbookLoadSettings.parseImages !== 'boolean'
+    || typeof project.workbookLoadSettings.parseOfficeMath !== 'boolean'
+    || typeof project.workbookLoadSettings.performanceLogging !== 'boolean')) return ['Invalid project file: workbook load settings are invalid.']
   if (project.pythonScript !== undefined) {
     if (!isRecord(project.pythonScript)
       || Boolean(unknownKey(project.pythonScript, new Set(['entryPath', 'files'])))

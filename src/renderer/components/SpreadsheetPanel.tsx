@@ -4,7 +4,7 @@ import { Button, Checkbox, Input, Spin, Tooltip, message, type InputRef } from '
 import { CloseOutlined, CompressOutlined, CopyOutlined, FilterOutlined, LeftOutlined, PushpinOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
-import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type WorkbookDisplaySettings } from '../types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type WorkbookDisplaySettings, type WorkbookLoadSettings } from '../types'
 import { convertXlsxToWorkbookData, type ConvertedWorkbookImage, type SheetDisplaySettings, type SheetOutlineGroup } from '../services/xlsx-converter'
 import { ImageSourceType } from '@univerjs/core'
 import { getBridge } from '../services/bridge'
@@ -25,6 +25,7 @@ interface SpreadsheetPanelProps {
   activeWorkbookId: string | null
   activeSheet: string | null
   workbookBrowserMode: boolean
+  workbookLoadSettings: WorkbookLoadSettings
   displaySettings: WorkbookDisplaySettings
   onDisplaySettingsChange: (settings: WorkbookDisplaySettings) => void
   activeItemIds: string[]
@@ -60,7 +61,7 @@ interface SearchMatch extends WorkbookSearchMatch {
   sheetName: string
 }
 
-export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowserMode, displaySettings, onDisplaySettingsChange, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, projectLoading, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowserMode, workbookLoadSettings, displaySettings, onDisplaySettingsChange, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, projectLoading, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
   const { locale, t } = useI18n()
   const initialLocaleRef = useRef(locale)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -768,6 +769,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
     const doLoad = async (sourceWorkbookId?: string, requestedPath?: string, requestedSheetName?: string | null, forceRefresh = false) => {
       const loadVersion = ++loadVersionRef.current
+      const loadStartedAt = performance.now()
+      let performanceStage = 'preparing'
+      let performanceFileName = requestedPath?.split(/[/\\]/).pop() ?? 'workbook.xlsx'
       try {
         const bridge = getBridge()
         let filePath = requestedPath
@@ -802,18 +806,31 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         setError(null)
         onLoadedWorkbookChange(null)
 
+        performanceStage = 'reading'
+        const readStartedAt = performance.now()
         const readResult = await withTimeout(bridge.readFile(filePath), t('workbook.readTimedOut'))
+        const readMs = performance.now() - readStartedAt
         if (readResult.status === 'error') throw new Error(readResult.error.message)
         if (readResult.status === 'cancelled') return
         const arrayBuffer = readResult.value
         const fileName = filePath.split(/[/\\]/).pop() ?? 'workbook.xlsx'
+        performanceFileName = fileName
 
         if (loadVersion !== loadVersionRef.current) return
 
         selectionDisposableRef.current?.dispose()
         commandDisposableRef.current?.dispose()
 
-        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, images } = await withTimeout(convertXlsxToWorkbookData(arrayBuffer, fileName), t('workbook.convertTimedOut'))
+        performanceStage = 'converting'
+        const conversionTimeout = workbookConversionTimeoutMs(arrayBuffer.byteLength)
+        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, images, metrics } = await withTimeout(
+          convertXlsxToWorkbookData(arrayBuffer, fileName, {
+            parseImages: workbookLoadSettings.parseImages,
+            parseOfficeMath: workbookLoadSettings.parseOfficeMath,
+          }),
+          t('workbook.convertTimedOut', { seconds: Math.ceil(conversionTimeout / 1000) }),
+          conversionTimeout,
+        )
 
         if (loadVersion !== loadVersionRef.current) return
 
@@ -821,11 +838,18 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (previous) api.disposeUnit(previous.unitId)
         outlineCollapsedRef.current.delete(sourceWorkbookId)
 
+        performanceStage = 'creating-univer-workbook'
+        const univerStartedAt = performance.now()
         const newWorkbook = api.createWorkbook(workbookData, { makeCurrent: true })
         if (!newWorkbook) throw new Error(t('workbook.createFailed'))
         if (requestedSheetName) newWorkbook.getSheetByName(requestedSheetName)?.activate()
         await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+        // Univer can retain a full-sheet default selection until its first
+        // skeleton frame. Seed every sheet with one harmless active cell before
+        // subscribing to selection changes, so no project range is updated.
+        initializeWorkbookSelections(newWorkbook)
         await registerWorkbookImages(newWorkbook, images)
+        const univerMs = performance.now() - univerStartedAt
 
         setTimeout(() => {
           try {
@@ -861,8 +885,35 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
         setSheetNames(loadedSheetNames)
         tryAttachListener(newWorkbook, sourceWorkbookId)
+        if (workbookLoadSettings.performanceLogging) {
+          console.info('[Workbook performance]', {
+            workbook: fileName,
+            parseImages: workbookLoadSettings.parseImages,
+            parseOfficeMath: workbookLoadSettings.parseOfficeMath,
+            inputMiB: Number((arrayBuffer.byteLength / (1024 * 1024)).toFixed(2)),
+            readMs: Math.round(readMs),
+            excelJsLoadMs: Math.round(metrics.excelJsLoadMs),
+            officeMathMs: Math.round(metrics.officeMathMs),
+            worksheetConversionMs: Math.round(metrics.worksheetConversionMs),
+            imageExtractionMs: Math.round(metrics.imageExtractionMs),
+            univerMs: Math.round(univerMs),
+            images: images.length,
+            totalMs: Math.round(performance.now() - loadStartedAt),
+          })
+        }
       } catch (err) {
         const msg = String(err)
+        if (workbookLoadSettings.performanceLogging) {
+          console.info('[Workbook performance]', {
+            workbook: performanceFileName,
+            status: 'failed',
+            stage: performanceStage,
+            elapsedMs: Math.round(performance.now() - loadStartedAt),
+            parseImages: workbookLoadSettings.parseImages,
+            parseOfficeMath: workbookLoadSettings.parseOfficeMath,
+            error: msg,
+          })
+        }
         console.error('[SpreadsheetPanel] Load error:', msg)
         if (err instanceof Error && err.stack) console.error(err.stack)
         setError(msg)
@@ -1004,10 +1055,23 @@ async function copyText(text: string): Promise<void> {
   if (!copied) throw new Error('Clipboard access was denied')
 }
 
-function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+export function workbookConversionTimeoutMs(byteLength: number): number {
+  const megabytes = Math.ceil(Math.max(0, byteLength) / (1024 * 1024))
+  return Math.min(120_000, Math.max(30_000, 30_000 + megabytes * 2_000))
+}
+
+function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs = 30_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), 30_000) })
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), timeoutMs) })
   return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer) })
+}
+
+function initializeWorkbookSelections(workbook: any): void {
+  const activeSheet = workbook.getActiveSheet?.()
+  for (const sheet of workbook.getSheets?.() ?? []) {
+    try { sheet.setActiveSelection?.(sheet.getRange('A1')) } catch { /* sheet skeleton may still be initializing */ }
+  }
+  try { activeSheet?.activate?.() } catch { /* preserve the requested sheet when possible */ }
 }
 
 async function registerWorkbookImages(workbook: any, images: ConvertedWorkbookImage[]): Promise<void> {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.8-test.1 - 2026-09-07
+
+- Added project-level workbook diagnostics: independently disable embedded-image
+  or Office Math loading and emit concise stage timing logs for workbook loads.
+- Avoided the Office Math full-package inflation path for normal XLSX packages
+  by selectively reading only package metadata and required drawing XML parts.
+- Reset Univer's initial sheet selection to `A1` after workbook creation.
+
 ## 1.7.7 - 2026-09-05
 
 - Added the esbuild version required by Vitest's bundled Vite runtime so clean

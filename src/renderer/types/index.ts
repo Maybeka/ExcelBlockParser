@@ -100,6 +100,19 @@ export const DEFAULT_WORKBOOK_DISPLAY_SETTINGS: WorkbookDisplaySettings = {
   showFrozenPanes: false,
 }
 
+/** Project-wide controls for diagnosing workbook import regressions. */
+export interface WorkbookLoadSettings {
+  parseImages: boolean
+  parseOfficeMath: boolean
+  performanceLogging: boolean
+}
+
+export const DEFAULT_WORKBOOK_LOAD_SETTINGS: WorkbookLoadSettings = {
+  parseImages: true,
+  parseOfficeMath: true,
+  performanceLogging: false,
+}
+
 export interface PythonProjectFile {
   path: string
   source: string
@@ -121,6 +134,7 @@ export interface ProjectConfig {
   activeBlockId: string
   activeRegionId: string | null
   focusMode: 'always-editable' | 'activate-first'
+  workbookLoadSettings?: WorkbookLoadSettings
   pythonScript?: PythonScriptConfig
 }
 
