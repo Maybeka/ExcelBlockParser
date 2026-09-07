@@ -202,7 +202,11 @@ export function stripEmbeddedImagesFromXlsx(arrayBuffer: ArrayBuffer): ArrayBuff
   const ordered = [...entries.entries()]
     .map(([path, entry]) => ({ path, entry }))
     .sort((left, right) => left.entry.offset - right.entry.offset)
-  const kept = ordered.filter(({ path }) => !path.startsWith('xl/media/') && !path.startsWith('xl/drawings/'))
+  // VML drawings under `xl/drawings/` carry legacy cell comments. Removing
+  // them leaves comment relationships pointing at a missing part, which makes
+  // ExcelJS fail while reconciling worksheet comments. Only remove the image
+  // media and modern DrawingML XML parts used for image placement.
+  const kept = ordered.filter(({ path }) => !path.startsWith('xl/media/') && !isDrawingXmlPathText(path))
   if (kept.length === ordered.length) return arrayBuffer
 
   const localParts: Uint8Array[] = []

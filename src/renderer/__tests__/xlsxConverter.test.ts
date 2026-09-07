@@ -125,4 +125,22 @@ describe('XLSX workbook conversion', () => {
       totalMs: expect.any(Number),
     })
   })
+
+  it('keeps legacy comment drawings intact when embedded images are disabled', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Notes')
+    sheet.getCell('A1').value = 'Annotated'
+    sheet.getCell('A1').note = 'This must still load without images.'
+    const imageId = workbook.addImage({
+      base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2L8kAAAAASUVORK5CYII=',
+      extension: 'png',
+    })
+    sheet.addImage(imageId, { tl: { col: 1, row: 1 }, ext: { width: 12, height: 12 } })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const converted = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'comments-and-images.xlsx', { parseImages: false })
+
+    expect(converted.images).toEqual([])
+    expect(converted.workbookData.sheets.Notes?.cellData?.[0]?.[0]).toMatchObject({ v: 'Annotated' })
+  })
 })

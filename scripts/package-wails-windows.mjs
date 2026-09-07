@@ -13,6 +13,7 @@ const executable = resolve(root, 'build', 'bin', 'excel-block-parser.exe')
 const outputDir = resolve(root, 'release-wails')
 const archiveName = `ExcelBlockParser-v${releaseVersion}-windows-x64.zip`
 const archive = resolve(outputDir, archiveName)
+const enableDevtools = process.env.WAILS_ENABLE_DEVTOOLS === '1'
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, stdio: 'inherit' })
@@ -24,7 +25,7 @@ if (process.platform !== 'win32') {
   process.exit(1)
 }
 
-run(wails, ['build', '-platform', 'windows/amd64'])
+run(wails, ['build', '-platform', 'windows/amd64', ...(enableDevtools ? ['-devtools'] : [])])
 await mkdir(outputDir, { recursive: true })
 await rm(archive, { force: true })
 run('powershell.exe', [

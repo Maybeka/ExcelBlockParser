@@ -23,6 +23,10 @@ jobs:
       - run: go test ./...
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
       - run: npm run package:wails:win
+        env:
+          # Test-tag builds expose WebView2 DevTools (Ctrl+Shift+F12) for
+          # renderer diagnostics. Stable releases keep DevTools disabled.
+          WAILS_ENABLE_DEVTOOLS: ${{ contains(github.ref_name, '-') && '1' || '0' }}
       - uses: actions/upload-artifact@v4
         with:
           name: wails-windows-x64-release-candidate

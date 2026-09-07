@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.8-test.2 - 2026-09-07
+
+- Fixed image-disabled loading for workbooks with legacy Excel cell comments.
+- Reset only invalid whole-sheet Univer selections after changing worksheets.
+- Enabled WebView2 DevTools in test-tag Wails packages; press `Ctrl+Shift+F12`
+  on Windows to open the renderer console.
+
 ## 1.7.8-test.1 - 2026-09-07
 
 - Added project-level workbook diagnostics: independently disable embedded-image

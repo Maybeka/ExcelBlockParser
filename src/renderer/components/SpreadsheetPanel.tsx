@@ -640,6 +640,15 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (commandId.includes('set-worksheet-active') || commandId.includes('set-worksheet-activate')) {
           const sheetName = workbook.getActiveSheet()?.getSheetName() ?? null
           onActiveSheetChangeRef.current(sourceWorkbookId, sheetName)
+          // Univer may restore a full-sheet selection after the newly active
+          // sheet finishes building its skeleton. Do not disturb a real prior
+          // selection; only replace the invalid whole-sheet default.
+          const sheetId = workbook.getActiveSheet()?.getSheetId?.()
+          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+            const activeSheet = workbook.getActiveSheet()
+            if (activeSheet?.getSheetId?.() !== sheetId) return
+            resetFullSheetSelection(workbook, activeSheet)
+          }))
         }
         if (commandId.includes('sheet') || commandId.includes('worksheet')) {
           setTimeout(() => refreshSheetNames(workbook), 50)
@@ -1068,10 +1077,19 @@ function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs = 30_000
 
 function initializeWorkbookSelections(workbook: any): void {
   const activeSheet = workbook.getActiveSheet?.()
-  for (const sheet of workbook.getSheets?.() ?? []) {
-    try { sheet.setActiveSelection?.(sheet.getRange('A1')) } catch { /* sheet skeleton may still be initializing */ }
-  }
-  try { activeSheet?.activate?.() } catch { /* preserve the requested sheet when possible */ }
+  try { resetFullSheetSelection(workbook, activeSheet) } catch { /* sheet skeleton may still be initializing */ }
+}
+
+function resetFullSheetSelection(workbook: any, sheet: any): void {
+  if (!sheet) return
+  const activeRange = workbook.getActiveRange?.()?.getRange?.()
+  const isWholeSheet = !activeRange || (
+    activeRange.startRow === 0
+    && activeRange.startColumn === 0
+    && activeRange.endRow >= sheet.getMaxRows?.() - 1
+    && activeRange.endColumn >= sheet.getMaxColumns?.() - 1
+  )
+  if (isWholeSheet) sheet.setActiveSelection?.(sheet.getRange('A1'))
 }
 
 async function registerWorkbookImages(workbook: any, images: ConvertedWorkbookImage[]): Promise<void> {
