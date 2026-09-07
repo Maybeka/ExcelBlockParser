@@ -143,6 +143,18 @@ func (a *App) ReadFile(path string) ([]byte, error) {
 	return a.filePolicy.readApprovedWorkbook(path)
 }
 
+// RasterizeLegacyEquationPreview converts Equation Editor 3.0 EMF/WMF preview
+// data to PNG. It is implemented with GDI+ on the supported Windows runtime.
+func (a *App) RasterizeLegacyEquationPreview(preview []byte, extension string) ([]byte, error) {
+	if len(preview) == 0 {
+		return nil, fmt.Errorf("legacy equation preview is empty")
+	}
+	if len(preview) > 32*1024*1024 {
+		return nil, fmt.Errorf("legacy equation preview exceeds the 32 MB limit")
+	}
+	return rasterizeLegacyEquationPreview(preview, extension)
+}
+
 // JsonSaveResult mirrors the Electron IPC return type.
 type JsonSaveResult struct {
 	Success  bool   `json:"success"`

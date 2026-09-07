@@ -11,6 +11,10 @@ export interface OfficeMathDrawing {
   height: number
 }
 
+export interface LegacyEquationRasterizer {
+  (bytes: ArrayBuffer, extension: string): Promise<ArrayBuffer | null>
+}
+
 interface OfficeMathDefinition extends Omit<OfficeMathDrawing, 'source'> {
   mathMl: string
 }
@@ -38,6 +42,23 @@ export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbo
     }
   }
   return drawings
+}
+
+/**
+ * Extract both modern OMML equations and Equation Editor 3.0 OLE previews.
+ * Legacy Equation.3 objects are not OMML. Excel stores their on-sheet preview
+ * in VML and, on Windows, that preview is commonly an EMF or WMF image.
+ */
+export async function extractEquationDrawings(
+  arrayBuffer: ArrayBuffer,
+  workbook: ExcelJS.Workbook,
+  rasterizeLegacyPreview?: LegacyEquationRasterizer,
+): Promise<OfficeMathDrawing[]> {
+  const [officeMath, legacyEquations] = await Promise.all([
+    extractOfficeMathDrawings(arrayBuffer, workbook),
+    extractLegacyEquationDrawings(arrayBuffer, workbook, rasterizeLegacyPreview),
+  ])
+  return [...officeMath, ...legacyEquations]
 }
 
 export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook): OfficeMathDefinition[] {
@@ -70,7 +91,11 @@ export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook:
     )
 
     for (const drawingTarget of drawingTargets) {
-      const drawingDocument = parseXml(files.get(drawingTarget))
+      const drawingBytes = files.get(drawingTarget)
+      // Old Equation Editor objects have VML/OLE previews but no OMML. Do not
+      // build a DOM for every large drawing part unless it contains an equation.
+      if (!drawingBytes || !decodeXml(drawingBytes).includes('oMath')) continue
+      const drawingDocument = parseXml(drawingBytes)
       if (!drawingDocument) continue
 
       for (const math of elementsByName(drawingDocument, 'oMath')) {
@@ -82,6 +107,149 @@ export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook:
     }
   }
   return definitions
+}
+
+async function extractLegacyEquationDrawings(
+  arrayBuffer: ArrayBuffer,
+  workbook: ExcelJS.Workbook,
+  rasterizeLegacyPreview?: LegacyEquationRasterizer,
+): Promise<OfficeMathDrawing[]> {
+  if (typeof DOMParser === 'undefined') return []
+  const bytes = new Uint8Array(arrayBuffer)
+  const entries = readZipEntries(bytes)
+  if (entries && ![...entries.keys()].some(path => path.startsWith('xl/embeddings/') || path.endsWith('.vml'))) return []
+  const files = entries ? new SelectiveZipReader(bytes, entries) : new LegacyZipReader(bytes)
+  const workbookDocument = parseXml(files.get('xl/workbook.xml'))
+  if (!workbookDocument) return []
+  const workbookRelationships = parseRelationships(files.get('xl/_rels/workbook.xml.rels'))
+  const drawings: OfficeMathDrawing[] = []
+
+  for (const sheet of elementsByName(workbookDocument, 'sheet')) {
+    const sheetName = sheet.getAttribute('name')
+    const sheetRelationshipId = getRelationshipId(sheet)
+    const sheetTarget = sheetRelationshipId ? workbookRelationships.get(sheetRelationshipId) : undefined
+    const worksheet = sheetName ? workbook.getWorksheet(sheetName) : undefined
+    if (!sheetName || !sheetTarget || !worksheet) continue
+
+    const worksheetPath = resolvePackagePath('xl/workbook.xml', sheetTarget)
+    const worksheetDocument = parseXml(files.get(worksheetPath))
+    if (!worksheetDocument) continue
+    const legacyObjects = elementsByName(worksheetDocument, 'oleObject')
+      .filter(object => isEquationEditorObject(object.getAttribute('progId')))
+    if (legacyObjects.length === 0) continue
+
+    const worksheetRelationships = parseRelationships(files.get(relationshipPathFor(worksheetPath)))
+    const legacyDrawing = elementsByName(worksheetDocument, 'legacyDrawing')[0]
+    const legacyDrawingId = legacyDrawing ? getRelationshipId(legacyDrawing) : null
+    const legacyDrawingTarget = legacyDrawingId ? worksheetRelationships.get(legacyDrawingId) : undefined
+    if (!legacyDrawingTarget) {
+      console.warn('[Equation.3] No VML preview drawing was found for legacy equation objects.', { sheetName, count: legacyObjects.length })
+      continue
+    }
+
+    const vmlPath = resolvePackagePath(worksheetPath, legacyDrawingTarget)
+    const vmlDocument = parseXml(files.get(vmlPath))
+    const vmlRelationships = parseRelationships(files.get(relationshipPathFor(vmlPath)))
+    if (!vmlDocument) continue
+
+    for (const object of legacyObjects) {
+      const shape = findLegacyEquationShape(vmlDocument, object.getAttribute('shapeId'))
+      const imageData = shape ? elementsByName(shape, 'imagedata')[0] : undefined
+      const imageRelationshipId = imageData ? getRelationshipId(imageData) : null
+      const imageTarget = imageRelationshipId ? vmlRelationships.get(imageRelationshipId) : undefined
+      const geometry = shape ? legacyShapeGeometry(shape, worksheet) : null
+      if (!shape || !imageTarget || !geometry) {
+        console.warn('[Equation.3] Unable to resolve a positioned preview image.', { sheetName, shapeId: object.getAttribute('shapeId') })
+        continue
+      }
+
+      const previewPath = resolvePackagePath(vmlPath, imageTarget)
+      const previewBytes = files.get(previewPath)
+      if (!previewBytes) continue
+      const extension = previewPath.split('.').pop()?.toLowerCase() ?? ''
+      let source = imageDataUri(previewBytes, extension)
+      if (!source && rasterizeLegacyPreview && ['emf', 'wmf'].includes(extension)) {
+        try {
+          const rasterized = await rasterizeLegacyPreview(toArrayBuffer(previewBytes), extension)
+          if (rasterized) source = imageDataUri(new Uint8Array(rasterized), 'png')
+        } catch (error) {
+          console.warn('[Equation.3] Unable to rasterize preview image.', { sheetName, extension, error })
+        }
+      }
+      if (!source) {
+        console.warn('[Equation.3] Preview format is not renderable in this runtime.', { sheetName, extension })
+        continue
+      }
+      drawings.push({ sheetName, source, ...geometry })
+    }
+  }
+  return drawings
+}
+
+function isEquationEditorObject(programId: string | null): boolean {
+  return !!programId && /(?:^|\.)Equation(?:\.3)?$/i.test(programId.trim())
+}
+
+function findLegacyEquationShape(document: Document, shapeId: string | null): Element | undefined {
+  if (!shapeId) return undefined
+  return elementsByName(document, 'shape').find(shape => {
+    const id = shape.getAttribute('id') ?? ''
+    return id === shapeId || id.endsWith(`s${shapeId}`)
+  })
+}
+
+function legacyShapeGeometry(shape: Element, worksheet: ExcelJS.Worksheet): Omit<OfficeMathDrawing, 'sheetName' | 'source'> | null {
+  const clientData = elementsByName(shape, 'ClientData')[0]
+  const anchor = clientData ? elementsByName(clientData, 'Anchor')[0]?.textContent : null
+  if (!anchor) return null
+  const values = anchor.split(',').map(value => Number(value.trim()))
+  if (values.length !== 8 || values.some(value => !Number.isFinite(value))) return null
+  const [fromColumn, fromColumnUnit, fromRow, fromRowUnit, toColumn, toColumnUnit, toRow, toRowUnit] = values
+  const from = {
+    column: fromColumn!,
+    columnOffset: (fromColumnUnit! / 1024) * columnPixelWidth(worksheet, fromColumn!),
+    row: fromRow!,
+    rowOffset: (fromRowUnit! / 256) * rowPixelHeight(worksheet, fromRow!),
+  }
+  const to = {
+    column: toColumn!,
+    columnOffset: (toColumnUnit! / 1024) * columnPixelWidth(worksheet, toColumn!),
+    row: toRow!,
+    rowOffset: (toRowUnit! / 256) * rowPixelHeight(worksheet, toRow!),
+  }
+  const size = anchorRangeSize(from, to, worksheet)
+  return size && size.width > 0 && size.height > 0 ? { from, ...size } : null
+}
+
+function imageDataUri(bytes: Uint8Array, extension: string): string | undefined {
+  const mimeType = imageMimeType(extension)
+  if (!mimeType) return undefined
+  return `data:${mimeType};base64,${bytesToBase64(bytes)}`
+}
+
+function imageMimeType(extension: string): string | undefined {
+  switch (extension.toLowerCase()) {
+    case 'png': return 'image/png'
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg'
+    case 'gif': return 'image/gif'
+    case 'svg': return 'image/svg+xml'
+    case 'webp': return 'image/webp'
+    case 'bmp': return 'image/bmp'
+    default: return undefined
+  }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+  }
+  return btoa(binary)
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
 }
 
 /**

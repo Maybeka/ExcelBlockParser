@@ -11,6 +11,7 @@ import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
 import { estimateWorkbookCacheBytes, workbookCacheEvictions } from '../services/workbookCachePolicy'
+import { restoreWorkbookSelections } from '../services/workbookSelectionState'
 import type { WorkbookLoadRequest } from '../services/workbookRuntime'
 import { useI18n } from '../i18n'
 
@@ -511,7 +512,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
     // Native smoke tests need to verify the facade's actual visibility state,
     // rather than merely asserting that the outline control changed its icon.
-    ;(window as Window & { __excelBlockParserOutlineState?: () => Record<string, boolean> }).__excelBlockParserOutlineState = () => {
+    ;(window as Window & {
+      __excelBlockParserOutlineState?: () => Record<string, boolean>
+      __excelBlockParserImageState?: () => Record<string, Array<{ id: string; source: string }>>
+    }).__excelBlockParserOutlineState = () => {
       const api = univerAPIRef.current
       const workbook = api?.getActiveWorkbook()
       if (!api || !workbook) return {}
@@ -531,8 +535,19 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       }
       return state
     }
+    ;(window as Window & {
+      __excelBlockParserImageState?: () => Record<string, Array<{ id: string; source: string }>>
+    }).__excelBlockParserImageState = () => {
+      const workbook = univerAPIRef.current?.getActiveWorkbook()
+      if (!workbook) return {}
+      return Object.fromEntries(workbook.getSheets().map((sheet: any) => [
+        sheet.getSheetName(),
+        sheet.getImages().map((image: any) => ({ id: image.getId(), source: image.toBuilder().getSource() })),
+      ]))
+    }
     return () => {
       delete (window as Window & { __excelBlockParserOutlineState?: () => Record<string, boolean> }).__excelBlockParserOutlineState
+      delete (window as Window & { __excelBlockParserImageState?: () => Record<string, Array<{ id: string; source: string }>> }).__excelBlockParserImageState
     }
   }, [])
 
@@ -640,15 +655,6 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (commandId.includes('set-worksheet-active') || commandId.includes('set-worksheet-activate')) {
           const sheetName = workbook.getActiveSheet()?.getSheetName() ?? null
           onActiveSheetChangeRef.current(sourceWorkbookId, sheetName)
-          // Univer may restore a full-sheet selection after the newly active
-          // sheet finishes building its skeleton. Do not disturb a real prior
-          // selection; only replace the invalid whole-sheet default.
-          const sheetId = workbook.getActiveSheet()?.getSheetId?.()
-          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-            const activeSheet = workbook.getActiveSheet()
-            if (activeSheet?.getSheetId?.() !== sheetId) return
-            resetFullSheetSelection(workbook, activeSheet)
-          }))
         }
         if (commandId.includes('sheet') || commandId.includes('worksheet')) {
           setTimeout(() => refreshSheetNames(workbook), 50)
@@ -686,6 +692,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
       api.addEvent(api.Event.BeforeCommandExecute, (event) => {
         const eid = event.id.toLowerCase()
+        // Workbook hydration uses this Univer command to restore embedded
+        // images. It is not an end-user insert operation and must pass the
+        // read-only command guard below.
+        if (eid === 'sheet.command.insert-sheet-image') return
         // Filters are view-only in this application. Univer still expresses
         // their setup and row visibility updates as workbook commands.
         if (eid.includes('filter')) {
@@ -832,10 +842,17 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
         performanceStage = 'converting'
         const conversionTimeout = workbookConversionTimeoutMs(arrayBuffer.byteLength)
-        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, images, metrics } = await withTimeout(
+        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, activeSheetName, sheetSelections, images, metrics } = await withTimeout(
           convertXlsxToWorkbookData(arrayBuffer, fileName, {
             parseImages: workbookLoadSettings.parseImages,
             parseOfficeMath: workbookLoadSettings.parseOfficeMath,
+            rasterizeLegacyEquationPreview: async (preview, extension) => {
+              const rasterize = bridge.rasterizeLegacyEquationPreview
+              if (!rasterize) return null
+              const result = await rasterize(new Uint8Array(preview), extension)
+              if (result.status === 'error') throw new Error(result.error.message)
+              return result.status === 'ok' ? result.value : null
+            },
           }),
           t('workbook.convertTimedOut', { seconds: Math.ceil(conversionTimeout / 1000) }),
           conversionTimeout,
@@ -851,12 +868,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         const univerStartedAt = performance.now()
         const newWorkbook = api.createWorkbook(workbookData, { makeCurrent: true })
         if (!newWorkbook) throw new Error(t('workbook.createFailed'))
-        if (requestedSheetName) newWorkbook.getSheetByName(requestedSheetName)?.activate()
+        const initialSheetName = requestedSheetName ?? activeSheetName
+        if (initialSheetName) newWorkbook.getSheetByName(initialSheetName)?.activate()
         await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
-        // Univer can retain a full-sheet default selection until its first
-        // skeleton frame. Seed every sheet with one harmless active cell before
-        // subscribing to selection changes, so no project range is updated.
-        initializeWorkbookSelections(newWorkbook)
+        restoreWorkbookSelections(api, newWorkbook, sheetSelections)
         await registerWorkbookImages(newWorkbook, images)
         const univerMs = performance.now() - univerStartedAt
 
@@ -1075,29 +1090,18 @@ function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs = 30_000
   return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer) })
 }
 
-function initializeWorkbookSelections(workbook: any): void {
-  const activeSheet = workbook.getActiveSheet?.()
-  try { resetFullSheetSelection(workbook, activeSheet) } catch { /* sheet skeleton may still be initializing */ }
-}
-
-function resetFullSheetSelection(workbook: any, sheet: any): void {
-  if (!sheet) return
-  const activeRange = workbook.getActiveRange?.()?.getRange?.()
-  const isWholeSheet = !activeRange || (
-    activeRange.startRow === 0
-    && activeRange.startColumn === 0
-    && activeRange.endRow >= sheet.getMaxRows?.() - 1
-    && activeRange.endColumn >= sheet.getMaxColumns?.() - 1
-  )
-  if (isWholeSheet) sheet.setActiveSelection?.(sheet.getRange('A1'))
-}
-
 async function registerWorkbookImages(workbook: any, images: ConvertedWorkbookImage[]): Promise<void> {
+  const bySheet = new Map<string, ConvertedWorkbookImage[]>()
   for (const image of images) {
-    const sheet = workbook.getSheetByName(image.sheetName)
+    const sheetImages = bySheet.get(image.sheetName) ?? []
+    sheetImages.push(image)
+    bySheet.set(image.sheetName, sheetImages)
+  }
+  for (const [sheetName, sheetImages] of bySheet) {
+    const sheet = workbook.getSheetByName(sheetName)
     if (!sheet) continue
     try {
-      const drawing = await sheet.newOverGridImage()
+      const drawings = await Promise.all(sheetImages.map(image => sheet.newOverGridImage()
         .setSource(image.source, ImageSourceType.BASE64)
         .setColumn(image.from.column)
         .setRow(image.from.row)
@@ -1105,10 +1109,25 @@ async function registerWorkbookImages(workbook: any, images: ConvertedWorkbookIm
         .setRowOffset(image.from.rowOffset)
         .setWidth(image.width)
         .setHeight(image.height)
-        .buildAsync()
-      sheet.insertImages([drawing])
+        .buildAsync()))
+      sheet.insertImages(drawings)
+      // The drawing facade is asynchronous. Waiting one frame lets the sheet
+      // renderer observe the insert command before the workbook becomes readonly.
+      await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+      if (sheet.getImages().length < drawings.length) {
+        console.warn('[SpreadsheetPanel] Workbook image insertion was incomplete.', {
+          sheet: sheetName,
+          expected: drawings.length,
+          inserted: sheet.getImages().length,
+          sources: sheetImages.map(image => image.source.slice(0, 48)),
+        })
+      }
     } catch (error) {
-      console.warn('[SpreadsheetPanel] Unable to render workbook image:', error)
+      console.warn('[SpreadsheetPanel] Unable to render workbook images.', {
+        sheet: sheetName,
+        sources: sheetImages.map(image => image.source.slice(0, 48)),
+        error,
+      })
     }
   }
 }

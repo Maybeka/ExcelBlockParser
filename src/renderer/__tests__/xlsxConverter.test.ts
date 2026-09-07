@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 import { HorizontalAlign, WrapStrategy } from '@univerjs/core'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { convertXlsxToWorkbookData, deriveOutlineGroups } from '../services/xlsx-converter'
 
 describe('XLSX workbook conversion', () => {
@@ -70,6 +70,21 @@ describe('XLSX workbook conversion', () => {
     expect(data.columnData![2]).toMatchObject({ hd: 1 })
   })
 
+  it('preserves the Excel active sheet and per-sheet active cells', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const first = workbook.addWorksheet('First')
+    const second = workbook.addWorksheet('Second')
+    first.views = [{ state: 'normal', activeCell: 'C4' }]
+    second.views = [{ state: 'normal', activeCell: 'D5' }]
+    workbook.views = [{ activeTab: 1 }]
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const converted = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'view-state.xlsx')
+
+    expect(converted.activeSheetName).toBe('Second')
+    expect(converted.sheetSelections).toEqual({ First: 'C4', Second: 'D5' })
+  })
+
   it('derives independently controllable nested outline groups', () => {
     expect(deriveOutlineGroups('row', [0, 1, 2, 2, 1, 0], [2, 3])).toEqual([
       { id: 'row:1:1:4', axis: 'row', start: 1, end: 4, level: 1, initialCollapsed: false },
@@ -124,6 +139,24 @@ describe('XLSX workbook conversion', () => {
       imageExtractionMs: 0,
       totalMs: expect.any(Number),
     })
+  })
+
+  it('rasterizes embedded EMF images through the host callback', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const imageId = workbook.addImage({ base64: 'AQID', extension: 'emf' })
+    const sheet = workbook.addWorksheet('Data')
+    sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 32, height: 24 } })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const rasterize = vi.fn(async (preview: ArrayBuffer, extension: string) => {
+      expect([...new Uint8Array(preview)]).toEqual([1, 2, 3])
+      expect(extension).toBe('emf')
+      return Uint8Array.from([0x89, 0x50, 0x4e, 0x47]).buffer
+    })
+    const converted = await convertXlsxToWorkbookData(buffer as ArrayBuffer, 'vector-image.xlsx', { rasterizeLegacyEquationPreview: rasterize })
+
+    expect(rasterize).toHaveBeenCalledOnce()
+    expect(converted.images).toEqual([expect.objectContaining({ source: 'data:image/png;base64,iVBORw==' })])
   })
 
   it('keeps legacy comment drawings intact when embedded images are disabled', async () => {

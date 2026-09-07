@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.8-test.3 - 2026-09-07
+
+- Restored embedded workbook images in the read-only workbook canvas and added
+  an Electron regression test against Univer's live drawing facade.
+- Added Equation Editor 3.0 OLE preview extraction from XLSX VML drawings.
+  Windows Wails packages rasterize EMF and WMF previews to PNG with GDI+.
+- Avoided expensive OMML parsing for drawing parts that do not contain Office
+  Math, and restored the workbook's active sheet and saved active cells without
+  causing an invalid whole-sheet selection.
+
 ## 1.7.8-test.2 - 2026-09-07
 
 - Fixed image-disabled loading for workbooks with legacy Excel cell comments.

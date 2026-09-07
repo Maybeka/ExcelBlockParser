@@ -11,7 +11,7 @@ import {
 import type { IStyleData } from '@univerjs/core'
 import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
-import { extractOfficeMathDrawings, stripEmbeddedImagesFromXlsx } from './officeMath'
+import { extractEquationDrawings, stripEmbeddedImagesFromXlsx, type LegacyEquationRasterizer } from './officeMath'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
 type ExcelColor = { argb?: string; theme?: number | string; indexed?: number | string; tint?: number | string; auto?: boolean | number | string }
@@ -22,6 +22,8 @@ export interface ConversionResult {
   fonts: string[]
   sheetTabColors: Record<string, string>
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
+  activeSheetName: string | null
+  sheetSelections: Record<string, string>
   images: ConvertedWorkbookImage[]
   metrics: WorkbookConversionMetrics
 }
@@ -29,6 +31,7 @@ export interface ConversionResult {
 export interface WorkbookConversionOptions {
   parseImages?: boolean
   parseOfficeMath?: boolean
+  rasterizeLegacyEquationPreview?: LegacyEquationRasterizer
 }
 
 export interface WorkbookConversionMetrics {
@@ -109,13 +112,16 @@ export async function convertXlsxToWorkbookData(
   await workbook.xlsx.load(loadBuffer, options.parseImages === false ? { ignoreNodes: ['drawing', 'picture'] } : undefined)
   const excelJsLoadMs = performance.now() - startedAt
   const officeMathStartedAt = performance.now()
-  const officeMathDrawings = options.parseOfficeMath === false ? [] : await extractOfficeMathDrawings(arrayBuffer, workbook)
+  const officeMathDrawings = options.parseOfficeMath === false
+    ? []
+    : await extractEquationDrawings(arrayBuffer, workbook, options.rasterizeLegacyEquationPreview)
   const officeMathMs = performance.now() - officeMathStartedAt
 
   const sheets: Record<string, Partial<IWorksheetData>> = {}
   const sheetOrder: string[] = []
   const sheetTabColors: Record<string, string> = {}
   const sheetDisplaySettings: Record<string, SheetDisplaySettings> = {}
+  const sheetSelections: Record<string, string> = {}
   const images: ConvertedWorkbookImage[] = []
   const resolveColor = createColorResolver((workbook.model as { themes?: { theme1?: string } }).themes?.theme1)
   const styleMap = new Map<string, string>()
@@ -137,6 +143,8 @@ export async function convertXlsxToWorkbookData(
   workbook.eachSheet((worksheet, sheetIndex) => {
     const sheetId = worksheet.name || `Sheet${sheetIndex}`
     sheetOrder.push(sheetId)
+    const activeCell = worksheet.views?.find(view => view.activeCell)?.activeCell
+    if (activeCell) sheetSelections[sheetId] = activeCell
     const tabColor = resolveColor(worksheet.properties.tabColor as ExcelColor | undefined)
     if (tabColor) sheetTabColors[worksheet.name || sheetId] = tabColor
 
@@ -297,10 +305,14 @@ export async function convertXlsxToWorkbookData(
       ...(Object.keys(rowHeights).length > 0 ? { rowData: rowHeights } : {}),
     }
 
-    if (options.parseImages !== false) {
-      const imageExtractionStartedAt = performance.now()
+  })
+  const worksheetConversionMs = performance.now() - worksheetConversionStartedAt
+
+  if (options.parseImages !== false) {
+    const imageExtractionStartedAt = performance.now()
+    for (const worksheet of workbook.worksheets) {
       for (const image of worksheet.getImages()) {
-        const source = workbookImageToDataUri(workbook.getImage(Number(image.imageId)))
+        const source = await workbookImageToDataUri(workbook.getImage(Number(image.imageId)), options.rasterizeLegacyEquationPreview)
         const range = image.range as ExcelJS.ImageRange & { ext?: { width: number; height: number } }
         if (!source || !range?.tl) continue
         const from = anchorToImagePosition(range.tl, worksheet)
@@ -308,12 +320,11 @@ export async function convertXlsxToWorkbookData(
           ? { width: range.ext.width, height: range.ext.height }
           : imageRangeSize(range, worksheet)
         if (size.width <= 0 || size.height <= 0) continue
-        images.push({ sheetName: worksheet.name || sheetId, source, from, ...size })
+        images.push({ sheetName: worksheet.name || worksheet.id, source, from, ...size })
       }
-      imageExtractionMs += performance.now() - imageExtractionStartedAt
     }
-  })
-  const worksheetConversionMs = performance.now() - worksheetConversionStartedAt
+    imageExtractionMs = performance.now() - imageExtractionStartedAt
+  }
 
   const fontSet = new Set<string>()
   for (const style of Object.values(styles)) {
@@ -335,6 +346,10 @@ export async function convertXlsxToWorkbookData(
     fonts: [...fontSet],
     sheetTabColors,
     sheetDisplaySettings,
+    activeSheetName: workbook.views?.[0]?.activeTab != null
+      ? workbook.worksheets[workbook.views[0].activeTab]?.name ?? null
+      : null,
+    sheetSelections,
     images: [...images, ...officeMathDrawings],
     metrics: {
       excelJsLoadMs,
@@ -365,18 +380,41 @@ function normalizeExcelValue(value: unknown): string | number | boolean | undefi
   return undefined
 }
 
-function workbookImageToDataUri(image: ExcelJS.Image | undefined): string | undefined {
+async function workbookImageToDataUri(image: ExcelJS.Image | undefined, rasterize?: LegacyEquationRasterizer): Promise<string | undefined> {
   if (!image) return undefined
-  if (image.base64) return image.base64.startsWith('data:') ? image.base64 : `data:image/${image.extension};base64,${image.base64}`
-  if (!image.buffer) return undefined
-  const bytes = image.buffer instanceof ArrayBuffer
-    ? new Uint8Array(image.buffer)
-    : new Uint8Array(image.buffer.buffer, image.buffer.byteOffset, image.buffer.byteLength)
-  let binary = ''
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+  const extension = image.extension?.toLowerCase() ?? ''
+  if (image.base64) {
+    const source = image.base64.startsWith('data:') ? image.base64 : `data:image/${extension};base64,${image.base64}`
+    if (!['emf', 'wmf'].includes(extension)) return source
   }
-  return `data:image/${image.extension};base64,${btoa(binary)}`
+  let bytes = image.buffer instanceof ArrayBuffer
+    ? new Uint8Array(image.buffer)
+    : image.buffer ? new Uint8Array(image.buffer.buffer, image.buffer.byteOffset, image.buffer.byteLength) : undefined
+  if (!bytes && image.base64) {
+    const encoded = image.base64.includes(',') ? image.base64.slice(image.base64.indexOf(',') + 1) : image.base64
+    const binary = atob(encoded)
+    bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+  }
+  if (!bytes) return undefined
+  if (!['emf', 'wmf'].includes(extension)) {
+    let binary = ''
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+    }
+    return `data:image/${extension};base64,${btoa(binary)}`
+  }
+  if (!rasterize) {
+    console.warn('[Workbook image] Vector image requires the Windows Wails rasterizer.', { extension })
+    return undefined
+  }
+  const rasterized = await rasterize(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, extension)
+  if (!rasterized) return undefined
+  const pngBytes = new Uint8Array(rasterized)
+  let binary = ''
+  for (let index = 0; index < pngBytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...pngBytes.subarray(index, index + 0x8000))
+  }
+  return `data:image/png;base64,${btoa(binary)}`
 }
 
 function anchorToImagePosition(anchor: ExcelJS.Anchor, worksheet: ExcelJS.Worksheet): ConvertedWorkbookImage['from'] {

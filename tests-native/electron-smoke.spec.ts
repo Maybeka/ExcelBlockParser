@@ -77,6 +77,43 @@ test('opens a real workbook through the Electron host bridge', async () => {
   }
 })
 
+test('registers an embedded workbook image with the live Univer drawing facade', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-image-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const workbookFile = resolve(directory, 'image.xlsx')
+  const workbook = new ExcelJS.Workbook()
+  const imageId = workbook.addImage({
+    base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mP8z8BQDwAF/gL+ZllnTwAAAABJRU5ErkJggg==',
+    extension: 'png',
+  })
+  const sheet = workbook.addWorksheet('Image')
+  sheet.addImage(imageId, { tl: { col: 1, row: 1 }, ext: { width: 48, height: 48 } })
+  await writeFile(workbookFile, Buffer.from(await workbook.xlsx.writeBuffer()))
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_OPEN_PATH: workbookFile,
+  })
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
+    await page.getByRole('button', { name: 'Project actions' }).click()
+    await page.getByRole('menuitem', { name: 'Project settings' }).click()
+    const settings = page.getByRole('dialog', { name: 'Project settings' })
+    await settings.getByRole('button', { name: 'Add workbook source' }).click()
+    await expect(page.getByRole('tab', { name: 'image.xlsx' })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserImageState?.() ?? {})).toEqual({
+      Image: [expect.objectContaining({ source: expect.stringMatching(/^data:image\/png;base64,/) })],
+    })
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 // ExcelJS rejects the synthetic OOXML drawing package before the renderer can
 // exercise it. OMML extraction and geometry remain covered by officeMath.test.
 test.fixme('renders an Office Math drawing from an XLSX workbook', async () => {
