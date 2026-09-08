@@ -1,5 +1,6 @@
 import { Checkbox, Input, Select, Tooltip } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
+import { useRef } from 'react'
 import type { BlockConfig, ColumnType } from '../../types'
 import type { SpreadsheetCapability } from '../../services/spreadsheetCapability'
 import { isValidVariableName } from '../../features/extraction/validation'
@@ -41,6 +42,18 @@ export function ColumnEditor({
   controller,
 }: ColumnEditorProps) {
   const { t } = useI18n()
+  const hoveredColumnRef = useRef<number | null>(null)
+  const navigationEnabled = block.selectionLocked && Boolean(block.range)
+
+  const focusColumnAfterNavigation = (columnIndex: number) => {
+    // Switching sheets recreates Univer's overlay layer without another mouse
+    // event. Toggle the focus so the column highlight is installed again.
+    onColumnFocus(null)
+    window.requestAnimationFrame(() => {
+      if (hoveredColumnRef.current === columnIndex) onColumnFocus(columnIndex)
+    })
+  }
+
   return (
     <div style={{ marginBottom: 4 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 100px 36px', gap: '4px 6px', alignItems: 'center', padding: '2px 6px', fontSize: 11, color: '#999' }}>
@@ -67,19 +80,28 @@ export function ColumnEditor({
         <div
           key={column.colIndex}
           style={{ marginBottom: 2 }}
-          onMouseEnter={() => { if (active) onColumnFocus(column.colIndex) }}
-          onMouseLeave={() => { if (active) onColumnFocus(null) }}
+          onMouseEnter={() => {
+            hoveredColumnRef.current = column.colIndex
+            if (active) onColumnFocus(column.colIndex)
+          }}
+          onMouseLeave={() => {
+            if (hoveredColumnRef.current === column.colIndex) hoveredColumnRef.current = null
+            if (active) onColumnFocus(null)
+          }}
         >
           <div style={{
             display: 'grid', gridTemplateColumns: '28px 1fr 100px 36px', gap: '4px 6px', alignItems: 'center', padding: '2px 6px', borderRadius: 4,
             opacity: column.skip || controlsLocked ? 0.35 : 1,
             background: activeColIndex === column.colIndex ? 'rgba(250, 140, 22, 0.06)' : 'transparent',
           }}>
-            <span style={{ fontSize: 12, fontFamily: 'var(--font-code)', fontWeight: 600, color: '#666', cursor: 'pointer' }} onClick={() => {
-              if (!block.range) return
+            <Tooltip title={navigationEnabled ? undefined : t('block.lockToNavigate')}>
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-code)', fontWeight: 600, color: navigationEnabled ? '#666' : '#aaa', cursor: navigationEnabled ? 'pointer' : 'not-allowed' }} onClick={() => {
+              if (!navigationEnabled || !block.range) return
               if (block.activeSheet) spreadsheet.setActiveSheet(block.activeSheet)
               spreadsheet.scrollTo(block.activeSheet, block.range.startRow - 1, column.colIndex - 3)
+              focusColumnAfterNavigation(column.colIndex)
             }}>{column.colLetter}</span>
+            </Tooltip>
             <Input
               size="small"
               value={column.key}

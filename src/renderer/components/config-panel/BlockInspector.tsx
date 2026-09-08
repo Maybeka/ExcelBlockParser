@@ -128,7 +128,7 @@ export function BlockInspector(props: BlockInspectorProps) {
                 onReconcilingChange?.(block.id)
               }} disabled={controlsLocked || !block.range || otherBlockReconciling} className={reconciling ? 'is-active' : ''} />
           </Tooltip>
-          {block.range && !otherBlockReconciling && <Tooltip title={t('common.focusRange')}><Button aria-label={t('common.focusRange')} size="small" type="text" icon={<AimOutlined />} onClick={event => { event.stopPropagation(); onFocusRange() }} onMouseDown={event => event.stopPropagation()} /></Tooltip>}
+          {block.range && !otherBlockReconciling && <Tooltip title={block.selectionLocked ? t('common.focusRange') : t('block.lockToNavigate')}><Button aria-label={t('common.focusRange')} size="small" type="text" icon={<AimOutlined />} onClick={event => { event.stopPropagation(); onFocusRange() }} onMouseDown={event => event.stopPropagation()} disabled={!block.selectionLocked} /></Tooltip>}
           <Tooltip title={infoVisible ? t('common.hideInfo') : t('common.showInfo')}>
           <Button
             aria-label={infoVisible ? 'Hide block info' : 'Show block info'} size="small" type="text" icon={<InfoCircleOutlined />}

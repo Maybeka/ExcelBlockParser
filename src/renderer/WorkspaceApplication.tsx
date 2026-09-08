@@ -899,6 +899,16 @@ export function WorkspaceApplication() {
       })
     : []
 
+  const focusValidationItem = (kind: 'block' | 'region', name: string) => {
+    const sectionId = kind === 'block' ? 'builtin.extraction' : 'builtin.regions'
+    const item = builtInFeaturePanelRegistry.navigation(featureContext)
+      .find(section => section.id === sectionId)
+      ?.items.find(candidate => candidate.label === name || candidate.id === name)
+    if (!item) return
+    item.select()
+    setDiagnosticsOpen(false)
+  }
+
   const navigator = <WorkspaceNavigator
     projectName={project.name}
     fileName={currentFileName}
@@ -1139,6 +1149,7 @@ export function WorkspaceApplication() {
         parseDiagnostics={parseDiagnostics}
         validationErrors={configurationDiagnostics}
         onFocus={handleFocusDiagnostic}
+        onFocusValidationItem={focusValidationItem}
       />}
       <Modal
         title={t('dialog.sourceChanged.title')}
