@@ -26,22 +26,10 @@ interface OfficeMathDefinition extends Omit<OfficeMathDrawing, 'source'> {
   mathMl: string
 }
 
-let mathJaxReady: Promise<MathJaxRuntime> | null = null
+let mathJaxDocument: Promise<MathJaxDocument> | null = null
 
-interface MathJaxRuntime {
-  startup: { promise: Promise<unknown> }
-  typesetPromise(elements?: Element[]): Promise<unknown>
-}
-
-interface MathJaxConfiguration {
-  loader?: { load?: string[] }
-  options?: Record<string, boolean>
-  sre?: { speech?: string }
-  startup?: { typeset?: boolean; promise?: Promise<unknown> }
-}
-
-declare global {
-  interface Window { MathJax?: MathJaxRuntime }
+interface MathJaxDocument {
+  convert(mathMl: string, options: { display: boolean; em: number; ex: number; containerWidth: number }): HTMLElement
 }
 
 export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook, report?: OfficeMathDiagnosticReporter): Promise<OfficeMathDrawing[]> {
@@ -821,11 +809,10 @@ async function mathMlToSvgDataUri(mathMl: string, width: number, height: number)
     throw new Error('Office Math drawing has invalid SVG geometry')
   }
   const mathJax = await loadMathJax()
-  const host = document.createElement('div')
-  host.innerHTML = mathMl
-  await mathJax.typesetPromise([host])
-  const svg = host.querySelector('svg')
+  const container = mathJax.convert(mathMl, { display: false, em: 16, ex: 8, containerWidth: 16_384 })
+  const svg = container.querySelector('svg')
   if (!svg) throw new Error('MathJax did not produce an SVG')
+  assertValidSvgGeometry(svg)
   svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
   svg.setAttribute('width', `${width}px`)
   svg.setAttribute('height', `${height}px`)
@@ -833,32 +820,39 @@ async function mathMlToSvgDataUri(mathMl: string, width: number, height: number)
   return `data:image/svg+xml;base64,${toBase64(svg.outerHTML)}`
 }
 
-async function loadMathJax(): Promise<MathJaxRuntime> {
-  if (!mathJaxReady) {
-    // The spreadsheet only needs static SVG output. Disable the browser
-    // component's optional accessibility stack so it cannot load SRE modules.
-    window.MathJax = {
-      loader: { load: [] },
-      options: {
-        enableMenu: false,
-        enableEnrichment: false,
-        enableComplexity: false,
-        enableSpeech: false,
-        enableBraille: false,
-        enableExplorer: false,
-        enableAssistiveMml: false,
-      },
-      sre: { speech: 'none' },
-      startup: { typeset: false, promise: Promise.resolve() },
-    } as MathJaxConfiguration as MathJaxRuntime
-    mathJaxReady = import('mathjax/mml-svg.js').then(async () => {
-      const mathJax = window.MathJax
-      if (!mathJax) throw new Error('MathJax did not initialize')
-      await mathJax.startup.promise
-      return mathJax
+async function loadMathJax(): Promise<MathJaxDocument> {
+  if (!mathJaxDocument) {
+    // Use MathJax's source API instead of its browser component loader. The
+    // latter bundles optional SRE accessibility services and may try to fetch
+    // speech-worker.js; this document only converts MathML to static SVG.
+    mathJaxDocument = Promise.all([
+      import('@mathjax/src/mjs/mathjax.js'),
+      import('@mathjax/src/mjs/input/mathml.js'),
+      import('@mathjax/src/mjs/output/svg.js'),
+      import('@mathjax/src/mjs/adaptors/browserAdaptor.js'),
+      import('@mathjax/src/mjs/handlers/html.js'),
+      import('@mathjax/mathjax-newcm-font/mjs/svg.js'),
+    ]).then(([{ mathjax }, { MathML }, { SVG }, { browserAdaptor }, { RegisterHTMLHandler }, { MathJaxNewcmFont }]) => {
+      RegisterHTMLHandler(browserAdaptor())
+      return mathjax.document(document, {
+        InputJax: new MathML(),
+        OutputJax: new SVG({ fontCache: 'none', fontData: MathJaxNewcmFont }),
+      }) as MathJaxDocument
     })
   }
-  return mathJaxReady
+  return mathJaxDocument
+}
+
+function assertValidSvgGeometry(svg: SVGSVGElement): void {
+  const geometryAttributes = new Set(['width', 'height', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'dx', 'dy', 'viewBox'])
+  for (const element of [svg, ...svg.querySelectorAll<SVGElement>('*')]) {
+    for (const attribute of element.getAttributeNames()) {
+      const value = element.getAttribute(attribute)
+      if (geometryAttributes.has(attribute) && value?.match(/(?:^|[^a-z])(?:nan|infinity)(?:$|[^a-z])/i)) {
+        throw new Error(`MathJax produced invalid SVG ${attribute}="${value}"`)
+      }
+    }
+  }
 }
 
 function toBase64(value: string): string {

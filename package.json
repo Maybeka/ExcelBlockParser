@@ -1,6 +1,6 @@
 {
   "name": "excel-block-parser",
-  "version": "1.7.8-test.5",
+  "version": "1.7.8-test.6",
   "description": "Load Excel, select a block, configure parsing, export JSON",
   "author": "Excel Block Parser contributors",
   "main": "./out/main/index.js",
@@ -107,6 +107,8 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
     "@lezer/highlight": "^1.2.3",
+    "@mathjax/mathjax-newcm-font": "4.0.0",
+    "@mathjax/src": "4.0.0",
     "@uiw/react-codemirror": "^4.25.11",
     "@univerjs/core": "0.22.0",
     "@univerjs/preset-sheets-core": "0.22.0",
@@ -116,7 +118,6 @@
     "antd": "^5.24.0",
     "exceljs": "^4.4.0",
     "fflate": "^0.4.8",
-    "mathjax": "^4.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "shiki": "^4.4.3"

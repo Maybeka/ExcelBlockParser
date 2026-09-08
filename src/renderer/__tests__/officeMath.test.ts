@@ -5,6 +5,31 @@ import { describe, expect, it, vi } from 'vitest'
 import { extractEquationDrawings, extractOfficeMathDefinitions, findEmbeddedOlePreview, packageMayContainOfficeMathDrawing } from '../services/officeMath'
 
 describe('Office Math extraction', () => {
+  it('typesets MathML through the direct source API without browser accessibility services', async () => {
+    const [{ mathjax }, { MathML }, { SVG }, { MathJaxNewcmFont }, { liteAdaptor }, { RegisterHTMLHandler }] = await Promise.all([
+      import('@mathjax/src/mjs/mathjax.js'),
+      import('@mathjax/src/mjs/input/mathml.js'),
+      import('@mathjax/src/mjs/output/svg.js'),
+      import('@mathjax/mathjax-newcm-font/mjs/svg.js'),
+      import('@mathjax/src/mjs/adaptors/liteAdaptor.js'),
+      import('@mathjax/src/mjs/handlers/html.js'),
+    ])
+    const adaptor = liteAdaptor()
+    RegisterHTMLHandler(adaptor)
+    const document = mathjax.document('', {
+      InputJax: new MathML(),
+      OutputJax: new SVG({ fontCache: 'none', fontData: MathJaxNewcmFont }),
+    })
+
+    const output = adaptor.outerHTML(document.convert(
+      '<math xmlns="http://www.w3.org/1998/Math/MathML"><mfrac><mi>x</mi><mi>y</mi></mfrac></math>',
+      { display: false, em: 16, ex: 8, containerWidth: 16_384 },
+    ))
+
+    expect(output).toContain('<svg')
+    expect(output).not.toMatch(/(?:NaN|Infinity)/i)
+  })
+
   it('skips package inflation when the ZIP directory has no drawing XML', () => {
     const noDrawings = zipSync({ 'xl/worksheets/sheet1.xml': strToU8('<worksheet/>') })
     const drawing = zipSync({ 'xl/drawings/drawing1.xml': strToU8('<drawing/>') })

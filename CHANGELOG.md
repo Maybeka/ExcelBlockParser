@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.8-test.6 - 2026-09-08
+
+- Replaced MathJax's browser component loader with its direct MathML-to-SVG
+  source API, eliminating SRE speech-worker requests and rejecting invalid SVG
+  geometry before it reaches the workbook canvas.
+- Restored selection only for the sheet shown after workbook creation. Univer's
+  selection command changes the active sheet, so restoring every sheet had
+  incorrectly selected the final sheet and could yield a whole-sheet selection.
+- Added Windows title-bar double-click maximize/restore for the non-interactive
+  header area.
+
 ## 1.7.8-test.5 - 2026-09-08
 
 - Fixed Univer sheet-selection restoration by supplying both required command

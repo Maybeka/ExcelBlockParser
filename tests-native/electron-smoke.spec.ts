@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import ExcelJS from 'exceljs'
@@ -111,6 +111,61 @@ test('registers an embedded workbook image with the live Univer drawing facade',
   } finally {
     await closeElectronApp(app, page)
     await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('renders Office Math without loading speech services or invalid SVG geometry', async () => {
+  const userDataDirectory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-mathjax-'))
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+  })
+  const requestedUrls: string[] = []
+
+  try {
+    page.on('request', request => requestedUrls.push(request.url()))
+    await page.getByText('Excel Block Parser').waitFor()
+    const assets = await readdir(resolve(root, 'out', 'renderer', 'assets'))
+    const component = (name: string) => {
+      const asset = assets.find(file => file.startsWith(`${name}-`) && file.endsWith('.js'))
+      if (!asset) throw new Error(`Missing MathJax ${name} component in build output`)
+      return `./assets/${asset}`
+    }
+    const svgAssets = await Promise.all(assets
+      .filter(file => file.startsWith('svg-') && file.endsWith('.js'))
+      .map(async file => ({ file, source: await readFile(resolve(root, 'out', 'renderer', 'assets', file), 'utf8') })))
+    const outputSvg = svgAssets.find(asset => asset.source.includes('createSVG('))?.file
+    const svgFont = svgAssets.find(asset => asset.source.includes('MathJaxNewcmFont'))?.file
+    if (!outputSvg || !svgFont) throw new Error('Missing isolated MathJax SVG output or font component in build output')
+
+    const result = await page.evaluate(async ({ mathjax, mathml, svg, font, adaptor, html }) => {
+      const [mathjaxModule, { MathML }, { SVG }, fontModule, { browserAdaptor }, { RegisterHTMLHandler }] = await Promise.all([
+        import(mathjax), import(mathml), import(svg), import(font), import(adaptor), import(html),
+      ]) as any[]
+      const api = mathjaxModule.mathjax ?? mathjaxModule.m
+      const MathJaxNewcmFont = fontModule.MathJaxNewcmFont ?? fontModule.M
+      RegisterHTMLHandler(browserAdaptor())
+      const document = api.document(window.document, {
+        InputJax: new MathML(),
+        OutputJax: new SVG({ fontCache: 'none', fontData: MathJaxNewcmFont }),
+      })
+      return document.convert('<math xmlns="http://www.w3.org/1998/Math/MathML"><mfrac><mi>x</mi><mi>y</mi></mfrac></math>', {
+        display: false, em: 16, ex: 8, containerWidth: 16_384,
+      }).outerHTML
+    }, {
+      mathjax: component('mathjax'),
+      mathml: component('mathml'),
+      svg: `./assets/${outputSvg}`,
+      font: `./assets/${svgFont}`,
+      adaptor: component('browserAdaptor'),
+      html: component('html'),
+    })
+
+    expect(result).toContain('<svg')
+    expect(result).not.toMatch(/(?:NaN|Infinity)/i)
+    expect(requestedUrls).not.toContain(expect.stringContaining('speech-worker.js'))
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(userDataDirectory, { recursive: true, force: true })
   }
 })
 

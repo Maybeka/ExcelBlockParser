@@ -869,10 +869,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         const univerStartedAt = performance.now()
         const newWorkbook = api.createWorkbook(workbookData, { makeCurrent: true })
         if (!newWorkbook) throw new Error(t('workbook.createFailed'))
-        const initialSheetName = requestedSheetName ?? activeSheetName
+        const initialSheetName = requestedSheetName ?? activeSheetName ?? newWorkbook.getActiveSheet()?.getSheetName() ?? null
         if (initialSheetName) newWorkbook.getSheetByName(initialSheetName)?.activate()
         await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
-        restoreWorkbookSelections(api, newWorkbook, sheetSelections)
+        restoreWorkbookSelections(api, newWorkbook, sheetSelections, initialSheetName)
         await registerWorkbookImages(newWorkbook, images)
         const univerMs = performance.now() - univerStartedAt
 

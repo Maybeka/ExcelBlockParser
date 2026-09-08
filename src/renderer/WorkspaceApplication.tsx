@@ -913,7 +913,14 @@ export function WorkspaceApplication() {
 
   return (
     <Layout className="app-shell">
-      <Layout.Header className="app-header">
+      <Layout.Header
+        className="app-header"
+        onDoubleClick={event => {
+          const target = event.target as HTMLElement
+          if (target.closest('a, button, input, [role="button"], .ant-dropdown-trigger, .app-brand, .app-actions, .python-header-tabs, .python-header-actions, .window-controls, .workbook-tab')) return
+          void getBridge().toggleWindowMaximize()
+        }}
+      >
         <div className="app-brand">
           {!pythonProjectOpen && !workbookBrowserMode && <Tooltip title={sidebarHidden ? t('app.showNavigation') : t('app.hideNavigation')}>
             <Button
