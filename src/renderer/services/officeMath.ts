@@ -697,10 +697,18 @@ function childByName(element: Element, localName: string): Element | null {
 function anchorPosition(anchor: Element, worksheet: ExcelJS.Worksheet): OfficeMathDrawing['from'] | null {
   const column = childFiniteNumber(anchor, 'col')
   const row = childFiniteNumber(anchor, 'row')
-  const columnOffset = childFiniteNumber(anchor, 'colOff')
-  const rowOffset = childFiniteNumber(anchor, 'rowOff')
-  if (column === null || row === null || columnOffset === null || rowOffset === null || column < 0 || row < 0) return null
-  return { column, columnOffset, row, rowOffset }
+  const columnOffsetEmu = childFiniteNumber(anchor, 'colOff')
+  const rowOffsetEmu = childFiniteNumber(anchor, 'rowOff')
+  if (column === null || row === null || columnOffsetEmu === null || rowOffsetEmu === null || column < 0 || row < 0) return null
+  // DrawingML anchors store offsets in EMUs while Univer's drawing facade
+  // expects pixels. Passing the raw EMU values moves a formula far away from
+  // its source cell, commonly beyond the visible canvas.
+  return {
+    column,
+    columnOffset: columnOffsetEmu / EMUS_PER_PIXEL,
+    row,
+    rowOffset: rowOffsetEmu / EMUS_PER_PIXEL,
+  }
 }
 
 function extentGeometry(extent: Element): { width: number; height: number } | null {

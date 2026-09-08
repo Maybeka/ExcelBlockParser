@@ -67,6 +67,33 @@ describe('Office Math extraction', () => {
     }
   })
 
+  it('reads OMML contained in an Office drawing text box', async () => {
+    const workbook = new ExcelJS.Workbook()
+    workbook.addWorksheet('Sheet1')
+    const base = await workbook.xlsx.writeBuffer()
+    const files = zipSync({
+      ...Object.fromEntries(Object.entries(unzipSync(new Uint8Array(base as ArrayBuffer)))),
+      'xl/workbook.xml': strToU8(`<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+      'xl/_rels/workbook.xml.rels': strToU8(relationships('rId1', 'worksheets/sheet1.xml')),
+      'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><drawing r:id="rId1"/></worksheet>`),
+      'xl/worksheets/_rels/sheet1.xml.rels': strToU8(relationships('rId1', '../drawings/drawing1.xml')),
+      'xl/drawings/drawing1.xml': strToU8(`<?xml version="1.0"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><xdr:oneCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>209550</xdr:colOff><xdr:row>4</xdr:row><xdr:rowOff>120650</xdr:rowOff></xdr:from><xdr:ext cx="1412900" cy="590550"/><xdr:sp><xdr:txBody><a:p><a14:m><m:oMath><m:r><m:t>F</m:t></m:r><m:r><m:t>=</m:t></m:r><m:r><m:t>ma</m:t></m:r></m:oMath></a14:m></a:p></xdr:txBody></xdr:sp></xdr:oneCellAnchor></xdr:wsDr>`),
+    })
+
+    const originalParser = globalThis.DOMParser
+    Object.assign(globalThis, { DOMParser: XmlDomParser })
+    try {
+      const definitions = extractOfficeMathDefinitions(files.buffer.slice(files.byteOffset, files.byteOffset + files.byteLength), workbook)
+      expect(definitions).toEqual([expect.objectContaining({
+        sheetName: 'Sheet1',
+        from: { column: 1, columnOffset: 22, row: 4, rowOffset: 12.666666666666666 },
+        mathMl: '<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><mi>F</mi><mo>=</mo><mi>ma</mi></mrow></math>',
+      })])
+    } finally {
+      Object.assign(globalThis, { DOMParser: originalParser })
+    }
+  })
+
   it('skips Office Math drawings with incomplete anchors or non-finite sheet dimensions', async () => {
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('Math')

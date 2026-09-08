@@ -11,7 +11,6 @@ import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
 import { estimateWorkbookCacheBytes, workbookCacheEvictions } from '../services/workbookCachePolicy'
-import { restoreWorkbookSelections } from '../services/workbookSelectionState'
 import type { WorkbookLoadRequest } from '../services/workbookRuntime'
 import { useI18n } from '../i18n'
 
@@ -54,6 +53,7 @@ interface CachedWorkbook {
   unitId: string
   path: string
   sheetNames: string[]
+  sheetSelections: Record<string, string>
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
   lastUsed: number
   estimatedBytes: number
@@ -546,9 +546,22 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         sheet.getImages().map((image: any) => ({ id: image.getId(), source: image.toBuilder().getSource() })),
       ]))
     }
+    ;(window as Window & {
+      __excelBlockParserSelectionState?: () => { sheetName: string; a1Notation: string | null; range: unknown } | null
+    }).__excelBlockParserSelectionState = () => {
+      const sheet = univerAPIRef.current?.getActiveWorkbook()?.getActiveSheet()
+      if (!sheet) return null
+      const selection = sheet.getSelection()
+      return {
+        sheetName: sheet.getSheetName(),
+        a1Notation: selection?.getActiveRange()?.getA1Notation() ?? null,
+        range: selection?.getActiveRange()?.getRange() ?? null,
+      }
+    }
     return () => {
       delete (window as Window & { __excelBlockParserOutlineState?: () => Record<string, boolean> }).__excelBlockParserOutlineState
       delete (window as Window & { __excelBlockParserImageState?: () => Record<string, Array<{ id: string; source: string }>> }).__excelBlockParserImageState
+      delete (window as Window & { __excelBlockParserSelectionState?: () => { sheetName: string; a1Notation: string | null; range: unknown } | null }).__excelBlockParserSelectionState
     }
   }, [])
 
@@ -580,6 +593,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           a1Notation: `${colToA1(sel.startColumn)}${sel.startRow + 1}:${colToA1(sel.endColumn)}${sel.endRow + 1}`,
         }
         setSelection({ range, sheetName: sheetName ?? '' })
+        if (sheetName) {
+          const cached = workbookCacheRef.current.get(sourceWorkbookId)
+          if (cached) cached.sheetSelections[sheetName] = `${colToA1(sel.startColumn)}${sel.startRow + 1}`
+        }
         onSelectionChangeRef.current(sourceWorkbookId, range, sheetName)
       })
 
@@ -655,6 +672,17 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         }
         if (commandId.includes('set-worksheet-active') || commandId.includes('set-worksheet-activate')) {
           const sheetName = workbook.getActiveSheet()?.getSheetName() ?? null
+          const cached = workbookCacheRef.current.get(sourceWorkbookId)
+          const savedSelection = sheetName ? cached?.sheetSelections[sheetName] ?? 'A1' : null
+          if (sheetName && savedSelection) {
+            window.requestAnimationFrame(() => {
+              if (workbook.getActiveSheet()?.getSheetName() !== sheetName) return
+              try {
+                const cell = parseExcelActiveCell(savedSelection)
+                workbook.getActiveSheet()?.setActiveSelection(workbook.getActiveSheet().getRange(cell.row, cell.column))
+              } catch { /* malformed Excel selection metadata is non-fatal */ }
+            })
+          }
           onActiveSheetChangeRef.current(sourceWorkbookId, sheetName)
         }
         if (commandId.includes('sheet') || commandId.includes('worksheet')) {
@@ -872,7 +900,8 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         const initialSheetName = requestedSheetName ?? activeSheetName ?? newWorkbook.getActiveSheet()?.getSheetName() ?? null
         if (initialSheetName) newWorkbook.getSheetByName(initialSheetName)?.activate()
         await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
-        restoreWorkbookSelections(api, newWorkbook, sheetSelections, initialSheetName)
+        const initialSheet = initialSheetName ? newWorkbook.getSheetByName(initialSheetName) : null
+        const initialSelection = initialSheetName ? sheetSelections[initialSheetName] ?? 'A1' : 'A1'
         await registerWorkbookImages(newWorkbook, images)
         const univerMs = performance.now() - univerStartedAt
 
@@ -893,6 +922,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           unitId: newWorkbook.getId(),
           path: filePath,
           sheetNames: loadedSheetNames,
+          sheetSelections: { ...sheetSelections },
           sheetDisplaySettings,
           lastUsed: ++cacheAccessCounterRef.current,
           estimatedBytes: estimateWorkbookCacheBytes(arrayBuffer.byteLength, workbookData),
@@ -911,6 +941,15 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
         setSheetNames(loadedSheetNames)
         tryAttachListener(newWorkbook, sourceWorkbookId)
+        // Project state reconciliation after onFileLoaded can still overwrite
+        // Univer's initial selection. Restore the saved active cell once that
+        // synchronization and the first sheet skeleton have both settled.
+        window.setTimeout(() => {
+          try {
+            const cell = parseExcelActiveCell(initialSelection)
+            initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
+          } catch { /* malformed Excel selection metadata is non-fatal */ }
+        }, 50)
         if (workbookLoadSettings.performanceLogging) {
           console.info('[Workbook performance]', {
             workbook: fileName,
@@ -1153,6 +1192,15 @@ function colToA1(col: number): string {
     n = Math.floor(n / 26) - 1
   }
   return letter
+}
+
+function parseExcelActiveCell(a1Notation: string): { row: number; column: number } {
+  const match = /^\$?([A-Z]{1,3})\$?(\d+)$/i.exec(a1Notation.trim())
+  if (!match) throw new Error(`Invalid active cell address: ${a1Notation}`)
+  const row = Number(match[2]) - 1
+  const column = [...match[1].toUpperCase()].reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0) - 1
+  if (row < 0 || column < 0) throw new Error(`Invalid active cell address: ${a1Notation}`)
+  return { row, column }
 }
 
 function rangesOverlap(start: number, end: number, otherStart: number, otherEnd: number): boolean {

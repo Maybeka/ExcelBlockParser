@@ -3,12 +3,12 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import ExcelJS from 'exceljs'
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { closeElectronApp, launchElectronApp } from './electronLaunch'
 
 const root = process.cwd()
 const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
 const secondWorkbookPath = resolve(root, 'examples', 'multi_sheet.xlsx')
+const officeMathWorkbookPath = resolve(root, 'tests-native', 'fixtures', 'office-math-textbox.xlsx')
 
 function block(id: string, label: string, workbookId: string, sheet: string) {
   return {
@@ -16,31 +16,6 @@ function block(id: string, label: string, workbookId: string, sheet: string) {
     range: { startRow: 0, startCol: 0, endRow: 2, endCol: 1, a1Notation: 'A1:B3' },
     headerRows: [0], collapsed: false, selectionLocked: true, columns: [], dataSnapshot: null,
   }
-}
-
-async function writeOfficeMathWorkbook(path: string): Promise<void> {
-  const workbook = new ExcelJS.Workbook()
-  workbook.addWorksheet('Math')
-  const base = await workbook.xlsx.writeBuffer()
-  const files = unzipSync(new Uint8Array(base as ArrayBuffer))
-  const contentTypes = strFromU8(files['[Content_Types].xml']!).replace(
-    '</Types>',
-    '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>',
-  )
-  const xlsx = zipSync({
-    ...files,
-    '[Content_Types].xml': strToU8(contentTypes),
-    'xl/workbook.xml': strToU8(`<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Math" sheetId="1" r:id="rId1"/></sheets></workbook>`),
-    'xl/_rels/workbook.xml.rels': strToU8(officeMathRelationships('rId1', 'worksheets/sheet1.xml')),
-    'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><drawing r:id="rId1"/></worksheet>`),
-    'xl/worksheets/_rels/sheet1.xml.rels': strToU8(officeMathRelationships('rId1', '../drawings/drawing1.xml', 'drawing')),
-    'xl/drawings/drawing1.xml': strToU8(`<?xml version="1.0"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>5</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:sp><xdr:txBody><a:p><m:oMath><m:f><m:num><m:r><m:t>x</m:t></m:r></m:num><m:den><m:r><m:t>y</m:t></m:r></m:den></m:f></m:oMath></a:p></xdr:txBody></xdr:sp></xdr:twoCellAnchor></xdr:wsDr>`),
-  })
-  await writeFile(path, xlsx)
-}
-
-function officeMathRelationships(id: string, target: string, type = 'worksheet'): string {
-  return `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${target}"/></Relationships>`
 }
 
 test('opens a real workbook through the Electron host bridge', async () => {
@@ -169,17 +144,13 @@ test('renders Office Math without loading speech services or invalid SVG geometr
   }
 })
 
-// ExcelJS rejects the synthetic OOXML drawing package before the renderer can
-// exercise it. OMML extraction and geometry remain covered by officeMath.test.
-test.fixme('renders an Office Math drawing from an XLSX workbook', async () => {
+test('renders an Office Math drawing from a modern Excel text box', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-omml-'))
   const userDataDirectory = resolve(directory, 'user-data')
-  const mathWorkbookPath = resolve(directory, 'office-math.xlsx')
-  await writeOfficeMathWorkbook(mathWorkbookPath)
   const warnings: string[] = []
   const { app, page } = await launchElectronApp({
     ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
-    ELECTRON_E2E_OPEN_PATH: mathWorkbookPath,
+    ELECTRON_E2E_OPEN_PATH: officeMathWorkbookPath,
   })
 
   try {
@@ -195,7 +166,10 @@ test.fixme('renders an Office Math drawing from an XLSX workbook', async () => {
     await page.getByRole('menuitem', { name: 'Project settings' }).click()
     const settings = page.getByRole('dialog', { name: 'Project settings' })
     await settings.getByRole('button', { name: 'Add workbook source' }).click()
-    await expect(page.getByRole('tab', { name: 'office-math.xlsx' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'office-math-textbox.xlsx' })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserImageState?.() ?? {})).toEqual({
+      Sheet1: [expect.objectContaining({ source: expect.stringMatching(/^data:image\/svg\+xml;base64,/) })],
+    })
     await expect.poll(() => warnings).toEqual([])
   } finally {
     await closeElectronApp(app, page)
@@ -357,6 +331,68 @@ test('does not change sheets when toggling outlines from a sheet without groups'
 
     await page.getByRole('button', { name: 'Show Excel outlines' }).click()
     await expect(plainSheet).toHaveAttribute('aria-selected', 'true')
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('keeps a single-cell selection while switching populated worksheets', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-selection-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const workbookFile = resolve(directory, 'populated-sheets.xlsx')
+  const projectPath = resolve(directory, 'populated-sheets-project.json')
+  const source = new ExcelJS.Workbook()
+  const first = source.addWorksheet('First')
+  const second = source.addWorksheet('Second')
+  for (const sheet of [first, second]) {
+    for (let row = 1; row <= 12; row += 1) {
+      for (let column = 1; column <= 8; column += 1) sheet.getCell(row, column).value = `${sheet.name}-${row}-${column}`
+    }
+    sheet.views = [{ state: 'normal', activeCell: sheet === first ? 'C4' : 'F9' }]
+  }
+  await writeFile(workbookFile, Buffer.from(await source.xlsx.writeBuffer()))
+  await writeFile(projectPath, JSON.stringify({
+    version: 3,
+    exportedAt: '2026-09-08T00:00:00.000Z',
+    project: {
+      id: 'populated-sheets-project', name: 'Populated sheets project', activeWorkbookId: 'populated-sheets', activeBlockId: '', activeRegionId: null,
+      focusMode: 'always-editable',
+      workbooks: [{ id: 'populated-sheets', name: 'populated-sheets.xlsx', sourcePath: workbookFile, activeSheetName: 'First', sheetNames: ['First', 'Second'] }],
+      blocks: [], regions: [],
+    },
+    data: {}, blockResults: [],
+  }), 'utf8')
+
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_IMPORT_PATH: projectPath,
+  })
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByRole('button', { name: 'Open Project' }).click()
+    await expect(page.getByRole('tab', { name: 'First', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
+      sheetName: 'First',
+      a1Notation: 'C4',
+    })
+
+    await page.getByRole('tab', { name: 'Second', exact: true }).click()
+    await expect(page.getByRole('tab', { name: 'Second', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
+      sheetName: 'Second',
+      a1Notation: 'F9',
+    })
+
+    await page.getByRole('tab', { name: 'First', exact: true }).click()
+    await expect(page.getByRole('tab', { name: 'First', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
+      sheetName: 'First',
+      a1Notation: 'C4',
+    })
   } finally {
     await closeElectronApp(app, page)
     await rm(directory, { recursive: true, force: true })
