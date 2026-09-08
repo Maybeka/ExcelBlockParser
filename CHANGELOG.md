@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.7.8 - 2026-09-09
+
+- Fixed Office Math drawing anchors by converting DrawingML EMU offsets to the
+  pixel values expected by Univer. Modern OMML formulas now render at their
+  source-cell position rather than far outside the visible sheet.
+- Preserved each worksheet's saved active cell through workbook load and sheet
+  switches, avoiding invalid used-range or full-column selections.
+- Added regression coverage for a populated multi-sheet workbook and a real
+  Excel file containing a modern Office Math text box.
+- Localized built-in Block, Region, and parse diagnostics in Chinese and
+  English. Diagnostics no longer show an empty-state message while issues are
+  present, and uniquely named items can be opened from their diagnostic name.
+- Kept range and column navigation available only after a Block range is
+  confirmed, preventing navigation from interfering with an in-progress range
+  selection. Column hover highlighting now survives a navigation click.
+
 ## 1.7.8-test.6 - 2026-09-08
 
 - Replaced MathJax's browser component loader with its direct MathML-to-SVG
