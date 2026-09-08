@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.8-test.5 - 2026-09-08
+
+- Fixed Univer sheet-selection restoration by supplying both required command
+  identifiers, preventing an invalid full-sheet selection after sheet changes.
+- Added user-visible Diagnostics for Office Math and Equation Editor 3.0
+  content that cannot be positioned or rendered.
+- Rejected malformed Office Math geometry before it can produce invalid SVG
+  dimensions, and disabled MathJax accessibility/SRE features not needed for
+  static formula rendering.
+
 ## 1.7.8-test.4 - 2026-09-08
 
 - Fixed legacy Equation Editor 3.0 VML preview relationships using the

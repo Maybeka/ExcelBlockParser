@@ -71,6 +71,7 @@ export interface ParseDiagnostic {
   blockId?: string
   regionId?: string
   workbookId?: string | null
+  sheetName?: string | null
   row?: number
   column?: string
 }

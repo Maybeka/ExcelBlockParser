@@ -12,6 +12,7 @@ import type { IStyleData } from '@univerjs/core'
 import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
 import { extractEquationDrawings, stripEmbeddedImagesFromXlsx, type LegacyEquationRasterizer } from './officeMath'
+import type { ParseDiagnostic } from '../types'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
 type ExcelColor = { argb?: string; theme?: number | string; indexed?: number | string; tint?: number | string; auto?: boolean | number | string }
@@ -25,6 +26,7 @@ export interface ConversionResult {
   activeSheetName: string | null
   sheetSelections: Record<string, string>
   images: ConvertedWorkbookImage[]
+  diagnostics: ParseDiagnostic[]
   metrics: WorkbookConversionMetrics
 }
 
@@ -108,13 +110,21 @@ export async function convertXlsxToWorkbookData(
 ): Promise<ConversionResult> {
   const startedAt = performance.now()
   const workbook = new ExcelJS.Workbook()
+  const diagnostics: ParseDiagnostic[] = []
   const loadBuffer = options.parseImages === false ? stripEmbeddedImagesFromXlsx(arrayBuffer) : arrayBuffer
   await workbook.xlsx.load(loadBuffer, options.parseImages === false ? { ignoreNodes: ['drawing', 'picture'] } : undefined)
   const excelJsLoadMs = performance.now() - startedAt
   const officeMathStartedAt = performance.now()
   const officeMathDrawings = options.parseOfficeMath === false
     ? []
-    : await extractEquationDrawings(arrayBuffer, workbook, options.rasterizeLegacyEquationPreview)
+    : await extractEquationDrawings(arrayBuffer, workbook, options.rasterizeLegacyEquationPreview, diagnostic => {
+      diagnostics.push({
+        code: 'unsupported-content',
+        severity: 'warning',
+        message: diagnostic.message,
+        sheetName: diagnostic.sheetName,
+      })
+    })
   const officeMathMs = performance.now() - officeMathStartedAt
 
   const sheets: Record<string, Partial<IWorksheetData>> = {}
@@ -351,6 +361,7 @@ export async function convertXlsxToWorkbookData(
       : null,
     sheetSelections,
     images: [...images, ...officeMathDrawings],
+    diagnostics,
     metrics: {
       excelJsLoadMs,
       officeMathMs,

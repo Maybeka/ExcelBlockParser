@@ -32,7 +32,10 @@ export function restoreWorkbookSelections(
     try {
       api.syncExecuteCommand('sheet.command.select-range', {
         unitId: workbook.getId(),
+        // Univer 0.10 resolves the target through subUnitId but persists the
+        // selection through its legacy subUnit field. Both are required.
         subUnitId: sheet.getSheetId(),
+        subUnit: sheet.getSheetId(),
         range: sheet.getRange(a1Notation).getRange(),
       })
     } catch {
@@ -42,6 +45,7 @@ export function restoreWorkbookSelections(
         api.syncExecuteCommand('sheet.command.select-range', {
           unitId: workbook.getId(),
           subUnitId: sheet.getSheetId(),
+          subUnit: sheet.getSheetId(),
           range: sheet.getRange('A1').getRange(),
         })
       } catch { /* sheet skeleton may still be initializing */ }

@@ -20,7 +20,7 @@ export function DiagnosticsDrawer({ open, onClose, parseDiagnostics, validationE
       <List dataSource={parseDiagnostics} renderItem={(diagnostic) => <List.Item actions={diagnostic.blockId || diagnostic.regionId ? [<Button key="focus" size="small" type="text" icon={<AimOutlined />} onClick={() => onFocus(diagnostic)}>{t('common.locate')}</Button>] : []}>
         <List.Item.Meta
           title={<><Tag color={diagnostic.severity === 'error' ? 'error' : 'warning'}>{diagnostic.code}</Tag>{diagnostic.message}</>}
-          description={diagnostic.column ? `Column: ${diagnostic.column}${diagnostic.row != null ? `, parsed row: ${diagnostic.row + 1}` : ''}` : undefined}
+          description={diagnostic.sheetName ? `Sheet: ${diagnostic.sheetName}` : diagnostic.column ? `Column: ${diagnostic.column}${diagnostic.row != null ? `, parsed row: ${diagnostic.row + 1}` : ''}` : undefined}
         />
       </List.Item>} />
     </>}

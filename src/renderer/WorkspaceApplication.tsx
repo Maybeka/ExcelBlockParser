@@ -2,7 +2,7 @@ import { Suspense, lazy, useState, useCallback, useRef, useMemo, useEffect, type
 import { Badge, Button, Checkbox, Drawer, Dropdown, Input, Layout, Modal, Select, Splitter, Space, Spin, theme, Tooltip, message, Alert, Tabs } from 'antd'
 import { BorderOutlined, CheckCircleOutlined, CodeOutlined, EyeInvisibleOutlined, EyeOutlined, FileExcelOutlined, FileSearchOutlined, FolderOpenOutlined, FolderAddOutlined, ImportOutlined, CloseOutlined, DownOutlined, InfoCircleOutlined, LeftOutlined, MenuOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, MoreOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SettingOutlined, WarningOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons'
 import { SpreadsheetPanel } from './components/SpreadsheetPanel'
-import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, DEFAULT_WORKBOOK_LOAD_SETTINGS, type CellRange, type ParseResult, type ProjectConfig, type ProjectWorkbook, type WorkbookDisplaySettings, type WorkbookLoadSettings } from './types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, DEFAULT_WORKBOOK_LOAD_SETTINGS, type CellRange, type ParseDiagnostic, type ParseResult, type ProjectConfig, type ProjectWorkbook, type WorkbookDisplaySettings, type WorkbookLoadSettings } from './types'
 import { FeaturePanelHost } from './features/panel/FeaturePanelHost'
 import { gateBPrototypePanel } from './features/panel/gateBPrototypePanels'
 import type { WorkspaceFeaturePanelContext, WorkspaceReconciliationItem } from './features/panel/workspacePanel'
@@ -126,6 +126,7 @@ export function WorkspaceApplication() {
   const browserModeTooltipTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(272)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [workbookDiagnostics, setWorkbookDiagnostics] = useState<Record<string, ParseDiagnostic[]>>({})
   const [recoveryContent, setRecoveryContent] = useState<string | null>(null)
   const [pendingDiagnosticFocus, setPendingDiagnosticFocus] = useState<DiagnosticFocusTarget | null>(null)
   const [pendingNavigatorRangeFocus, setPendingNavigatorRangeFocus] = useState<{ workbookId: string; sheetName: string | null; range: CellRange } | null>(null)
@@ -786,7 +787,7 @@ export function WorkspaceApplication() {
   const configurationDiagnostics = useMemo(() => builtInFeatureRegistry.validate(project), [project])
   const activeCanvasItemIds = useMemo(() => builtInFeatureRegistry.activeCanvasItems(project), [project])
   const activeColumnItemId = useMemo(() => builtInFeatureRegistry.activeColumnItem(project), [project])
-  const parseDiagnostics = useMemo(() => orderDiagnostics(parseResult?.diagnostics ?? []), [parseResult?.diagnostics])
+  const parseDiagnostics = useMemo(() => orderDiagnostics([...(parseResult?.diagnostics ?? []), ...Object.values(workbookDiagnostics).flat()]), [parseResult?.diagnostics, workbookDiagnostics])
   const diagnosticCount = configurationDiagnostics.length + parseDiagnostics.length
 
   useEffect(() => {
@@ -1098,6 +1099,7 @@ export function WorkspaceApplication() {
                   openWorkbookIds={openWorkbookIds}
                   onFileLoaded={handleFileLoaded}
                   onLoadedWorkbookChange={workbookId => updateWorkbookRuntime(current => setLoadedWorkbook(current, workbookId))}
+                  onWorkbookDiagnostics={(workbookId, diagnostics) => setWorkbookDiagnostics(current => ({ ...current, [workbookId]: diagnostics }))}
                   lockedRanges={workbookBrowserMode ? [] : lockedRanges}
                   closeSignal={closeSignal}
                   onOpenWorkbook={handleOpenFile}

@@ -15,6 +15,13 @@ export interface LegacyEquationRasterizer {
   (bytes: ArrayBuffer, extension: string): Promise<ArrayBuffer | null>
 }
 
+export interface OfficeMathDiagnostic {
+  sheetName: string | null
+  message: string
+}
+
+export type OfficeMathDiagnosticReporter = (diagnostic: OfficeMathDiagnostic) => void
+
 interface OfficeMathDefinition extends Omit<OfficeMathDrawing, 'source'> {
   mathMl: string
 }
@@ -26,12 +33,19 @@ interface MathJaxRuntime {
   typesetPromise(elements?: Element[]): Promise<unknown>
 }
 
+interface MathJaxConfiguration {
+  loader?: { load?: string[] }
+  options?: Record<string, boolean>
+  sre?: { speech?: string }
+  startup?: { typeset?: boolean; promise?: Promise<unknown> }
+}
+
 declare global {
   interface Window { MathJax?: MathJaxRuntime }
 }
 
-export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook): Promise<OfficeMathDrawing[]> {
-  const definitions = extractOfficeMathDefinitions(arrayBuffer, workbook)
+export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook, report?: OfficeMathDiagnosticReporter): Promise<OfficeMathDrawing[]> {
+  const definitions = extractOfficeMathDefinitions(arrayBuffer, workbook, report)
   if (definitions.length === 0) return []
   const drawings: OfficeMathDrawing[] = []
   for (const definition of definitions) {
@@ -39,6 +53,7 @@ export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbo
       drawings.push({ ...definition, source: await mathMlToSvgDataUri(definition.mathMl, definition.width, definition.height) })
     } catch (error) {
       console.warn('[OfficeMath] Unable to render equation:', error)
+      report?.({ sheetName: definition.sheetName, message: `Office Math equation could not be rendered: ${errorMessage(error)}` })
     }
   }
   return drawings
@@ -53,15 +68,16 @@ export async function extractEquationDrawings(
   arrayBuffer: ArrayBuffer,
   workbook: ExcelJS.Workbook,
   rasterizeLegacyPreview?: LegacyEquationRasterizer,
+  report?: OfficeMathDiagnosticReporter,
 ): Promise<OfficeMathDrawing[]> {
   const [officeMath, legacyEquations] = await Promise.all([
-    extractOfficeMathDrawings(arrayBuffer, workbook),
-    extractLegacyEquationDrawings(arrayBuffer, workbook, rasterizeLegacyPreview),
+    extractOfficeMathDrawings(arrayBuffer, workbook, report),
+    extractLegacyEquationDrawings(arrayBuffer, workbook, rasterizeLegacyPreview, report),
   ])
   return [...officeMath, ...legacyEquations]
 }
 
-export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook): OfficeMathDefinition[] {
+export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook, report?: OfficeMathDiagnosticReporter): OfficeMathDefinition[] {
   if (typeof DOMParser === 'undefined') return []
   const bytes = new Uint8Array(arrayBuffer)
   const packageEntries = readZipEntries(bytes)
@@ -101,7 +117,10 @@ export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook:
       for (const math of elementsByName(drawingDocument, 'oMath')) {
         const anchor = findAnchor(math)
         const geometry = anchor ? anchorGeometry(anchor, worksheet) : null
-        if (!geometry) continue
+        if (!geometry) {
+          report?.({ sheetName, message: 'Office Math equation has an invalid drawing anchor and was not displayed.' })
+          continue
+        }
         definitions.push({ sheetName, mathMl: ommlToMathMl(math), ...geometry })
       }
     }
@@ -113,6 +132,7 @@ async function extractLegacyEquationDrawings(
   arrayBuffer: ArrayBuffer,
   workbook: ExcelJS.Workbook,
   rasterizeLegacyPreview?: LegacyEquationRasterizer,
+  report?: OfficeMathDiagnosticReporter,
 ): Promise<OfficeMathDrawing[]> {
   if (typeof DOMParser === 'undefined') return []
   const bytes = new Uint8Array(arrayBuffer)
@@ -144,6 +164,7 @@ async function extractLegacyEquationDrawings(
     const legacyDrawingTarget = legacyDrawingId ? worksheetRelationships.get(legacyDrawingId) : undefined
     if (!legacyDrawingTarget) {
       console.warn('[Equation.3] No VML preview drawing was found for legacy equation objects.', { sheetName, count: legacyObjects.length })
+      report?.({ sheetName, message: 'Equation Editor 3.0 object has no VML preview and was not displayed.' })
       continue
     }
 
@@ -160,6 +181,7 @@ async function extractLegacyEquationDrawings(
       const geometry = shape ? legacyShapeGeometry(shape, worksheet) : null
       if (!shape || !geometry) {
         console.warn('[Equation.3] Unable to resolve a positioned equation object.', { sheetName, shapeId: object.getAttribute('shapeId') })
+        report?.({ sheetName, message: 'Equation Editor 3.0 object has an invalid drawing anchor and was not displayed.' })
         continue
       }
 
@@ -179,11 +201,13 @@ async function extractLegacyEquationDrawings(
           shapeId: object.getAttribute('shapeId'),
           oleObject: objectTarget,
         })
+        report?.({ sheetName, message: 'Equation Editor 3.0 object has no preview image and was not displayed.' })
         continue
       }
       const source = await legacyPreviewSource(previewBytes, extension, rasterizeLegacyPreview, { sheetName, extension })
       if (!source) {
         console.warn('[Equation.3] Preview format is not renderable in this runtime.', { sheetName, extension })
+        report?.({ sheetName, message: `Equation Editor 3.0 preview format "${extension || 'unknown'}" is unsupported and was not displayed.` })
         continue
       }
       drawings.push({ sheetName, source, ...geometry })
@@ -672,7 +696,7 @@ function anchorGeometry(anchor: Element, worksheet: ExcelJS.Worksheet): Omit<Off
   const to = childByName(anchor, 'to')
   const ext = childByName(anchor, 'ext')
   const size = to ? anchorRangeSize(position, anchorPosition(to, worksheet), worksheet)
-    : ext ? { width: Number(ext.getAttribute('cx')) / EMUS_PER_PIXEL, height: Number(ext.getAttribute('cy')) / EMUS_PER_PIXEL }
+    : ext ? extentGeometry(ext)
       : null
   if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) return null
   return { from: position, width: size.width, height: size.height }
@@ -683,12 +707,33 @@ function childByName(element: Element, localName: string): Element | null {
 }
 
 function anchorPosition(anchor: Element, worksheet: ExcelJS.Worksheet): OfficeMathDrawing['from'] | null {
-  const column = Number(childByName(anchor, 'col')?.textContent)
-  const row = Number(childByName(anchor, 'row')?.textContent)
-  const columnOffset = Number(childByName(anchor, 'colOff')?.textContent) / EMUS_PER_PIXEL
-  const rowOffset = Number(childByName(anchor, 'rowOff')?.textContent) / EMUS_PER_PIXEL
-  if (![column, row, columnOffset, rowOffset].every(Number.isFinite)) return null
+  const column = childFiniteNumber(anchor, 'col')
+  const row = childFiniteNumber(anchor, 'row')
+  const columnOffset = childFiniteNumber(anchor, 'colOff')
+  const rowOffset = childFiniteNumber(anchor, 'rowOff')
+  if (column === null || row === null || columnOffset === null || rowOffset === null || column < 0 || row < 0) return null
   return { column, columnOffset, row, rowOffset }
+}
+
+function extentGeometry(extent: Element): { width: number; height: number } | null {
+  const width = finiteNumber(extent.getAttribute('cx'))
+  const height = finiteNumber(extent.getAttribute('cy'))
+  if (width === null || height === null) return null
+  return { width: width / EMUS_PER_PIXEL, height: height / EMUS_PER_PIXEL }
+}
+
+function childFiniteNumber(element: Element, localName: string): number | null {
+  return finiteNumber(childByName(element, localName)?.textContent ?? null)
+}
+
+function finiteNumber(value: string | null): number | null {
+  if (value === null || value.trim() === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function anchorRangeSize(from: OfficeMathDrawing['from'], to: OfficeMathDrawing['from'] | null, worksheet: ExcelJS.Worksheet): { width: number; height: number } | null {
@@ -700,18 +745,20 @@ function anchorRangeSize(from: OfficeMathDrawing['from'], to: OfficeMathDrawing[
 }
 
 function axisDistance(start: number, startOffset: number, end: number, endOffset: number, sizeAt: (index: number) => number): number {
-  if (end < start || (end === start && endOffset <= startOffset)) return 0
+  if (![start, startOffset, end, endOffset].every(Number.isFinite) || end < start || (end === start && endOffset <= startOffset)) return 0
   let size = -startOffset + endOffset
   for (let index = start; index < end; index += 1) size += sizeAt(index)
-  return size
+  return Number.isFinite(size) ? size : 0
 }
 
 function columnPixelWidth(worksheet: ExcelJS.Worksheet, index: number): number {
-  return (worksheet.getColumn(index + 1).width ?? 8.43) * 8
+  const width = worksheet.getColumn(index + 1).width
+  return Number.isFinite(width) && width! > 0 ? width! * 8 : 8.43 * 8
 }
 
 function rowPixelHeight(worksheet: ExcelJS.Worksheet, index: number): number {
-  return (worksheet.getRow(index + 1).height ?? 15) * 1.333
+  const height = worksheet.getRow(index + 1).height
+  return Number.isFinite(height) && height! > 0 ? height! * 1.333 : 15 * 1.333
 }
 
 function ommlToMathMl(math: Element): string {
@@ -770,6 +817,9 @@ function escapeXml(value: string): string {
 }
 
 async function mathMlToSvgDataUri(mathMl: string, width: number, height: number): Promise<string> {
+  if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    throw new Error('Office Math drawing has invalid SVG geometry')
+  }
   const mathJax = await loadMathJax()
   const host = document.createElement('div')
   host.innerHTML = mathMl
@@ -785,7 +835,22 @@ async function mathMlToSvgDataUri(mathMl: string, width: number, height: number)
 
 async function loadMathJax(): Promise<MathJaxRuntime> {
   if (!mathJaxReady) {
-    window.MathJax = { startup: { promise: Promise.resolve() }, typesetPromise: async () => {} }
+    // The spreadsheet only needs static SVG output. Disable the browser
+    // component's optional accessibility stack so it cannot load SRE modules.
+    window.MathJax = {
+      loader: { load: [] },
+      options: {
+        enableMenu: false,
+        enableEnrichment: false,
+        enableComplexity: false,
+        enableSpeech: false,
+        enableBraille: false,
+        enableExplorer: false,
+        enableAssistiveMml: false,
+      },
+      sre: { speech: 'none' },
+      startup: { typeset: false, promise: Promise.resolve() },
+    } as MathJaxConfiguration as MathJaxRuntime
     mathJaxReady = import('mathjax/mml-svg.js').then(async () => {
       const mathJax = window.MathJax
       if (!mathJax) throw new Error('MathJax did not initialize')

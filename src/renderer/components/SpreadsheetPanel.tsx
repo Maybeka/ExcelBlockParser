@@ -4,7 +4,7 @@ import { Button, Checkbox, Input, Spin, Tooltip, message, type InputRef } from '
 import { CloseOutlined, CompressOutlined, CopyOutlined, FilterOutlined, LeftOutlined, PushpinOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
-import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type WorkbookDisplaySettings, type WorkbookLoadSettings } from '../types'
+import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseDiagnostic, type WorkbookDisplaySettings, type WorkbookLoadSettings } from '../types'
 import { convertXlsxToWorkbookData, type ConvertedWorkbookImage, type SheetDisplaySettings, type SheetOutlineGroup } from '../services/xlsx-converter'
 import { ImageSourceType } from '@univerjs/core'
 import { getBridge } from '../services/bridge'
@@ -40,6 +40,7 @@ interface SpreadsheetPanelProps {
   loadedWorkbookId: string | null
   openWorkbookIds: string[]
   onFileLoaded: (workbookId: string, fileName: string, filePath: string, sheetNames: string[], sheetTabColors: Record<string, string>, activeSheetName: string | null) => void
+  onWorkbookDiagnostics: (workbookId: string, diagnostics: ParseDiagnostic[]) => void
   onLoadedWorkbookChange: (workbookId: string | null) => void
   closeSignal: number
   lockedRanges: LockedRangeInfo[]
@@ -62,7 +63,7 @@ interface SearchMatch extends WorkbookSearchMatch {
   sheetName: string
 }
 
-export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowserMode, workbookLoadSettings, displaySettings, onDisplaySettingsChange, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, projectLoading, loadedWorkbookId, openWorkbookIds, onFileLoaded, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowserMode, workbookLoadSettings, displaySettings, onDisplaySettingsChange, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, projectLoading, loadedWorkbookId, openWorkbookIds, onFileLoaded, onWorkbookDiagnostics, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
   const { locale, t } = useI18n()
   const initialLocaleRef = useRef(locale)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -842,7 +843,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
         performanceStage = 'converting'
         const conversionTimeout = workbookConversionTimeoutMs(arrayBuffer.byteLength)
-        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, activeSheetName, sheetSelections, images, metrics } = await withTimeout(
+        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, activeSheetName, sheetSelections, images, diagnostics, metrics } = await withTimeout(
           convertXlsxToWorkbookData(arrayBuffer, fileName, {
             parseImages: workbookLoadSettings.parseImages,
             parseOfficeMath: workbookLoadSettings.parseOfficeMath,
@@ -905,6 +906,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         window.requestAnimationFrame(() => applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId, newWorkbook.getActiveSheet()?.getSheetName()))
         setHasFile(true)
         onFileLoaded(sourceWorkbookId, fileName, filePath, loadedSheetNames, sheetTabColors, loadedActiveSheetName)
+        onWorkbookDiagnostics(sourceWorkbookId, diagnostics.map(diagnostic => ({ ...diagnostic, workbookId: sourceWorkbookId })))
         onLoadedWorkbookChange(sourceWorkbookId)
 
         setSheetNames(loadedSheetNames)
