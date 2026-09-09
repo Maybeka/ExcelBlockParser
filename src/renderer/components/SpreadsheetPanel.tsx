@@ -837,9 +837,18 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (!forceRefresh && cached?.path === filePath) {
           const cachedWorkbook = api.getWorkbook(cached.unitId)
           if (cachedWorkbook) {
+            const targetSheetName = requestedSheetName ?? cachedWorkbook.getActiveSheet()?.getSheetName() ?? null
+            if (targetSheetName) cachedWorkbook.getSheetByName(targetSheetName)?.activate()
+            // Restore the selection while this workbook is still hidden. Making
+            // it current first exposes Univer's transient whole-sheet default.
+            const savedSelection = targetSheetName ? cached.sheetSelections[targetSheetName] ?? 'A1' : 'A1'
+            try {
+              const cell = parseExcelActiveCell(savedSelection)
+              const targetSheet = targetSheetName ? cachedWorkbook.getSheetByName(targetSheetName) : cachedWorkbook.getActiveSheet()
+              targetSheet?.setActiveSelection(targetSheet.getRange(cell.row, cell.column))
+            } catch { /* malformed Excel selection metadata is non-fatal */ }
             api.setCurrent(cached.unitId)
             touchCachedWorkbook(cached)
-            if (requestedSheetName) cachedWorkbook.getSheetByName(requestedSheetName)?.activate()
             setHasFile(true)
             setError(null)
             setSheetNames(cached.sheetNames)
@@ -899,9 +908,13 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (!newWorkbook) throw new Error(t('workbook.createFailed'))
         const initialSheetName = requestedSheetName ?? activeSheetName ?? newWorkbook.getActiveSheet()?.getSheetName() ?? null
         if (initialSheetName) newWorkbook.getSheetByName(initialSheetName)?.activate()
-        await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
         const initialSheet = initialSheetName ? newWorkbook.getSheetByName(initialSheetName) : null
         const initialSelection = initialSheetName ? sheetSelections[initialSheetName] ?? 'A1' : 'A1'
+        try {
+          const cell = parseExcelActiveCell(initialSelection)
+          initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
+        } catch { /* malformed Excel selection metadata is non-fatal */ }
+        await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
         await registerWorkbookImages(newWorkbook, images)
         const univerMs = performance.now() - univerStartedAt
 
@@ -941,15 +954,14 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
         setSheetNames(loadedSheetNames)
         tryAttachListener(newWorkbook, sourceWorkbookId)
-        // Project state reconciliation after onFileLoaded can still overwrite
-        // Univer's initial selection. Restore the saved active cell once that
-        // synchronization and the first sheet skeleton have both settled.
-        window.setTimeout(() => {
-          try {
-            const cell = parseExcelActiveCell(initialSelection)
-            initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
-          } catch { /* malformed Excel selection metadata is non-fatal */ }
-        }, 50)
+        // Univer replaces the initial range during its first-sheet skeleton
+        // pass. Keep the loading veil up until that pass is complete, then set
+        // the saved single-cell selection before exposing the workbook.
+        await new Promise<void>(resolve => window.setTimeout(resolve, 50))
+        try {
+          const cell = parseExcelActiveCell(initialSelection)
+          initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
+        } catch { /* malformed Excel selection metadata is non-fatal */ }
         if (workbookLoadSettings.performanceLogging) {
           console.info('[Workbook performance]', {
             workbook: fileName,

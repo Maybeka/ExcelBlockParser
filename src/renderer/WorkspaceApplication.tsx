@@ -84,6 +84,7 @@ export function WorkspaceApplication() {
   const [activeColIndex, setActiveColIndex] = useState<number | null>(null)
   const [pendingProjectReset, setPendingProjectReset] = useState<'new' | 'close' | null>(null)
   const [pendingExitAction, setPendingExitAction] = useState<PendingExitAction | null>(null)
+  const [pendingDroppedProjectPath, setPendingDroppedProjectPath] = useState<string | null>(null)
   const [pendingExitAfterSave, setPendingExitAfterSave] = useState<PendingExitAction | null>(null)
   const [featurePanelPrototypeSearch, setFeaturePanelPrototypeSearch] = useState(() => window.location.search)
   const [reconcilingItem, setReconcilingItem] = useState<WorkspaceReconciliationItem | null>(null)
@@ -657,10 +658,10 @@ export function WorkspaceApplication() {
     await saveProjectRef.current(saveAs)
   }, [])
 
-  const openProjectPicker = useCallback(async () => {
+  const openProjectPicker = useCallback(async (droppedPath?: string) => {
     setImportError(null)
     try {
-      const result = await getBridge().openJson()
+      const result = droppedPath ? await getBridge().openDroppedJson(droppedPath) : await getBridge().openJson()
       if (result.status === 'cancelled') return
       if (result.status === 'error') {
         recordBridgeFailure('open-session', result)
@@ -686,6 +687,39 @@ export function WorkspaceApplication() {
     }
     void openProjectPicker()
   }, [hasUnsavedChanges, openProjectPicker, projectFilePath])
+
+  const handleDroppedProject = useCallback((filePath: string) => {
+    if (projectFilePath || projectRef.current.workbooks.length > 0 || hasUnsavedChanges) {
+      setPendingDroppedProjectPath(filePath)
+      setPendingExitAction('open')
+      return
+    }
+    void openProjectPicker(filePath)
+  }, [hasUnsavedChanges, openProjectPicker, projectFilePath])
+
+  useEffect(() => {
+    const suppressDrop = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
+    }
+    const acceptDrop = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes('Files')) return
+      event.preventDefault()
+      const files = [...event.dataTransfer.files]
+      if (files.length !== 1 || !files[0].name.toLowerCase().endsWith('.json')) return
+      const path = getBridge().getDroppedFilePath?.(files[0])
+      if (path) handleDroppedProject(path)
+    }
+    window.addEventListener('dragover', suppressDrop)
+    window.addEventListener('drop', acceptDrop)
+    const unsubscribe = getBridge().onProjectFileDrop?.(paths => {
+      if (paths.length === 1) handleDroppedProject(paths[0])
+    })
+    return () => {
+      window.removeEventListener('dragover', suppressDrop)
+      window.removeEventListener('drop', acceptDrop)
+      unsubscribe?.()
+    }
+  }, [handleDroppedProject])
 
   const handleValidateProjectJson = useCallback(async () => {
     try {
@@ -746,7 +780,9 @@ export function WorkspaceApplication() {
 
   const completeExitAction = useCallback((action: PendingExitAction) => {
     if (action === 'open') {
-      void openProjectPicker()
+      const droppedPath = pendingDroppedProjectPath
+      setPendingDroppedProjectPath(null)
+      void openProjectPicker(droppedPath ?? undefined)
       return
     }
     if (action === 'close') {
@@ -754,7 +790,7 @@ export function WorkspaceApplication() {
       return
     }
     void getBridge().confirmCloseWindow?.()
-  }, [openProjectPicker, resetProject])
+  }, [openProjectPicker, pendingDroppedProjectPath, resetProject])
 
   const saveAndCompleteExit = useCallback(async (action: PendingExitAction) => {
     const errors = builtInFeatureRegistry.validate(projectRef.current)
@@ -1061,7 +1097,7 @@ export function WorkspaceApplication() {
           <div><dt>{t('about.univer')}</dt><dd>v{univerVersion}</dd></div>
         </dl>
       </Modal>
-      <Layout.Content className="workspace-layout">
+      <Layout.Content className={`workspace-layout ${workbookBrowserMode ? 'is-workbook-browser-mode' : ''}`}>
         {!sidebarHidden && !workbookBrowserMode && (
           <>
             <aside className="workspace-desktop-nav workspace-sidebar" style={{ flexBasis: sidebarWidth, width: sidebarWidth }}>
@@ -1233,9 +1269,9 @@ export function WorkspaceApplication() {
           : pendingExitAction === 'close' ? t('dialog.closeProject.title') : t('dialog.closeApplication.title')}
         open={pendingExitAction !== null}
         zIndex={1401}
-        onCancel={() => setPendingExitAction(null)}
+        onCancel={() => { setPendingExitAction(null); setPendingDroppedProjectPath(null) }}
         footer={[
-          <Button key="cancel" onClick={() => setPendingExitAction(null)}>{t('common.cancel')}</Button>,
+          <Button key="cancel" onClick={() => { setPendingExitAction(null); setPendingDroppedProjectPath(null) }}>{t('common.cancel')}</Button>,
           <Button key="discard" danger onClick={() => {
             const action = pendingExitAction
             setPendingExitAction(null)

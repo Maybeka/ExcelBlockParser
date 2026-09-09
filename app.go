@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -39,6 +40,11 @@ func (a *App) startup(ctx context.Context) {
 	a.previewData = make(map[string]interface{})
 	a.projectPaths = make(map[string]bool)
 	a.emitEvent = runtime.EventsEmit
+	runtime.OnFileDrop(ctx, func(_ int, _ int, paths []string) {
+		if len(paths) == 1 && strings.EqualFold(filepath.Ext(paths[0]), ".json") {
+			a.emit("project:file-drop", paths)
+		}
+	})
 	baseDir, err := os.UserConfigDir()
 	if err != nil {
 		baseDir = os.TempDir()
@@ -286,6 +292,21 @@ func (a *App) OpenJson() (*JsonOpenResult, error) {
 		FilePath: path,
 		Content:  content,
 	}, nil
+}
+
+// OpenDroppedJson opens a project selected through the native drag-and-drop path.
+func (a *App) OpenDroppedJson(path string) (*JsonOpenResult, error) {
+	if !strings.EqualFold(filepath.Ext(path), ".json") {
+		return nil, fmt.Errorf("drop a single project JSON file")
+	}
+	cleanPath := filepath.Clean(path)
+	content, err := readJSONFile(cleanPath, maxProjectBytes, "Project file")
+	if err != nil {
+		return nil, err
+	}
+	a.projectPaths[cleanPath] = true
+	a.authorizeProjectSources(content, cleanPath)
+	return &JsonOpenResult{FilePath: cleanPath, Content: content}, nil
 }
 
 func (a *App) SaveRecovery(jsonData string) error {

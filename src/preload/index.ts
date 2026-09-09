@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../shared/bridgeResult'
 import type { PythonArtifact, PythonArtifactExportResult, PythonProjectPackageInput, PythonProjectResult } from '../shared/pythonRuntime'
 
@@ -8,6 +8,8 @@ export interface ElectronAPI {
   saveJson: (defaultName: string, jsonData: string) => Promise<BridgeResult<{ filePath: string }>>
   saveJsonToPath: (filePath: string, jsonData: string) => Promise<BridgeResult<{ filePath: string }>>
   openJson: () => Promise<BridgeResult<{ filePath: string; content: string }>>
+  openDroppedJson: (filePath: string) => Promise<BridgeResult<{ filePath: string; content: string }>>
+  getDroppedFilePath: (file: File) => string | null
   saveRecovery: (jsonData: string) => Promise<BridgeResult<void>>
   loadRecovery: () => Promise<BridgeResult<string | null>>
   clearRecovery: () => Promise<BridgeResult<void>>
@@ -56,6 +58,15 @@ const api: ElectronAPI = {
       const result = await ipcRenderer.invoke('file:openJson') as { filePath: string; content: string } | null
       return result ? bridgeOk(result) : bridgeCancelled()
     } catch (error) { return bridgeError(error) }
+  },
+  openDroppedJson: async (filePath) => {
+    try {
+      const result = await ipcRenderer.invoke('file:openDroppedJson', filePath) as { filePath: string; content: string }
+      return bridgeOk(result)
+    } catch (error) { return bridgeError(error) }
+  },
+  getDroppedFilePath: (file) => {
+    try { return webUtils.getPathForFile(file) || null } catch { return null }
   },
   saveRecovery: async (jsonData) => {
     try { await ipcRenderer.invoke('recovery:save', jsonData); return bridgeOk(undefined) } catch (error) { return bridgeError(error) }

@@ -26,6 +26,10 @@ func main() {
 		},
 		OnStartup:     app.startup,
 		OnBeforeClose: app.beforeClose,
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop:     true,
+			DisableWebViewDrop: true,
+		},
 		Bind: []interface{}{
 			app,
 		},

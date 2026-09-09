@@ -71,6 +71,18 @@ async function authorizeProjectSources(content: string, projectPath?: string): P
   return content
 }
 
+async function openDroppedProject(filePath: unknown): Promise<{ filePath: string; content: string }> {
+  if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.json')) {
+    throw new Error('Drop a single project JSON file.')
+  }
+  const resolvedPath = resolve(filePath)
+  const raw = (await readLimitedFile(resolvedPath, MAX_PROJECT_BYTES, 'Project file')).toString('utf-8')
+  approvedWorkbookAliases.clear()
+  const content = await authorizeProjectSources(raw, resolvedPath)
+  approvedProjectPaths.add(resolvedPath)
+  return { filePath: resolvedPath, content }
+}
+
 function createWindow(): void {
   mainWindowCloseGuard.reset()
   mainWindow = new BrowserWindow({
@@ -221,15 +233,15 @@ ipcMain.handle('file:openJson', async (event) => {
   })
   if (result.canceled || !result.filePaths.length) return null
   try {
-    const filePath = resolve(result.filePaths[0])
-    const raw = (await readLimitedFile(filePath, MAX_PROJECT_BYTES, 'Project file')).toString('utf-8')
-    approvedWorkbookAliases.clear()
-    const content = await authorizeProjectSources(raw, filePath)
-    approvedProjectPaths.add(filePath)
-    return { filePath, content }
+    return await openDroppedProject(result.filePaths[0])
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : 'Unable to read the project file.')
   }
+})
+
+ipcMain.handle('file:openDroppedJson', async (event, filePath: unknown) => {
+  assertMainWindowSender(event)
+  return openDroppedProject(filePath)
 })
 
 ipcMain.handle('recovery:save', async (event, jsonData: unknown) => {
