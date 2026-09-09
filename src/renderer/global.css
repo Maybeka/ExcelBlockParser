@@ -75,7 +75,7 @@ html, body, #root {
 .project-settings-section { border-bottom: 1px solid var(--fluent-stroke); display: flex; flex-direction: column; gap: 10px; padding-bottom: 16px; }
 .project-settings-section:last-child { border-bottom: 0; padding-bottom: 0; }
 .project-settings-section h3 { color: var(--fluent-text); font-size: 13px; font-weight: 650; line-height: 20px; margin: 0; }
-.project-settings-field { align-items: center; display: grid; gap: 12px; grid-template-columns: 116px minmax(0, 1fr); }
+.project-settings-field { align-items: center; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) auto; }
 .project-settings-field > span { color: var(--fluent-text-muted); font-size: 12px; }
 .project-settings-hint { color: var(--fluent-text-muted); font-size: 12px; line-height: 18px; margin: 0; }
 .project-workbook-settings { display: flex; flex-direction: column; gap: 8px; }

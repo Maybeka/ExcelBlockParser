@@ -251,10 +251,11 @@ export function validateProjectV3Document(value: unknown): string[] {
     || (project.activeRegionId !== null && typeof project.activeRegionId !== 'string')
     || (project.focusMode !== 'always-editable' && project.focusMode !== 'activate-first')) return ['Invalid project file: project fields are incomplete or invalid.']
   if (project.workbookLoadSettings !== undefined && (!isRecord(project.workbookLoadSettings)
-    || Boolean(unknownKey(project.workbookLoadSettings, new Set(['parseImages', 'parseOfficeMath', 'performanceLogging'])))
+    || Boolean(unknownKey(project.workbookLoadSettings, new Set(['parseImages', 'parseOfficeMath', 'performanceLogging', 'experimentalStagedLoading'])))
     || typeof project.workbookLoadSettings.parseImages !== 'boolean'
     || typeof project.workbookLoadSettings.parseOfficeMath !== 'boolean'
-    || typeof project.workbookLoadSettings.performanceLogging !== 'boolean')) return ['Invalid project file: workbook load settings are invalid.']
+    || typeof project.workbookLoadSettings.performanceLogging !== 'boolean'
+    || typeof project.workbookLoadSettings.experimentalStagedLoading !== 'boolean')) return ['Invalid project file: workbook load settings are invalid.']
   if (project.pythonScript !== undefined) {
     if (!isRecord(project.pythonScript)
       || Boolean(unknownKey(project.pythonScript, new Set(['entryPath', 'files'])))

@@ -106,12 +106,14 @@ export interface WorkbookLoadSettings {
   parseImages: boolean
   parseOfficeMath: boolean
   performanceLogging: boolean
+  experimentalStagedLoading: boolean
 }
 
 export const DEFAULT_WORKBOOK_LOAD_SETTINGS: WorkbookLoadSettings = {
   parseImages: true,
   parseOfficeMath: true,
   performanceLogging: false,
+  experimentalStagedLoading: false,
 }
 
 export interface PythonProjectFile {

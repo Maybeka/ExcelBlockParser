@@ -44,6 +44,7 @@ describe('project workspace', () => {
       parseImages: true,
       parseOfficeMath: true,
       performanceLogging: false,
+      experimentalStagedLoading: false,
     })
     expect(serializeProject(project, null).project.workbookLoadSettings).toEqual(project.workbookLoadSettings)
   })

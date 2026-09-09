@@ -32,6 +32,18 @@ test.describe('M3 workspace layout', () => {
     await expect(dialog.getByText('Current development v3')).toBeVisible()
   })
 
+  test('exposes the default-off staged loading switch in project settings', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Project actions' }).click()
+    await page.getByRole('menuitem', { name: 'Project settings' }).click()
+
+    const settings = page.getByRole('dialog', { name: 'Project settings' })
+    const stagedLoading = settings.getByText('Experimental staged workbook loading', { exact: true }).locator('..')
+    await expect(stagedLoading.getByRole('checkbox')).not.toBeChecked()
+    await stagedLoading.getByRole('checkbox').check()
+    await expect(stagedLoading.getByRole('checkbox')).toBeChecked()
+  })
+
   test('uses a drawer navigator at compact widths', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 })
     await page.goto('/')

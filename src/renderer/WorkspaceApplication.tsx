@@ -545,9 +545,16 @@ export function WorkspaceApplication() {
 
   const handleSelectSheet = useCallback((sheetName: string) => {
     if (loadedWorkbookId !== projectRef.current.activeWorkbookId) return
-    if (!spreadsheet.setActiveSheet(sheetName)) return
-    setProjectActiveSheet(sheetName)
-  }, [loadedWorkbookId, spreadsheet])
+    if (spreadsheet.setActiveSheet(sheetName)) {
+      setProjectActiveSheet(sheetName)
+      return
+    }
+    const workbookId = projectRef.current.activeWorkbookId
+    const path = workbookId ? workbookRuntimeRef.current.paths[workbookId] : undefined
+    if (workbookLoadSettings.experimentalStagedLoading && workbookId && path) {
+      updateWorkbookRuntime(current => requestWorkbookLoad(current, workbookId, path, sheetName))
+    }
+  }, [loadedWorkbookId, spreadsheet, updateWorkbookRuntime, workbookLoadSettings.experimentalStagedLoading])
 
   const applyProjectExecution = useCallback((execution: CompletedProjectExecution, showPreview: boolean) => {
     if (execution.project !== projectRef.current) {
@@ -1339,9 +1346,13 @@ export function WorkspaceApplication() {
               <Checkbox checked={workbookLoadSettings.parseOfficeMath} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, parseOfficeMath: event.target.checked })}>{t('settings.enabled')}</Checkbox>
             </label>
             <label className="project-settings-field">
+              <span>{t('settings.experimentalStagedLoading')}</span>
+              <Checkbox checked={workbookLoadSettings.experimentalStagedLoading} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, experimentalStagedLoading: event.target.checked })}>{t('settings.enabled')}</Checkbox>
+            </label>
+            {import.meta.env.DEV && <label className="project-settings-field">
               <span>{t('settings.performanceLogging')}</span>
               <Checkbox checked={workbookLoadSettings.performanceLogging} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, performanceLogging: event.target.checked })}>{t('settings.enabled')}</Checkbox>
-            </label>
+            </label>}
             <p className="project-settings-hint">{t('settings.workbookDiagnosticsHint')}</p>
           </section>
         </div>

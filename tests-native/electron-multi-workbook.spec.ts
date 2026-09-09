@@ -48,6 +48,12 @@ function projectFixture() {
       activeBlockId: 'sales-records',
       activeRegionId: null,
       focusMode: 'always-editable',
+      workbookLoadSettings: {
+        parseImages: true,
+        parseOfficeMath: true,
+        performanceLogging: false,
+        experimentalStagedLoading: true,
+      },
     },
     data: {},
     blockResults: [],
@@ -92,6 +98,9 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await expect(navigator.getByLabel('multi_sheet.xlsx sheets').getByText('Products', { exact: true })).toBeVisible()
     await expect(navigator.getByLabel('multi_sheet.xlsx sheets').getByText('Orders', { exact: true })).toBeVisible()
 
+    await navigator.getByLabel('multi_sheet.xlsx sheets').getByText('Orders', { exact: true }).click()
+    await expect(page.getByRole('tab', { name: 'Orders', exact: true })).toHaveAttribute('aria-selected', 'true')
+
     const catalogNode = navigator.locator('.workspace-workbook-node').filter({ hasText: 'multi_sheet.xlsx' })
     await catalogNode.getByRole('button', { name: 'Collapse sheets' }).click()
     await expect(navigator.locator('.workspace-workbook-sheets[aria-label="multi_sheet.xlsx sheets"]')).toBeHidden()
@@ -104,13 +113,13 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await expect(salesTab).toHaveAttribute('aria-selected', 'true')
     await catalogTab.click()
     await expect(catalogTab).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByRole('tab', { name: 'Products', exact: true })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Orders', exact: true })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Workbook canvas' }).getByText('Excel Workbook', { exact: true })).toBeVisible()
     await salesTab.click()
     await expect(salesTab).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByRole('tab', { name: 'Sheet1', exact: true })).toBeVisible()
     await catalogTab.click()
-    await expect(page.getByRole('tab', { name: 'Products', exact: true })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Orders', exact: true })).toBeVisible()
 
     const extractors = navigator.locator('.workspace-feature-section').filter({ hasText: 'Blocks' })
     await extractors.locator('.workspace-item-main').filter({ hasText: 'test_data.xlsx' }).click()

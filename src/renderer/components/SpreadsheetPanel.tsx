@@ -6,6 +6,8 @@ import { setupUniver } from '../univer/setup'
 import { useUniver } from '../context/UniverContext'
 import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseDiagnostic, type WorkbookDisplaySettings, type WorkbookLoadSettings } from '../types'
 import { convertXlsxToWorkbookData, type ConvertedWorkbookImage, type SheetDisplaySettings, type SheetOutlineGroup } from '../services/xlsx-converter'
+import { convertStagedXlsxToWorkbookData } from '../services/xlsxStagedParser'
+import { scanXlsxFormulaDependencies } from '../services/xlsxFormulaDependencies'
 import { ImageSourceType } from '@univerjs/core'
 import { getBridge } from '../services/bridge'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
@@ -53,6 +55,7 @@ interface CachedWorkbook {
   unitId: string
   path: string
   sheetNames: string[]
+  staged: boolean
   sheetSelections: Record<string, string>
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
   lastUsed: number
@@ -838,23 +841,29 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           const cachedWorkbook = api.getWorkbook(cached.unitId)
           if (cachedWorkbook) {
             const targetSheetName = requestedSheetName ?? cachedWorkbook.getActiveSheet()?.getSheetName() ?? null
-            if (targetSheetName) cachedWorkbook.getSheetByName(targetSheetName)?.activate()
-            // Restore the selection while this workbook is still hidden. Making
-            // it current first exposes Univer's transient whole-sheet default.
-            const savedSelection = targetSheetName ? cached.sheetSelections[targetSheetName] ?? 'A1' : 'A1'
-            try {
-              const cell = parseExcelActiveCell(savedSelection)
-              const targetSheet = targetSheetName ? cachedWorkbook.getSheetByName(targetSheetName) : cachedWorkbook.getActiveSheet()
-              targetSheet?.setActiveSelection(targetSheet.getRange(cell.row, cell.column))
-            } catch { /* malformed Excel selection metadata is non-fatal */ }
-            api.setCurrent(cached.unitId)
-            touchCachedWorkbook(cached)
-            setHasFile(true)
-            setError(null)
-            setSheetNames(cached.sheetNames)
-            tryAttachListener(cachedWorkbook, sourceWorkbookId)
-            onLoadedWorkbookChange(sourceWorkbookId)
-            return
+            const targetSheet = targetSheetName ? cachedWorkbook.getSheetByName(targetSheetName) : null
+            if (cached.staged && targetSheetName && !targetSheet) {
+              // The experimental package only contains the preceding sheet's
+              // static dependency closure. Rebuild for the requested sheet.
+            } else {
+              if (targetSheetName) targetSheet?.activate()
+              // Restore the selection while this workbook is still hidden. Making
+              // it current first exposes Univer's transient whole-sheet default.
+              const savedSelection = targetSheetName ? cached.sheetSelections[targetSheetName] ?? 'A1' : 'A1'
+              try {
+                const cell = parseExcelActiveCell(savedSelection)
+                const selectionSheet = targetSheetName ? cachedWorkbook.getSheetByName(targetSheetName) : cachedWorkbook.getActiveSheet()
+                selectionSheet?.setActiveSelection(selectionSheet.getRange(cell.row, cell.column))
+              } catch { /* malformed Excel selection metadata is non-fatal */ }
+              api.setCurrent(cached.unitId)
+              touchCachedWorkbook(cached)
+              setHasFile(true)
+              setError(null)
+              setSheetNames(cached.sheetNames)
+              tryAttachListener(cachedWorkbook, sourceWorkbookId)
+              onLoadedWorkbookChange(sourceWorkbookId)
+              return
+            }
           }
           workbookCacheRef.current.delete(sourceWorkbookId)
         }
@@ -880,21 +889,28 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
 
         performanceStage = 'converting'
         const conversionTimeout = workbookConversionTimeoutMs(arrayBuffer.byteLength)
-        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, activeSheetName, sheetSelections, images, diagnostics, metrics } = await withTimeout(
-          convertXlsxToWorkbookData(arrayBuffer, fileName, {
-            parseImages: workbookLoadSettings.parseImages,
-            parseOfficeMath: workbookLoadSettings.parseOfficeMath,
-            rasterizeLegacyEquationPreview: async (preview, extension) => {
-              const rasterize = bridge.rasterizeLegacyEquationPreview
-              if (!rasterize) return null
-              const result = await rasterize(new Uint8Array(preview), extension)
-              if (result.status === 'error') throw new Error(result.error.message)
-              return result.status === 'ok' ? result.value : null
-            },
-          }),
+        const conversionOptions = {
+          parseImages: workbookLoadSettings.parseImages,
+          parseOfficeMath: workbookLoadSettings.parseOfficeMath,
+          rasterizeLegacyEquationPreview: async (preview, extension) => {
+            const rasterize = bridge.rasterizeLegacyEquationPreview
+            if (!rasterize) return null
+            const result = await rasterize(new Uint8Array(preview), extension)
+            if (result.status === 'error') throw new Error(result.error.message)
+            return result.status === 'ok' ? result.value : null
+          },
+        }
+        const stagedTargetSheet = requestedSheetName ?? activeSheet ?? (workbookLoadSettings.experimentalStagedLoading
+          ? scanXlsxFormulaDependencies(arrayBuffer).sheetNames[0] ?? null
+          : null)
+        const converted = await withTimeout(
+          workbookLoadSettings.experimentalStagedLoading && stagedTargetSheet
+            ? convertStagedXlsxToWorkbookData(arrayBuffer, fileName, stagedTargetSheet, conversionOptions).then(result => ({ conversion: result.conversion, availableSheetNames: result.plan.graph.sheetNames, staged: result.plan.mode === 'staged' }))
+            : convertXlsxToWorkbookData(arrayBuffer, fileName, conversionOptions).then(conversion => ({ conversion, availableSheetNames: null, staged: false })),
           t('workbook.convertTimedOut', { seconds: Math.ceil(conversionTimeout / 1000) }),
           conversionTimeout,
         )
+        const { workbookData, fonts, sheetTabColors, sheetDisplaySettings, activeSheetName, sheetSelections, images, diagnostics, metrics } = converted.conversion
 
         if (loadVersion !== loadVersionRef.current) return
 
@@ -930,11 +946,13 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         }
 
         const loadedSheetNames = newWorkbook.getSheets().map(sheet => sheet.getSheetName())
+        const availableSheetNames = converted.availableSheetNames ?? loadedSheetNames
         const loadedActiveSheetName = newWorkbook.getActiveSheet()?.getSheetName() ?? null
         workbookCacheRef.current.set(sourceWorkbookId, {
           unitId: newWorkbook.getId(),
           path: filePath,
-          sheetNames: loadedSheetNames,
+          sheetNames: availableSheetNames,
+          staged: converted.staged,
           sheetSelections: { ...sheetSelections },
           sheetDisplaySettings,
           lastUsed: ++cacheAccessCounterRef.current,
@@ -948,11 +966,11 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         // controls take effect.
         window.requestAnimationFrame(() => applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId, newWorkbook.getActiveSheet()?.getSheetName()))
         setHasFile(true)
-        onFileLoaded(sourceWorkbookId, fileName, filePath, loadedSheetNames, sheetTabColors, loadedActiveSheetName)
+        onFileLoaded(sourceWorkbookId, fileName, filePath, availableSheetNames, sheetTabColors, loadedActiveSheetName)
         onWorkbookDiagnostics(sourceWorkbookId, diagnostics.map(diagnostic => ({ ...diagnostic, workbookId: sourceWorkbookId })))
         onLoadedWorkbookChange(sourceWorkbookId)
 
-        setSheetNames(loadedSheetNames)
+        setSheetNames(availableSheetNames)
         tryAttachListener(newWorkbook, sourceWorkbookId)
         // Univer replaces the initial range during its first-sheet skeleton
         // pass. Keep the loading veil up until that pass is complete, then set
@@ -1007,7 +1025,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       if (retryRequest) handledRetrySignalRef.current = retrySignal
       void doLoad()
     }
-  }, [loadSignal, retrySignal, requestedWorkbook, onFileLoaded, t])
+  }, [activeSheet, loadSignal, retrySignal, requestedWorkbook, onFileLoaded, t, workbookLoadSettings])
 
   useEffect(() => {
     const api = univerAPIRef.current
