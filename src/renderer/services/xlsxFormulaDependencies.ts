@@ -9,6 +9,7 @@ export interface FormulaDependencyGraph {
   dynamicReferenceSheets: string[]
   externalReferenceSheets: string[]
   unparseableFormulaSheets: string[]
+  unresolvedStructuredReferenceSheets: string[]
 }
 
 interface NamedFormula {
@@ -57,12 +58,14 @@ export function scanXlsxFormulaDependencies(arrayBuffer: ArrayBuffer): FormulaDe
   })
   const sheetNames = sheets.map(sheet => sheet.name)
   const sheetNameByLowerCase = new Map(sheetNames.map(name => [name.toLocaleLowerCase(), name]))
+  const tableOwnerByLowerCase = readTableOwners(sheets, readXml)
   const namedFormulas = readNamedFormulas(workbook, sheetNames)
   const dependencies = Object.fromEntries(sheetNames.map(name => [name, [] as string[]])) as Record<string, string[]>
   const formulaCounts = Object.fromEntries(sheetNames.map(name => [name, 0])) as Record<string, number>
   const dynamicReferenceSheets = new Set<string>()
   const externalReferenceSheets = new Set<string>()
   const unparseableFormulaSheets = new Set<string>()
+  const unresolvedStructuredReferenceSheets = new Set<string>()
 
   const resolveNamedFormula = (name: string, sourceSheet: string, visited: Set<string>): string[] => {
     const lowerName = name.toLocaleLowerCase()
@@ -71,27 +74,32 @@ export function scanXlsxFormulaDependencies(arrayBuffer: ArrayBuffer): FormulaDe
     const key = `${named.scopeSheet ?? ''}\u0000${lowerName}`
     if (visited.has(key)) return []
     visited.add(key)
-    return formulaDependencies(named.formula, sourceSheet, sheetNames, sheetNameByLowerCase, namedFormulas, resolveNamedFormula, visited).dependencies
+    return formulaDependencies(named.formula, sourceSheet, sheetNames, sheetNameByLowerCase, tableOwnerByLowerCase, namedFormulas, resolveNamedFormula, visited).dependencies
   }
 
   for (const sheet of sheets) {
     const document = readXml(sheet.path)
     if (!document) throw new Error(`The XLSX worksheet "${sheet.name}" is unavailable.`)
     const referenced = new Set<string>()
+    const sharedFormulaText = new Map<string, string>()
     for (const formula of elementsByLocalName(document, 'f')) {
       formulaCounts[sheet.name] += 1
-      const formulaText = formula.textContent ?? ''
+      const sharedIndex = formula.getAttribute('t') === 'shared' ? formula.getAttribute('si') : null
+      const rawFormulaText = formula.textContent ?? ''
+      if (sharedIndex && rawFormulaText) sharedFormulaText.set(sharedIndex, rawFormulaText)
+      const formulaText = rawFormulaText || (sharedIndex ? sharedFormulaText.get(sharedIndex) ?? '' : '')
       const syntax = inspectFormulaSyntax(formulaText)
       if (!syntax.valid) {
         unparseableFormulaSheets.add(sheet.name)
         continue
       }
       const analysis = formulaDependencies(
-        formulaText, sheet.name, sheetNames, sheetNameByLowerCase, namedFormulas, resolveNamedFormula, new Set(), syntax.dynamic,
+        formulaText, sheet.name, sheetNames, sheetNameByLowerCase, tableOwnerByLowerCase, namedFormulas, resolveNamedFormula, new Set(), syntax.dynamic,
       )
       for (const dependency of analysis.dependencies) if (dependency !== sheet.name) referenced.add(dependency)
       if (analysis.dynamic) dynamicReferenceSheets.add(sheet.name)
       if (analysis.external) externalReferenceSheets.add(sheet.name)
+      if (analysis.unresolvedStructuredReference) unresolvedStructuredReferenceSheets.add(sheet.name)
     }
     dependencies[sheet.name] = [...referenced].sort((a, b) => sheetNames.indexOf(a) - sheetNames.indexOf(b))
   }
@@ -103,6 +111,7 @@ export function scanXlsxFormulaDependencies(arrayBuffer: ArrayBuffer): FormulaDe
     dynamicReferenceSheets: [...dynamicReferenceSheets].sort((a, b) => sheetNames.indexOf(a) - sheetNames.indexOf(b)),
     externalReferenceSheets: [...externalReferenceSheets].sort((a, b) => sheetNames.indexOf(a) - sheetNames.indexOf(b)),
     unparseableFormulaSheets: [...unparseableFormulaSheets].sort((a, b) => sheetNames.indexOf(a) - sheetNames.indexOf(b)),
+    unresolvedStructuredReferenceSheets: [...unresolvedStructuredReferenceSheets].sort((a, b) => sheetNames.indexOf(a) - sheetNames.indexOf(b)),
   }
 }
 
@@ -123,11 +132,12 @@ function formulaDependencies(
   sourceSheet: string,
   sheetNames: string[],
   sheetNameByLowerCase: Map<string, string>,
+  tableOwnerByLowerCase: Map<string, string>,
   namedFormulas: Map<string, NamedFormula>,
   resolveNamedFormula: (name: string, sourceSheet: string, visited: Set<string>) => string[],
   visitedNames: Set<string>,
   dynamic: boolean = false,
-): { dependencies: string[]; dynamic: boolean; external: boolean } {
+): { dependencies: string[]; dynamic: boolean; external: boolean; unresolvedStructuredReference: boolean } {
   const withoutStrings = removeStringLiterals(formula)
   const dependencies = new Set<string>()
   let remaining = withoutStrings
@@ -145,12 +155,41 @@ function formulaDependencies(
     if (!namedFormulas.has(`${sourceSheet}\u0000${lowerName}`) && !namedFormulas.has(`\u0000${lowerName}`)) continue
     for (const dependency of resolveNamedFormula(name, sourceSheet, visitedNames)) dependencies.add(dependency)
   }
+  let unresolvedStructuredReference = false
+  for (const match of remaining.matchAll(/\b([A-Za-z_][A-Za-z0-9_.]*)\s*\[/g)) {
+    const tableName = match[1]!
+    const owner = tableOwnerByLowerCase.get(tableName.toLocaleLowerCase())
+    if (owner) dependencies.add(owner)
+    else unresolvedStructuredReference = true
+  }
 
   return {
     dependencies: [...dependencies],
     dynamic,
     external: externalReferencePattern.test(withoutStrings),
+    unresolvedStructuredReference,
   }
+}
+
+function readTableOwners(
+  sheets: Array<{ name: string; path: string }>,
+  readXml: (path: string) => Document | null,
+): Map<string, string> {
+  const owners = new Map<string, string>()
+  for (const sheet of sheets) {
+    const relationships = readXml(relationshipPathFor(sheet.path))
+    if (!relationships) continue
+    for (const relationship of elementsByLocalName(relationships, 'Relationship')) {
+      const type = relationship.getAttribute('Type') ?? ''
+      const target = relationship.getAttribute('Target')
+      if (!type.endsWith('/table') || !target) continue
+      const table = readXml(resolvePackagePath(sheet.path, target))
+      const root = table?.documentElement
+      const tableName = root?.getAttribute('displayName') ?? root?.getAttribute('name')
+      if (tableName) owners.set(tableName.toLocaleLowerCase(), sheet.name)
+    }
+  }
+  return owners
 }
 
 function inspectFormulaSyntax(formula: string): { valid: boolean; dynamic: boolean } {
@@ -224,4 +263,10 @@ function resolvePackagePath(fromPath: string, target: string): string {
     segments.push(segment)
   }
   return segments.join('/')
+}
+
+function relationshipPathFor(partPath: string): string {
+  const parts = partPath.split('/')
+  const fileName = parts.pop()
+  return `${parts.join('/')}/_rels/${fileName}.rels`
 }

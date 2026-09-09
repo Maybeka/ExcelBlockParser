@@ -108,6 +108,36 @@ describe('XLSX formula dependency scanner', () => {
     expect(graph.dependencies['Report B']).toEqual(['Inputs B'])
   })
 
+  it('maps structured table references to their owning worksheet', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const data = workbook.addWorksheet('Data')
+    data.addTable({
+      name: 'Orders',
+      ref: 'A1:B2',
+      columns: [{ name: 'Item' }, { name: 'Amount' }],
+      rows: [['A', 4]],
+    })
+    workbook.addWorksheet('Report').getCell('A1').value = { formula: 'SUM(Orders[Amount])', result: 4 }
+
+    const { graph } = await scan(workbook)
+
+    expect(graph.dependencies.Report).toEqual(['Data'])
+    expect(graph.unresolvedStructuredReferenceSheets).toEqual([])
+  })
+
+  it('uses shared-formula masters for follower cells without formula text', async () => {
+    const workbook = new ExcelJS.Workbook()
+    workbook.addWorksheet('Inputs').getCell('A1').value = 3
+    const report = workbook.addWorksheet('Report')
+    report.fillFormula('A1:A3', 'Inputs!A1 * 2', [6, 6, 6])
+
+    const { graph } = await scan(workbook)
+
+    expect(graph.dependencies.Report).toEqual(['Inputs'])
+    expect(graph.unparseableFormulaSheets).toEqual([])
+    expect(graph.formulaCounts.Report).toBe(3)
+  })
+
   it('does not mistake string literals for sheet references and marks opaque references', async () => {
     const workbook = new ExcelJS.Workbook()
     workbook.addWorksheet('Inputs').getCell('A1').value = 5
