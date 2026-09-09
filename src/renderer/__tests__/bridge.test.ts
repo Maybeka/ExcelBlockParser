@@ -10,6 +10,7 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
         SaveJson: vi.fn(async () => ({ success: true, filePath: '/tmp/project.json', error: '' })),
         SaveJsonToPath: vi.fn(async (path: string) => ({ success: true, filePath: path, error: '' })),
         OpenJson: vi.fn(async () => ({ filePath: '/tmp/project.json', content: '{"version":3}' })),
+        OpenDroppedJson: vi.fn(async (path: string) => ({ filePath: path, content: '{"version":3}' })),
         SaveRecovery: vi.fn(async () => undefined),
         LoadRecovery: vi.fn(async () => '{"version":3}'),
         ClearRecovery: vi.fn(async () => undefined),
@@ -42,6 +43,7 @@ describe('Wails bridge contract', () => {
     expect(await bridge.saveJson('project.json', '{"version":3}')).toEqual({ status: 'ok', value: { filePath: '/tmp/project.json' } })
     expect(await bridge.saveJsonToPath('/tmp/project.json', '{"version":3}')).toEqual({ status: 'ok', value: { filePath: '/tmp/project.json' } })
     expect(await bridge.openJson()).toEqual({ status: 'ok', value: { filePath: '/tmp/project.json', content: '{"version":3}' } })
+    expect(await bridge.openDroppedJson('/tmp/dropped-project.json')).toEqual({ status: 'ok', value: { filePath: '/tmp/dropped-project.json', content: '{"version":3}' } })
     await bridge.saveRecovery('{"version":3}')
     expect(await bridge.loadRecovery()).toEqual({ status: 'ok', value: '{"version":3}' })
     await bridge.clearRecovery()
@@ -67,6 +69,7 @@ describe('Wails bridge contract', () => {
 
     expect(app.OpenXlsx).toHaveBeenCalledOnce()
     expect(app.ReadFile).toHaveBeenCalledWith('/tmp/workbook.xlsx')
+    expect(app.OpenDroppedJson).toHaveBeenCalledWith('/tmp/dropped-project.json')
     expect(app.ClosePreviewWindow).toHaveBeenCalledOnce()
     expect(app.RequestClose).toHaveBeenCalledOnce()
     expect(app.ConfirmQuit).toHaveBeenCalledOnce()
