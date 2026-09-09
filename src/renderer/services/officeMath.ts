@@ -1,5 +1,6 @@
-import { inflateSync, strFromU8, unzipSync } from 'fflate'
+import { strFromU8 } from 'fflate'
 import type ExcelJS from 'exceljs'
+import { createXlsxZipReader, readXlsxZipCentralDirectory, readXlsxZipEntries, type XlsxZipEntry } from './xlsxZip'
 
 const EMUS_PER_PIXEL = 9525
 
@@ -68,11 +69,11 @@ export async function extractEquationDrawings(
 export function extractOfficeMathDefinitions(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook, report?: OfficeMathDiagnosticReporter): OfficeMathDefinition[] {
   if (typeof DOMParser === 'undefined') return []
   const bytes = new Uint8Array(arrayBuffer)
-  const packageEntries = readZipEntries(bytes)
+  const packageEntries = readXlsxZipEntries(bytes)
   // Most workbooks do not contain DrawingML at all. Avoid inflating every part
   // of a large XLSX package just to establish that it cannot contain OMML.
   if (packageEntries && ![...packageEntries.keys()].some(isDrawingXmlPathText)) return []
-  const files = packageEntries ? new SelectiveZipReader(bytes, packageEntries) : new LegacyZipReader(bytes)
+  const files = createXlsxZipReader(bytes, packageEntries)
 
   const workbookDocument = parseXml(files.get('xl/workbook.xml'))
   const workbookRelationships = parseRelationships(files.get('xl/_rels/workbook.xml.rels'))
@@ -124,9 +125,9 @@ async function extractLegacyEquationDrawings(
 ): Promise<OfficeMathDrawing[]> {
   if (typeof DOMParser === 'undefined') return []
   const bytes = new Uint8Array(arrayBuffer)
-  const entries = readZipEntries(bytes)
+  const entries = readXlsxZipEntries(bytes)
   if (entries && ![...entries.keys()].some(path => path.startsWith('xl/embeddings/') || path.endsWith('.vml'))) return []
-  const files = entries ? new SelectiveZipReader(bytes, entries) : new LegacyZipReader(bytes)
+  const files = createXlsxZipReader(bytes, entries)
   const workbookDocument = parseXml(files.get('xl/workbook.xml'))
   if (!workbookDocument) return []
   const workbookRelationships = parseRelationships(files.get('xl/_rels/workbook.xml.rels'))
@@ -440,101 +441,8 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
  */
 export function packageMayContainOfficeMathDrawing(arrayBuffer: ArrayBuffer): boolean {
   const bytes = new Uint8Array(arrayBuffer)
-  const entries = readZipEntries(bytes)
+  const entries = readXlsxZipEntries(bytes)
   return !entries || [...entries.keys()].some(isDrawingXmlPathText)
-}
-
-interface ZipEntry {
-  compressionMethod: number
-  compressedSize: number
-  offset: number
-  centralOffset: number
-}
-
-interface ZipReader {
-  get(path: string): Uint8Array | undefined
-}
-
-class SelectiveZipReader implements ZipReader {
-  private readonly cache = new Map<string, Uint8Array | undefined>()
-
-  constructor(private readonly bytes: Uint8Array, private readonly entries: Map<string, ZipEntry>) {}
-
-  get(path: string): Uint8Array | undefined {
-    if (this.cache.has(path)) return this.cache.get(path)
-    const entry = this.entries.get(path)
-    const value = entry ? readZipEntry(this.bytes, entry) : undefined
-    this.cache.set(path, value)
-    return value
-  }
-
-}
-
-class LegacyZipReader implements ZipReader {
-  private readonly files: Record<string, Uint8Array>
-
-  constructor(bytes: Uint8Array) {
-    this.files = unzipSync(bytes)
-  }
-
-  get(path: string): Uint8Array | undefined {
-    return this.files[path]
-  }
-
-}
-
-function readZipEntries(bytes: Uint8Array): Map<string, ZipEntry> | null {
-  const directory = centralDirectory(bytes)
-  if (!directory) return null
-  const entries = new Map<string, ZipEntry>()
-  let offset = directory.offset
-  const end = directory.offset + directory.size
-  while (offset < end) {
-    if (offset + 46 > bytes.length || readUint32(bytes, offset) !== 0x02014b50) return null
-    const compressionMethod = readUint16(bytes, offset + 10)
-    const compressedSize = readUint32(bytes, offset + 20)
-    const nameLength = readUint16(bytes, offset + 28)
-    const extraLength = readUint16(bytes, offset + 30)
-    const commentLength = readUint16(bytes, offset + 32)
-    const localHeaderOffset = readUint32(bytes, offset + 42)
-    const nameStart = offset + 46
-    const next = nameStart + nameLength + extraLength + commentLength
-    if (next > bytes.length || next > end || compressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) return null
-    entries.set(strFromU8(bytes.subarray(nameStart, nameStart + nameLength)), {
-      compressionMethod,
-      compressedSize,
-      offset: localHeaderOffset,
-      centralOffset: offset,
-    })
-    offset = next
-  }
-  return offset === end ? entries : null
-}
-
-function readZipEntry(bytes: Uint8Array, entry: ZipEntry): Uint8Array | undefined {
-  if (entry.offset + 30 > bytes.length || readUint32(bytes, entry.offset) !== 0x04034b50) return undefined
-  const nameLength = readUint16(bytes, entry.offset + 26)
-  const extraLength = readUint16(bytes, entry.offset + 28)
-  const start = entry.offset + 30 + nameLength + extraLength
-  const end = start + entry.compressedSize
-  if (end > bytes.length) return undefined
-  const compressed = bytes.subarray(start, end)
-  if (entry.compressionMethod === 0) return compressed.slice()
-  if (entry.compressionMethod === 8) return inflateSync(compressed)
-  return undefined
-}
-
-function centralDirectory(bytes: Uint8Array): { offset: number; size: number; endOffset: number } | null {
-  // The end-of-central-directory comment is limited to 65535 bytes.
-  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 0xffff - 22); offset -= 1) {
-    if (readUint32(bytes, offset) !== 0x06054b50) continue
-    const size = readUint32(bytes, offset + 12)
-    const directoryOffset = readUint32(bytes, offset + 16)
-    // ZIP64 stores sentinel values here. Fall back to the full parser there.
-    if (size === 0xffffffff || directoryOffset === 0xffffffff || directoryOffset + size > bytes.length) return null
-    return { offset: directoryOffset, size, endOffset: offset }
-  }
-  return null
 }
 
 /**
@@ -544,8 +452,8 @@ function centralDirectory(bytes: Uint8Array): { offset: number; size: number; en
  */
 export function stripEmbeddedImagesFromXlsx(arrayBuffer: ArrayBuffer): ArrayBuffer {
   const bytes = new Uint8Array(arrayBuffer)
-  const directory = centralDirectory(bytes)
-  const entries = readZipEntries(bytes)
+  const directory = readXlsxZipCentralDirectory(bytes)
+  const entries = readXlsxZipEntries(bytes)
   if (!directory || !entries || entries.size > 0xffff) return arrayBuffer
 
   const ordered = [...entries.entries()]
@@ -559,7 +467,7 @@ export function stripEmbeddedImagesFromXlsx(arrayBuffer: ArrayBuffer): ArrayBuff
   if (kept.length === ordered.length) return arrayBuffer
 
   const localParts: Uint8Array[] = []
-  const newOffsets = new Map<ZipEntry, number>()
+  const newOffsets = new Map<XlsxZipEntry, number>()
   let localSize = 0
   for (let index = 0; index < ordered.length; index += 1) {
     const current = ordered[index]!
