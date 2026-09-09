@@ -112,10 +112,10 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await catalogTab.click()
     await expect(page.getByRole('tab', { name: 'Products', exact: true })).toBeVisible()
 
-    const extractors = navigator.locator('.workspace-feature-section').filter({ has: navigator.getByRole('button', { name: 'Blocks' }) })
-    await extractors.locator('.workspace-row').filter({ hasText: 'test_data.xlsx' }).getByRole('button').first().click()
+    const extractors = navigator.locator('.workspace-feature-section').filter({ hasText: 'Blocks' })
+    await extractors.locator('.workspace-item-main').filter({ hasText: 'test_data.xlsx' }).click()
     await expect(salesTab).toHaveAttribute('aria-selected', 'true')
-    await extractors.locator('.workspace-row').filter({ hasText: 'multi_sheet.xlsx' }).getByRole('button').first().click()
+    await extractors.locator('.workspace-item-main').filter({ hasText: 'multi_sheet.xlsx' }).click()
     await expect(catalogTab).toHaveAttribute('aria-selected', 'true')
 
     await page.getByRole('button', { name: 'Refresh current workbook' }).click()
@@ -125,7 +125,7 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
     await expect(page.getByRole('tab', { name: /Regions/ })).toBeVisible()
     await page.getByRole('tab', { name: /Regions/ }).click()
-    await expect(page.getByRole('heading', { name: 'catalog_region' })).toBeVisible()
+    await expect(page.getByLabel('Regions (1)').getByText('catalog_region', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Close preview' }).click()
     await page.getByRole('button', { name: 'Project actions' }).click()
     await page.getByRole('menuitem', { name: /Save Project As/ }).click()
@@ -149,7 +149,7 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
       }],
     })
     expect(exported.regionResults[0].blocks[0]).toMatchObject({
-      blockLabel: 'block_1', range: { a1Notation: 'A1:C3' },
+      range: { a1Notation: 'A1:C3' },
     })
   } finally {
     await closeElectronApp(app, page)

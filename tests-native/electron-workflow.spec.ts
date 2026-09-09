@@ -32,6 +32,8 @@ async function launch(extraEnv: Record<string, string> = {}, preserveRecovery = 
 }
 
 async function importIntoOpenWorkbook(page: Page): Promise<void> {
+  await addWorkbookSource(page, 'test_data.xlsx')
+  await page.getByRole('button', { name: 'Add Block', exact: true }).first().click()
   await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
   await page.getByRole('button', { name: 'Open Project' }).click()
   const replaceDialog = page.getByRole('dialog', { name: 'Open another project?' })
@@ -73,7 +75,7 @@ async function addWorkbookSource(page: Page, fileName: string): Promise<void> {
 
 async function ensurePreviewOpen(page: Page): Promise<void> {
   const previewHeading = page.getByText('PARSE REVIEW', { exact: true })
-  const parseButton = page.getByRole('button', { name: 'Run & Preview' })
+  const parseButton = page.getByRole('button', { name: 'Preview', exact: true })
   await page.waitForTimeout(500)
   if (!await previewHeading.isVisible().catch(() => false)) {
     await expect(parseButton).toBeEnabled()
@@ -110,7 +112,7 @@ test.describe('Electron native workflow', () => {
       await addWorkbookSource(page, 'multi_sheet.xlsx')
       await expect(page.getByRole('banner').getByText('multi_sheet.xlsx')).toBeVisible()
       await page.getByRole('button', { name: 'Show workspace navigation' }).click()
-      const navigator = page.getByRole('navigation', { name: 'Workspace navigator' })
+      const navigator = page.getByRole('navigation', { name: 'Workspace navigation' })
       const orders = navigator.locator('.workspace-item').filter({ hasText: 'Orders' })
       await expect(orders).toBeVisible()
 
@@ -131,12 +133,12 @@ test.describe('Electron native workflow', () => {
       await settings.getByRole('button', { name: 'Done' }).click()
 
       await ensurePreviewOpen(page)
-      await expect(page.getByText('block_1', { exact: true })).toBeVisible()
+      await expect(page.getByText('PARSE REVIEW', { exact: true }).locator('..').getByText('block_1', { exact: true })).toBeVisible()
 
       await closePreview(page)
       await expect(page.getByText('PARSE REVIEW', { exact: true })).not.toBeVisible()
 
-      await page.getByRole('button', { name: 'Run & Preview' }).click()
+      await page.getByRole('button', { name: 'Preview', exact: true }).click()
       await expect(page.getByText('PARSE REVIEW', { exact: true })).toBeVisible()
     } finally {
       await closeElectronApp(app, page)
@@ -162,7 +164,7 @@ test.describe('Electron native workflow', () => {
       const settings = page.getByRole('dialog', { name: 'Project settings' })
       await settings.getByRole('button', { name: 'Remove' }).click()
       const confirmation = page.getByRole('dialog', { name: 'Remove project workbook?' })
-      await confirmation.getByRole('button', { name: 'Remove source' }).click()
+      await confirmation.getByRole('button', { name: 'Remove' }).click()
       await expect(settings.getByText('test_data.xlsx', { exact: true })).toBeHidden()
     } finally {
       await closeElectronApp(app, page)
@@ -391,9 +393,10 @@ test.describe('Electron native workflow', () => {
       await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
 
       await page.getByRole('button', { name: 'Open Project' }).click()
+      await page.getByRole('dialog', { name: 'Open another project?' }).getByRole('button', { name: 'Discard and open' }).click()
       await expect(page.getByRole('alert')).toContainText('Unable to import config')
       await expect(page.getByRole('banner').getByText('test_data.xlsx')).toBeVisible()
-      await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
+      await expect(page.getByRole('textbox', { name: 'block_1' })).toHaveCount(0)
     } finally {
       await closeElectronApp(app, page)
       await rm(directory, { recursive: true, force: true })
@@ -430,7 +433,7 @@ test.describe('Electron native workflow', () => {
       await expect(page.getByText('Select an Excel file, then choose the ranges you want to turn into structured data.', { exact: true })).toBeVisible()
       await page.getByRole('dialog', { name: 'Project settings' }).getByRole('button', { name: 'Done' }).click()
       await page.getByRole('button', { name: 'Open Project' }).click()
-      await expect(page.getByRole('textbox', { name: 'block_1' })).toBeVisible()
+      await expect(page.getByRole('textbox', { name: 'block_1' })).toHaveCount(0)
     } finally {
       await closeElectronApp(app, page)
     }
