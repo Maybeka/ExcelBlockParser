@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.0 - 2026-09-09
+
+- Added an experimental, project-level staged workbook loading mode. It is
+  disabled by default and loads the active worksheet with its statically
+  resolved formula dependencies before loading another selected worksheet.
+- Added conservative fallback to complete workbook loading for dynamic,
+  external, malformed, or unresolved formula references, and for XLSX files
+  whose package directory cannot be safely enumerated.
+- Preserved complete workbook sheet navigation while staged mode is enabled;
+  selecting an unloaded worksheet loads its own dependency closure.
+- Added fixture-based equivalence coverage for staged conversion, including
+  images and Office Math resources, plus multi-workbook Electron coverage.
+- Moved project-settings controls to the right edge. Performance logging is
+  now available only in development and test builds.
+
 ## 1.7.8 - 2026-09-09
 
 - Fixed Office Math drawing anchors by converting DrawingML EMU offsets to the
