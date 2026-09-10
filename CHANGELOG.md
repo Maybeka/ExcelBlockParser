@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.2 - 2026-09-10
+
+- Made the embedded Python cancellation regression wait for the interpreter to
+  become ready before testing interruption. This avoids a false failure on
+  cold Windows CI workers and retains cancellation coverage.
+
 ## 1.8.1 - 2026-09-10
 
 - Stabilized workbook switching and display modes: preserving an Excel active

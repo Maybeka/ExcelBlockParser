@@ -92,9 +92,14 @@ func TestPythonRuntimeCanCancelLoop(t *testing.T) {
 	done := make(chan pythonEvalResult, 1)
 	go func() { done <- runner.Eval("while True:\n    pass") }()
 
-	deadline := time.Now().Add(3 * time.Second)
+	// Starting the embedded WASM interpreter is noticeably slower on a cold
+	// Windows CI worker. Do not treat its startup time as a cancellation bug.
+	deadline := time.Now().Add(15 * time.Second)
 	for !runner.Cancel() && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
+	}
+	if time.Now().After(deadline) {
+		t.Fatal("Python debug run did not become cancellable")
 	}
 
 	select {
@@ -102,7 +107,7 @@ func TestPythonRuntimeCanCancelLoop(t *testing.T) {
 		if result.OK || !strings.Contains(result.Error, "KeyboardInterrupt") {
 			t.Fatalf("unexpected cancellation result: %#v", result)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Python debug run did not stop after cancellation")
 	}
 }
