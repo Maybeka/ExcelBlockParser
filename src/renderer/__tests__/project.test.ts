@@ -43,6 +43,7 @@ describe('project workspace', () => {
     expect(project.workbookLoadSettings).toEqual({
       parseImages: true,
       parseOfficeMath: true,
+      restoreExcelActiveCell: false,
       performanceLogging: false,
       experimentalStagedLoading: false,
     })

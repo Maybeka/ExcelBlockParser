@@ -105,6 +105,7 @@ export const DEFAULT_WORKBOOK_DISPLAY_SETTINGS: WorkbookDisplaySettings = {
 export interface WorkbookLoadSettings {
   parseImages: boolean
   parseOfficeMath: boolean
+  restoreExcelActiveCell: boolean
   performanceLogging: boolean
   experimentalStagedLoading: boolean
 }
@@ -112,6 +113,7 @@ export interface WorkbookLoadSettings {
 export const DEFAULT_WORKBOOK_LOAD_SETTINGS: WorkbookLoadSettings = {
   parseImages: true,
   parseOfficeMath: true,
+  restoreExcelActiveCell: false,
   performanceLogging: false,
   experimentalStagedLoading: false,
 }

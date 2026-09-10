@@ -94,6 +94,24 @@ describe('project lifecycle coordinator', () => {
     expect(result?.metadata.get('a')).toEqual({ sheetNames: ['Sheet1'], activeSheetName: 'Sheet1' })
     expect(project.workbooks[0].sheetNames).toEqual(['Old'])
   })
+  it('resolves relative workbook sources from the project file directory', async () => {
+    const relativeProject = {
+      ...project,
+      workbooks: [{ ...project.workbooks[0], sourcePath: 'workbooks/a.xlsx' }],
+    }
+    const readFile = vi.fn(async (path: string) => path === '/projects/demo/workbooks/a.xlsx'
+      ? bridgeOk(new ArrayBuffer(1)) : bridgeError('not found'))
+    const result = await inspectProjectWorkbookSources(
+      relativeProject,
+      readFile,
+      async () => reader,
+      () => true,
+      '/projects/demo/Project.json',
+    )
+    expect(result?.availableIds).toEqual(['a'])
+    expect(result?.paths).toEqual({ a: '/projects/demo/workbooks/a.xlsx' })
+    expect(readFile).toHaveBeenCalledWith('/projects/demo/workbooks/a.xlsx')
+  })
   it('returns null when an in-flight open becomes stale', async () => {
     let current = true
     const result = await inspectProjectWorkbookSources(project, async () => { current = false; return bridgeOk(new ArrayBuffer(1)) }, async () => reader, () => current)

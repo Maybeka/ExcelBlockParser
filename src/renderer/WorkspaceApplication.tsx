@@ -272,6 +272,7 @@ export function WorkspaceApplication() {
         path => getBridge().readFile(path),
         loadExcelJsWorkbook,
         () => isCurrentWorkbookLoad(workbookRuntimeRef.current, loadVersion),
+        projectPath ?? null,
       )
       if (!availability) return
 
@@ -1159,6 +1160,10 @@ export function WorkspaceApplication() {
                   openWorkbookIds={openWorkbookIds}
                   onFileLoaded={handleFileLoaded}
                   onLoadedWorkbookChange={workbookId => updateWorkbookRuntime(current => setLoadedWorkbook(current, workbookId))}
+                  onStagedSheetRequest={(workbookId, sheetName) => {
+                    const path = workbookRuntimeRef.current.paths[workbookId]
+                    if (path) updateWorkbookRuntime(current => requestWorkbookLoad(current, workbookId, path, sheetName))
+                  }}
                   onWorkbookDiagnostics={(workbookId, diagnostics) => setWorkbookDiagnostics(current => ({ ...current, [workbookId]: diagnostics }))}
                   lockedRanges={workbookBrowserMode ? [] : lockedRanges}
                   closeSignal={closeSignal}
@@ -1313,15 +1318,26 @@ export function WorkspaceApplication() {
           <section className="project-settings-section">
             <h3>{t('settings.workbookSources')}</h3>
             <div className="project-workbook-settings">
-              {projectWorkbooks.map(workbook => (
-                <div className="project-workbook-setting" key={workbook.id}>
-                  <span><FileExcelOutlined /> {workbook.name}<small>{openWorkbookIds.includes(workbook.id) ? t('settings.available') : t('settings.unavailable')}</small></span>
-                  <Space size={6}>
-                    <Button size="small" onClick={() => void handleReassignProjectWorkbook(workbook.id)}>{t('settings.reassign')}</Button>
-                    <Button danger size="small" onClick={() => setPendingProjectRemoval(workbook.id)}>{t('settings.remove')}</Button>
-                  </Space>
-                </div>
-              ))}
+              {projectWorkbooks.map(workbook => {
+                const sourcePath = workbookRuntime.paths[workbook.id] ?? workbook.sourcePath
+
+                return (
+                  <div className="project-workbook-setting" key={workbook.id}>
+                    <div className="project-workbook-source">
+                      <span className="project-workbook-source-title">
+                        <FileExcelOutlined />
+                        <span className="project-workbook-source-name">{workbook.name}</span>
+                        <small>{openWorkbookIds.includes(workbook.id) ? t('settings.available') : t('settings.unavailable')}</small>
+                      </span>
+                      <span className="project-workbook-source-path" title={sourcePath ?? undefined}>{sourcePath ?? t('settings.pathNotAssigned')}</span>
+                    </div>
+                    <Space size={6}>
+                      <Button size="small" onClick={() => void handleReassignProjectWorkbook(workbook.id)}>{t('settings.reassign')}</Button>
+                      <Button danger size="small" onClick={() => setPendingProjectRemoval(workbook.id)}>{t('settings.remove')}</Button>
+                    </Space>
+                  </div>
+                )
+              })}
               <Button icon={<FolderOpenOutlined />} onClick={() => void handleAddProjectWorkbook()}>{t('settings.addWorkbook')}</Button>
             </div>
           </section>
@@ -1344,6 +1360,10 @@ export function WorkspaceApplication() {
             <label className="project-settings-field">
               <span>{t('settings.parseOfficeMath')}</span>
               <Checkbox checked={workbookLoadSettings.parseOfficeMath} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, parseOfficeMath: event.target.checked })}>{t('settings.enabled')}</Checkbox>
+            </label>
+            <label className="project-settings-field">
+              <span>{t('settings.restoreExcelActiveCell')}</span>
+              <Checkbox checked={workbookLoadSettings.restoreExcelActiveCell} onChange={event => handleWorkbookLoadSettingsChange({ ...workbookLoadSettings, restoreExcelActiveCell: event.target.checked })}>{t('settings.enabled')}</Checkbox>
             </label>
             <label className="project-settings-field">
               <span>{t('settings.experimentalStagedLoading')}</span>

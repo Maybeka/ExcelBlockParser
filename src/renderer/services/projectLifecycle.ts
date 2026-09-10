@@ -50,6 +50,7 @@ export async function inspectProjectWorkbookSources(
   readFile: (path: string) => Promise<BridgeResult<ArrayBuffer>>,
   loadWorkbook: (buffer: ArrayBuffer) => Promise<WorkbookReader>,
   isCurrent: () => boolean = () => true,
+  projectFilePath: string | null = null,
 ): Promise<WorkbookAvailability | null> {
   const result: WorkbookAvailability = {
     paths: {}, readers: new Map(), metadata: new Map(), availableIds: [], unavailableIds: [],
@@ -58,13 +59,14 @@ export async function inspectProjectWorkbookSources(
     if (!isCurrent()) return null
     if (!workbook.sourcePath) { result.unavailableIds.push(workbook.id); continue }
     try {
-      const read = await readFile(workbook.sourcePath)
+      const resolvedPath = resolveWorkbookSourcePath(workbook.sourcePath, projectFilePath)
+      const read = await readFile(resolvedPath)
       if (!isCurrent()) return null
       if (read.status !== 'ok') { result.unavailableIds.push(workbook.id); continue }
       const reader = await loadWorkbook(read.value)
       if (!isCurrent()) return null
       const sheetNames = reader.sheetNames()
-      result.paths[workbook.id] = workbook.sourcePath
+      result.paths[workbook.id] = resolvedPath
       result.readers.set(workbook.id, reader)
       result.availableIds.push(workbook.id)
       result.metadata.set(workbook.id, {

@@ -1,8 +1,9 @@
 import { useRef, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { Button, Checkbox, Input, Spin, Tooltip, message, type InputRef } from 'antd'
 import { CloseOutlined, CompressOutlined, CopyOutlined, FilterOutlined, LeftOutlined, PushpinOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import { setupUniver } from '../univer/setup'
+import type { IWorkbookData } from '@univerjs/core'
 import { useUniver } from '../context/UniverContext'
 import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseDiagnostic, type WorkbookDisplaySettings, type WorkbookLoadSettings } from '../types'
 import { convertXlsxToWorkbookData, type ConvertedWorkbookImage, type SheetDisplaySettings, type SheetOutlineGroup } from '../services/xlsx-converter'
@@ -43,6 +44,7 @@ interface SpreadsheetPanelProps {
   onFileLoaded: (workbookId: string, fileName: string, filePath: string, sheetNames: string[], sheetTabColors: Record<string, string>, activeSheetName: string | null) => void
   onWorkbookDiagnostics: (workbookId: string, diagnostics: ParseDiagnostic[]) => void
   onLoadedWorkbookChange: (workbookId: string | null) => void
+  onStagedSheetRequest: (workbookId: string, sheetName: string) => void
   closeSignal: number
   lockedRanges: LockedRangeInfo[]
   onOpenWorkbook: () => void
@@ -56,6 +58,7 @@ interface CachedWorkbook {
   path: string
   sheetNames: string[]
   staged: boolean
+  stagedLoadedSheetNames: string[]
   sheetSelections: Record<string, string>
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
   lastUsed: number
@@ -66,7 +69,24 @@ interface SearchMatch extends WorkbookSearchMatch {
   sheetName: string
 }
 
-export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowserMode, workbookLoadSettings, displaySettings, onDisplaySettingsChange, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, projectLoading, loadedWorkbookId, openWorkbookIds, onFileLoaded, onWorkbookDiagnostics, onLoadedWorkbookChange, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
+function addStagedSheetPlaceholders(workbookData: IWorkbookData, sheetNames: string[]): void {
+  for (const sheetName of sheetNames) {
+    if (workbookData.sheets[sheetName]) continue
+    workbookData.sheets[sheetName] = {
+      id: sheetName,
+      name: sheetName,
+      rowCount: 200,
+      columnCount: 50,
+      cellData: {},
+    }
+  }
+  // The staged conversion contains only the active sheet and formula
+  // dependencies. Reinsert its placeholders using the original workbook
+  // order so loading a later sheet never moves it to the first tab.
+  workbookData.sheetOrder = [...sheetNames]
+}
+
+export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowserMode, workbookLoadSettings, displaySettings, onDisplaySettingsChange, activeItemIds, activeColumnItemId, activeColIndex, onSelectionChange, onActiveSheetChange, loadSignal, requestedWorkbook, projectLoading, loadedWorkbookId, openWorkbookIds, onFileLoaded, onWorkbookDiagnostics, onLoadedWorkbookChange, onStagedSheetRequest, lockedRanges, closeSignal, onOpenWorkbook, toolbarContainer, onSuccessNotice, focusRange }: SpreadsheetPanelProps) {
   const { locale, t } = useI18n()
   const initialLocaleRef = useRef(locale)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -75,7 +95,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
   univerAPIRef.current = univerAPI
 
   const onSelectionChangeRef = useRef(onSelectionChange)
+  const onStagedSheetRequestRef = useRef(onStagedSheetRequest)
   onSelectionChangeRef.current = onSelectionChange
+  onStagedSheetRequestRef.current = onStagedSheetRequest
   const onActiveSheetChangeRef = useRef(onActiveSheetChange)
   onActiveSheetChangeRef.current = onActiveSheetChange
   const focusRangeRef = useRef(focusRange)
@@ -193,6 +215,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     sheetName?: string | null,
   ) => {
     const displayModes = displayModesRef.current
+    const activeSheet = workbook.getActiveSheet()
+    const activeSheetName = activeSheet?.getSheetName() ?? null
+    const activeSelection = activeSheet?.getSelection?.()?.getActiveRange?.()?.getA1Notation?.() ?? null
+    let mutatedDisplayState = false
     // Univer treats row/column visibility as an edit command. Temporarily allow
     // those internal view mutations, then immediately restore our read-only
     // browser contract before returning control to the user.
@@ -206,10 +232,13 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         const sheet = workbook.getSheetByName(targetSheetName)
         if (!sheet) continue
         try {
-          if (displayModes.showFrozenPanes && sheetSettings.freeze) sheet.setFreeze(sheetSettings.freeze)
-          else sheet.cancelFreeze()
+          if (sheetSettings.freeze) {
+            if (displayModes.showFrozenPanes) sheet.setFreeze(sheetSettings.freeze)
+            else sheet.cancelFreeze()
+            mutatedDisplayState = true
+          }
 
-          applyOutlineGroups(
+          mutatedDisplayState = applyOutlineGroups(
             sheet,
             sheetSettings,
             displayModes.showOutlines,
@@ -217,7 +246,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
             targetSheetName,
             outlineStateFor,
             nativeFilterHiddenRowsFor(sheet),
-          )
+          ) || mutatedDisplayState
         } catch (error) {
           console.error('[SpreadsheetPanel] Unable to apply workbook display modes:', error)
         }
@@ -225,6 +254,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     } finally {
       workbook.setEditable(false)
       applyingDisplayModesRef.current = false
+    }
+    if (mutatedDisplayState && activeSheetName && activeSelection && workbook.getActiveSheet()?.getSheetName() === activeSheetName) {
+      try { activeSheet?.setActiveSelection(activeSheet.getRange(activeSelection)) } catch { /* an invalid or hidden range cannot be restored */ }
     }
   }
 
@@ -561,10 +593,19 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         range: selection?.getActiveRange()?.getRange() ?? null,
       }
     }
+    ;(window as Window & {
+      __excelBlockParserScrollToCell?: (sheetName: string, row: number, column: number) => boolean
+    }).__excelBlockParserScrollToCell = (sheetName, row, column) => {
+      const sheet = univerAPIRef.current?.getActiveWorkbook()?.getSheetByName(sheetName)
+      if (!sheet) return false
+      sheet.scrollToCell(Math.max(0, row), Math.max(0, column))
+      return true
+    }
     return () => {
       delete (window as Window & { __excelBlockParserOutlineState?: () => Record<string, boolean> }).__excelBlockParserOutlineState
       delete (window as Window & { __excelBlockParserImageState?: () => Record<string, Array<{ id: string; source: string }>> }).__excelBlockParserImageState
       delete (window as Window & { __excelBlockParserSelectionState?: () => { sheetName: string; a1Notation: string | null; range: unknown } | null }).__excelBlockParserSelectionState
+      delete (window as Window & { __excelBlockParserScrollToCell?: (sheetName: string, row: number, column: number) => boolean }).__excelBlockParserScrollToCell
     }
   }, [])
 
@@ -596,7 +637,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           a1Notation: `${colToA1(sel.startColumn)}${sel.startRow + 1}:${colToA1(sel.endColumn)}${sel.endRow + 1}`,
         }
         setSelection({ range, sheetName: sheetName ?? '' })
-        if (sheetName) {
+        // Univer emits a transient whole-row/whole-column selection while a
+        // cached workbook becomes current. That is an engine default, not a
+        // user position, and must never replace the saved active cell.
+        if (sheetName && sel.startRow === sel.endRow && sel.startColumn === sel.endColumn) {
           const cached = workbookCacheRef.current.get(sourceWorkbookId)
           if (cached) cached.sheetSelections[sheetName] = `${colToA1(sel.startColumn)}${sel.startRow + 1}`
         }
@@ -676,8 +720,11 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (commandId.includes('set-worksheet-active') || commandId.includes('set-worksheet-activate')) {
           const sheetName = workbook.getActiveSheet()?.getSheetName() ?? null
           const cached = workbookCacheRef.current.get(sourceWorkbookId)
-          const savedSelection = sheetName ? cached?.sheetSelections[sheetName] ?? 'A1' : null
-          if (sheetName && savedSelection) {
+          if (sheetName && cached?.staged && !cached.stagedLoadedSheetNames.includes(sheetName)) {
+            window.setTimeout(() => onStagedSheetRequestRef.current(sourceWorkbookId, sheetName), 0)
+          }
+          const savedSelection = sheetName ? cached?.sheetSelections[sheetName] : null
+          if (workbookLoadSettings.restoreExcelActiveCell && sheetName && savedSelection) {
             window.requestAnimationFrame(() => {
               if (workbook.getActiveSheet()?.getSheetName() !== sheetName) return
               try {
@@ -823,6 +870,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       const loadStartedAt = performance.now()
       let performanceStage = 'preparing'
       let performanceFileName = requestedPath?.split(/[/\\]/).pop() ?? 'workbook.xlsx'
+      let deferLoadingCompletion = false
       try {
         const bridge = getBridge()
         let filePath = requestedPath
@@ -842,19 +890,16 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           if (cachedWorkbook) {
             const targetSheetName = requestedSheetName ?? cachedWorkbook.getActiveSheet()?.getSheetName() ?? null
             const targetSheet = targetSheetName ? cachedWorkbook.getSheetByName(targetSheetName) : null
-            if (cached.staged && targetSheetName && !targetSheet) {
+            if (cached.staged && targetSheetName && !cached.stagedLoadedSheetNames.includes(targetSheetName)) {
               // The experimental package only contains the preceding sheet's
               // static dependency closure. Rebuild for the requested sheet.
             } else {
-              if (targetSheetName) targetSheet?.activate()
-              // Restore the selection while this workbook is still hidden. Making
-              // it current first exposes Univer's transient whole-sheet default.
-              const savedSelection = targetSheetName ? cached.sheetSelections[targetSheetName] ?? 'A1' : 'A1'
-              try {
-                const cell = parseExcelActiveCell(savedSelection)
-                const selectionSheet = targetSheetName ? cachedWorkbook.getSheetByName(targetSheetName) : cachedWorkbook.getActiveSheet()
-                selectionSheet?.setActiveSelection(selectionSheet.getRange(cell.row, cell.column))
-              } catch { /* malformed Excel selection metadata is non-fatal */ }
+              if (targetSheetName && cachedWorkbook.getActiveSheet()?.getSheetName() !== targetSheetName) targetSheet?.activate()
+              // setCurrent initializes its default range asynchronously. Keep
+              // the canvas covered until that pass is complete, then restore
+              // the intended single-cell selection on the current workbook.
+              deferLoadingCompletion = true
+              flushSync(() => setLoading(true))
               api.setCurrent(cached.unitId)
               touchCachedWorkbook(cached)
               setHasFile(true)
@@ -862,6 +907,20 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
               setSheetNames(cached.sheetNames)
               tryAttachListener(cachedWorkbook, sourceWorkbookId)
               onLoadedWorkbookChange(sourceWorkbookId)
+              window.setTimeout(() => {
+                if (loadVersion !== loadVersionRef.current) return
+                const savedSelection = targetSheetName ? cached.sheetSelections[targetSheetName] : undefined
+                if (workbookLoadSettings.restoreExcelActiveCell && savedSelection) {
+                  try {
+                    const selectionSheet = cachedWorkbook.getSheetByName(targetSheetName)
+                    const cell = parseExcelActiveCell(savedSelection)
+                    selectionSheet?.setActiveSelection(selectionSheet.getRange(cell.row, cell.column))
+                  } catch { /* malformed Excel selection metadata is non-fatal */ }
+                }
+                window.requestAnimationFrame(() => {
+                  if (loadVersion === loadVersionRef.current) setLoading(false)
+                })
+              }, 50)
               return
             }
           }
@@ -905,8 +964,17 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           : null)
         const converted = await withTimeout(
           workbookLoadSettings.experimentalStagedLoading && stagedTargetSheet
-            ? convertStagedXlsxToWorkbookData(arrayBuffer, fileName, stagedTargetSheet, conversionOptions).then(result => ({ conversion: result.conversion, availableSheetNames: result.plan.graph.sheetNames, staged: result.plan.mode === 'staged' }))
-            : convertXlsxToWorkbookData(arrayBuffer, fileName, conversionOptions).then(conversion => ({ conversion, availableSheetNames: null, staged: false })),
+            ? convertStagedXlsxToWorkbookData(arrayBuffer, fileName, stagedTargetSheet, conversionOptions).then(result => {
+              const staged = result.plan.mode === 'staged'
+              if (staged) addStagedSheetPlaceholders(result.conversion.workbookData, result.plan.graph.sheetNames)
+              return {
+                conversion: result.conversion,
+                availableSheetNames: result.plan.graph.sheetNames,
+                staged,
+                stagedLoadedSheetNames: staged ? result.plan.sheetNames : result.plan.graph.sheetNames,
+              }
+            })
+            : convertXlsxToWorkbookData(arrayBuffer, fileName, conversionOptions).then(conversion => ({ conversion, availableSheetNames: null, staged: false, stagedLoadedSheetNames: [] })),
           t('workbook.convertTimedOut', { seconds: Math.ceil(conversionTimeout / 1000) }),
           conversionTimeout,
         )
@@ -923,13 +991,18 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         const newWorkbook = api.createWorkbook(workbookData, { makeCurrent: true })
         if (!newWorkbook) throw new Error(t('workbook.createFailed'))
         const initialSheetName = requestedSheetName ?? activeSheetName ?? newWorkbook.getActiveSheet()?.getSheetName() ?? null
-        if (initialSheetName) newWorkbook.getSheetByName(initialSheetName)?.activate()
+        if (initialSheetName && newWorkbook.getActiveSheet()?.getSheetName() !== initialSheetName) {
+          newWorkbook.getSheetByName(initialSheetName)?.activate()
+        }
         const initialSheet = initialSheetName ? newWorkbook.getSheetByName(initialSheetName) : null
-        const initialSelection = initialSheetName ? sheetSelections[initialSheetName] ?? 'A1' : 'A1'
-        try {
-          const cell = parseExcelActiveCell(initialSelection)
-          initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
-        } catch { /* malformed Excel selection metadata is non-fatal */ }
+        const initialSelections = workbookLoadSettings.restoreExcelActiveCell ? sheetSelections : {}
+        const initialSelection = initialSheetName ? initialSelections[initialSheetName] : undefined
+        if (initialSelection) {
+          try {
+            const cell = parseExcelActiveCell(initialSelection)
+            initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
+          } catch { /* malformed Excel selection metadata is non-fatal */ }
+        }
         await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
         await registerWorkbookImages(newWorkbook, images)
         const univerMs = performance.now() - univerStartedAt
@@ -953,7 +1026,8 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           path: filePath,
           sheetNames: availableSheetNames,
           staged: converted.staged,
-          sheetSelections: { ...sheetSelections },
+          stagedLoadedSheetNames: converted.stagedLoadedSheetNames,
+          sheetSelections: { ...initialSelections },
           sheetDisplaySettings,
           lastUsed: ++cacheAccessCounterRef.current,
           estimatedBytes: estimateWorkbookCacheBytes(arrayBuffer.byteLength, workbookData),
@@ -976,10 +1050,12 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         // pass. Keep the loading veil up until that pass is complete, then set
         // the saved single-cell selection before exposing the workbook.
         await new Promise<void>(resolve => window.setTimeout(resolve, 50))
-        try {
-          const cell = parseExcelActiveCell(initialSelection)
-          initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
-        } catch { /* malformed Excel selection metadata is non-fatal */ }
+        if (initialSelection) {
+          try {
+            const cell = parseExcelActiveCell(initialSelection)
+            initialSheet?.setActiveSelection(initialSheet.getRange(cell.row, cell.column))
+          } catch { /* malformed Excel selection metadata is non-fatal */ }
+        }
         if (workbookLoadSettings.performanceLogging) {
           console.info('[Workbook performance]', {
             workbook: fileName,
@@ -1013,7 +1089,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (err instanceof Error && err.stack) console.error(err.stack)
         setError(msg)
       } finally {
-        setLoading(false)
+        if (!deferLoadingCompletion) setLoading(false)
       }
     }
 
@@ -1245,7 +1321,7 @@ function applyOutlineGroups(
   sheetName: string,
   stateFor: (workbookId: string, sheetName: string, group: SheetOutlineGroup) => boolean,
   filterHiddenRows: number[] = [],
-) {
+): boolean {
   // This metadata is consumed by the local Univer table-header patch. It keeps
   // every imported group available as a persistent native canvas control,
   // including groups that currently start expanded.
@@ -1273,12 +1349,15 @@ function applyOutlineGroups(
       }
     }
     if (axis === 'row') filterHiddenRows.forEach(row => hidden.add(row))
+    const requiresVisibilityUpdate = groups.length > 0 || sourceHidden.length > 0 || (axis === 'row' && filterHiddenRows.length > 0)
+    if (!requiresVisibilityUpdate) continue
     if (lastIndex >= 0) axis === 'row' ? sheet.showRows(0, lastIndex + 1) : sheet.showColumns(0, lastIndex + 1)
     for (const [start, count] of contiguousRanges([...hidden])) {
       if (axis === 'row') sheet.hideRows(start, count)
       else sheet.hideColumns(start, count)
     }
   }
+  return settings.outlineGroups.length > 0 || settings.sourceHiddenRows.length > 0 || settings.sourceHiddenColumns.length > 0 || filterHiddenRows.length > 0
 }
 
 function contiguousRanges(indexes: number[]): Array<[start: number, count: number]> {

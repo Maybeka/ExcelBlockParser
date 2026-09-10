@@ -79,8 +79,11 @@ html, body, #root {
 .project-settings-field > span { color: var(--fluent-text-muted); font-size: 12px; }
 .project-settings-hint { color: var(--fluent-text-muted); font-size: 12px; line-height: 18px; margin: 0; }
 .project-workbook-settings { display: flex; flex-direction: column; gap: 8px; }
-.project-workbook-setting { align-items: center; border-bottom: 1px solid #edf1f4; color: #405364; display: flex; justify-content: space-between; padding: 8px 0; }
-.project-workbook-setting > span { align-items: center; display: inline-flex; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-workbook-setting { align-items: center; border-bottom: 1px solid #edf1f4; color: #405364; display: flex; gap: 12px; justify-content: space-between; padding: 8px 0; }
+.project-workbook-source { min-width: 0; }
+.project-workbook-source-title { align-items: center; display: flex; gap: 8px; min-width: 0; }
+.project-workbook-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-workbook-source-path { color: #8b99a6; display: block; font-family: var(--font-code); font-size: 11px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-workbook-setting small { color: #8b99a6; font-size: 10px; font-weight: 500; }
 .project-workbook-setting .anticon { color: #3390ec; }
 .app-actions { margin-left: auto; }

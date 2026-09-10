@@ -51,6 +51,7 @@ function projectFixture() {
       workbookLoadSettings: {
         parseImages: true,
         parseOfficeMath: true,
+        restoreExcelActiveCell: false,
         performanceLogging: false,
         experimentalStagedLoading: true,
       },
@@ -100,6 +101,11 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
 
     await navigator.getByLabel('multi_sheet.xlsx sheets').getByText('Orders', { exact: true }).click()
     await expect(page.getByRole('tab', { name: 'Orders', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('tab', { name: 'Products', exact: true })).toBeVisible()
+    const sheetTabOrder = await page.getByRole('tab').allTextContents()
+    expect(sheetTabOrder.indexOf('Products')).toBeLessThan(sheetTabOrder.indexOf('Orders'))
+    await page.getByRole('tab', { name: 'Products', exact: true }).click()
+    await expect(page.getByRole('tab', { name: 'Products', exact: true })).toHaveAttribute('aria-selected', 'true')
 
     const catalogNode = navigator.locator('.workspace-workbook-node').filter({ hasText: 'multi_sheet.xlsx' })
     await catalogNode.getByRole('button', { name: 'Collapse sheets' }).click()
