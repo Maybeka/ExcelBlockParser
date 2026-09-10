@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.3 - 2026-09-10
+
+- Updated the Wails MathType Equation Native conversion dependency to
+  `mtef-mathml` v0.1.1, including its corrected MathML whitespace handling.
+
 ## 1.8.2 - 2026-09-10
 
 - Made the embedded Python cancellation regression wait for the interpreter to
