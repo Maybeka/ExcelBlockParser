@@ -92,6 +92,14 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await expect(page.getByRole('tab', { name: 'multi_sheet.xlsx' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Workbook canvas' }).getByText('Excel Workbook', { exact: true })).toBeVisible()
 
+    const catalogTab = page.getByRole('tab', { name: 'multi_sheet.xlsx' })
+    await catalogTab.click()
+    await expect(page.getByRole('tab', { name: 'Products', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserStagedCacheState?.().catalog?.hydrated ?? false)).toBe(true)
+    await page.getByRole('tab', { name: 'Orders', exact: true }).click()
+    await expect(page.getByRole('tab', { name: 'Orders', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserStagedCacheState?.().catalog?.staged ?? true)).toBe(false)
+
     await page.getByRole('button', { name: 'Show workspace navigation' }).click()
     const navigator = page.getByRole('navigation', { name: 'Workspace navigation' })
     await expect(navigator.locator('.workspace-file-name[title="Multi workbook regression"]')).toBeVisible()
@@ -114,7 +122,6 @@ test('keeps two real workbooks isolated across open, switch, preview, and save a
     await expect(navigator.locator('.workspace-workbook-sheets[aria-label="multi_sheet.xlsx sheets"]')).toBeVisible()
 
     const salesTab = page.getByRole('tab', { name: 'test_data.xlsx' })
-    const catalogTab = page.getByRole('tab', { name: 'multi_sheet.xlsx' })
     await salesTab.click()
     await expect(salesTab).toHaveAttribute('aria-selected', 'true')
     await catalogTab.click()

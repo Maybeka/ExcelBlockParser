@@ -63,6 +63,17 @@ interface CachedWorkbook {
   sheetDisplaySettings: Record<string, SheetDisplaySettings>
   lastUsed: number
   estimatedBytes: number
+  hydrated?: HydratedWorkbook
+  hydration?: Promise<void>
+}
+
+interface HydratedWorkbook {
+  unitId: string
+  sheetTabColors: Record<string, string>
+  sheetSelections: Record<string, string>
+  sheetDisplaySettings: Record<string, SheetDisplaySettings>
+  diagnostics: ParseDiagnostic[]
+  estimatedBytes: number
 }
 
 interface SearchMatch extends WorkbookSearchMatch {
@@ -162,7 +173,11 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
   const requestedWorkbookIsCached = Boolean(
     requestedWorkbook
     && workbookCacheRef.current.get(requestedWorkbook.workbookId)?.path === requestedWorkbook.path
-    && univerAPIRef.current?.getWorkbook(workbookCacheRef.current.get(requestedWorkbook.workbookId)?.unitId ?? ''),
+    && univerAPIRef.current?.getWorkbook(
+      workbookCacheRef.current.get(requestedWorkbook.workbookId)?.hydrated?.unitId
+      ?? workbookCacheRef.current.get(requestedWorkbook.workbookId)?.unitId
+      ?? '',
+    ),
   )
   const projectWorkbookLoading = !error
     && !requestedWorkbookIsCached
@@ -192,6 +207,13 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     cached.lastUsed = ++cacheAccessCounterRef.current
   }
 
+  const disposeCachedWorkbook = (cached: CachedWorkbook) => {
+    const api = univerAPIRef.current
+    if (!api) return
+    api.disposeUnit(cached.unitId)
+    if (cached.hydrated?.unitId && cached.hydrated.unitId !== cached.unitId) api.disposeUnit(cached.hydrated.unitId)
+  }
+
   const releaseExcessCachedWorkbooks = (activeId: string) => {
     const api = univerAPIRef.current
     if (!api) return
@@ -202,7 +224,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     for (const workbookId of evictions) {
       const cached = workbookCacheRef.current.get(workbookId)
       if (!cached) continue
-      api.disposeUnit(cached.unitId)
+      disposeCachedWorkbook(cached)
       workbookCacheRef.current.delete(workbookId)
       outlineCollapsedRef.current.delete(workbookId)
     }
@@ -551,6 +573,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     ;(window as Window & {
       __excelBlockParserOutlineState?: () => Record<string, boolean>
       __excelBlockParserImageState?: () => Record<string, Array<{ id: string; source: string }>>
+      __excelBlockParserStagedCacheState?: () => Record<string, { staged: boolean; hydrated: boolean; hydrating: boolean }>
     }).__excelBlockParserOutlineState = () => {
       const api = univerAPIRef.current
       const workbook = api?.getActiveWorkbook()
@@ -582,6 +605,15 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       ]))
     }
     ;(window as Window & {
+      __excelBlockParserStagedCacheState?: () => Record<string, { staged: boolean; hydrated: boolean; hydrating: boolean }>
+    }).__excelBlockParserStagedCacheState = () => Object.fromEntries(
+      [...workbookCacheRef.current.entries()].map(([workbookId, cached]) => [workbookId, {
+        staged: cached.staged,
+        hydrated: Boolean(cached.hydrated),
+        hydrating: Boolean(cached.hydration),
+      }]),
+    )
+    ;(window as Window & {
       __excelBlockParserSelectionState?: () => { sheetName: string; a1Notation: string | null; range: unknown } | null
     }).__excelBlockParserSelectionState = () => {
       const sheet = univerAPIRef.current?.getActiveWorkbook()?.getActiveSheet()
@@ -604,6 +636,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     return () => {
       delete (window as Window & { __excelBlockParserOutlineState?: () => Record<string, boolean> }).__excelBlockParserOutlineState
       delete (window as Window & { __excelBlockParserImageState?: () => Record<string, Array<{ id: string; source: string }>> }).__excelBlockParserImageState
+      delete (window as Window & { __excelBlockParserStagedCacheState?: () => Record<string, { staged: boolean; hydrated: boolean; hydrating: boolean }> }).__excelBlockParserStagedCacheState
       delete (window as Window & { __excelBlockParserSelectionState?: () => { sheetName: string; a1Notation: string | null; range: unknown } | null }).__excelBlockParserSelectionState
       delete (window as Window & { __excelBlockParserScrollToCell?: (sheetName: string, row: number, column: number) => boolean }).__excelBlockParserScrollToCell
     }
@@ -886,14 +919,52 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (!api) throw new Error(t('workbook.univerUnavailable'))
         const cached = workbookCacheRef.current.get(sourceWorkbookId)
         if (!forceRefresh && cached?.path === filePath) {
-          const cachedWorkbook = api.getWorkbook(cached.unitId)
+          const hydrated = cached.hydrated
+          const cachedWorkbook = api.getWorkbook(hydrated?.unitId ?? cached.unitId)
           if (cachedWorkbook) {
             const targetSheetName = requestedSheetName ?? cachedWorkbook.getActiveSheet()?.getSheetName() ?? null
             const targetSheet = targetSheetName ? cachedWorkbook.getSheetByName(targetSheetName) : null
-            if (cached.staged && targetSheetName && !cached.stagedLoadedSheetNames.includes(targetSheetName)) {
-              // The experimental package only contains the preceding sheet's
-              // static dependency closure. Rebuild for the requested sheet.
+            if (cached.staged && !hydrated && targetSheetName && !cached.stagedLoadedSheetNames.includes(targetSheetName)) {
+              if (cached.hydration) {
+                // The full workbook is already preparing in the background.
+                // Keep the placeholder covered and promote that complete cache
+                // instead of rebuilding a separate staged package for this tab.
+                deferLoadingCompletion = true
+                setLoading(true)
+                const stagedUnitId = cached.unitId
+                void cached.hydration.finally(() => {
+                  const current = workbookCacheRef.current.get(sourceWorkbookId)
+                  if (current?.unitId !== stagedUnitId) return
+                  onStagedSheetRequestRef.current(sourceWorkbookId, targetSheetName)
+                })
+                return
+              }
+              // A failed background preparation retains the previous
+              // per-sheet staged fallback rather than leaving a placeholder.
             } else {
+              if (hydrated) {
+                const stagedUnitId = cached.unitId
+                cached.unitId = hydrated.unitId
+                cached.staged = false
+                cached.stagedLoadedSheetNames = cached.sheetNames
+                cached.sheetSelections = workbookLoadSettings.restoreExcelActiveCell ? hydrated.sheetSelections : {}
+                cached.sheetDisplaySettings = hydrated.sheetDisplaySettings
+                cached.estimatedBytes = hydrated.estimatedBytes
+                cached.hydrated = undefined
+                if (targetSheetName && cachedWorkbook.getActiveSheet()?.getSheetName() !== targetSheetName) targetSheet?.activate()
+                applyDisplayModes(cachedWorkbook, cached.sheetDisplaySettings, sourceWorkbookId, targetSheetName)
+                onFileLoaded(sourceWorkbookId, performanceFileName, filePath, cached.sheetNames, hydrated.sheetTabColors, targetSheetName)
+                onWorkbookDiagnostics(sourceWorkbookId, hydrated.diagnostics.map(diagnostic => ({ ...diagnostic, workbookId: sourceWorkbookId })))
+                api.setCurrent(cached.unitId)
+                api.disposeUnit(stagedUnitId)
+                touchCachedWorkbook(cached)
+                setHasFile(true)
+                setError(null)
+                setSheetNames(cached.sheetNames)
+                tryAttachListener(cachedWorkbook, sourceWorkbookId)
+                onLoadedWorkbookChange(sourceWorkbookId)
+                return
+              }
               if (targetSheetName && cachedWorkbook.getActiveSheet()?.getSheetName() !== targetSheetName) targetSheet?.activate()
               // setCurrent initializes its default range asynchronously. Keep
               // the canvas covered until that pass is complete, then restore
@@ -993,7 +1064,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (loadVersion !== loadVersionRef.current) return
 
         const previous = workbookCacheRef.current.get(sourceWorkbookId)
-        if (previous) api.disposeUnit(previous.unitId)
+        if (previous) disposeCachedWorkbook(previous)
         outlineCollapsedRef.current.delete(sourceWorkbookId)
 
         performanceStage = 'creating-univer-workbook'
@@ -1042,6 +1113,55 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           lastUsed: ++cacheAccessCounterRef.current,
           estimatedBytes: estimateWorkbookCacheBytes(arrayBuffer.byteLength, workbookData),
         })
+        if (converted.staged) {
+          const stagedUnitId = newWorkbook.getId()
+          const hydrate = (async () => {
+            // Let the first staged workbook paint before the complete parse
+            // consumes the renderer thread. The complete unit remains hidden
+            // until a later tab switch promotes it into the active cache.
+            await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+            const full = await convertXlsxToWorkbookData(arrayBuffer.slice(0), fileName, conversionOptions)
+            const current = workbookCacheRef.current.get(sourceWorkbookId)
+            if (!current || current.unitId !== stagedUnitId) return
+
+            const completeWorkbook = api.createWorkbook(full.workbookData, { makeCurrent: false })
+            if (!completeWorkbook) throw new Error(t('workbook.createFailed'))
+            try {
+              await registerWorkbookImages(completeWorkbook, full.images)
+              if (full.fonts.length > 0) {
+                try { api.addFonts(full.fonts.map(font => ({ value: font, label: font }))) } catch { /* font may already exist */ }
+              }
+              try {
+                completeWorkbook.getWorkbookPermission().setReadOnly().catch(() => {})
+                completeWorkbook.getWorkbookPermission().setPermissionDialogVisible(false)
+              } catch { /* permission setup is non-fatal */ }
+
+              const latest = workbookCacheRef.current.get(sourceWorkbookId)
+              if (!latest || latest.unitId !== stagedUnitId) {
+                api.disposeUnit(completeWorkbook.getId())
+                return
+              }
+              latest.hydrated = {
+                unitId: completeWorkbook.getId(),
+                sheetTabColors: full.sheetTabColors,
+                sheetSelections: full.sheetSelections,
+                sheetDisplaySettings: full.sheetDisplaySettings,
+                diagnostics: full.diagnostics,
+                estimatedBytes: estimateWorkbookCacheBytes(arrayBuffer.byteLength, full.workbookData),
+              }
+            } catch (error) {
+              api.disposeUnit(completeWorkbook.getId())
+              throw error
+            }
+          })()
+          const cached = workbookCacheRef.current.get(sourceWorkbookId)
+          if (cached?.unitId === stagedUnitId) {
+            cached.hydration = hydrate.catch(() => {}).finally(() => {
+              const current = workbookCacheRef.current.get(sourceWorkbookId)
+              if (current?.unitId === stagedUnitId) current.hydration = undefined
+            })
+          }
+        }
         releaseExcessCachedWorkbooks(sourceWorkbookId)
         applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId, newWorkbook.getActiveSheet()?.getSheetName())
         // Univer can complete its first sheet skeleton after createWorkbook.
@@ -1119,7 +1239,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     const retained = new Set(openWorkbookIds)
     for (const [workbookId, cached] of workbookCacheRef.current) {
       if (retained.has(workbookId)) continue
-      api.disposeUnit(cached.unitId)
+      disposeCachedWorkbook(cached)
       workbookCacheRef.current.delete(workbookId)
       outlineCollapsedRef.current.delete(workbookId)
     }
@@ -1129,7 +1249,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     if (closeSignal === 0) return
     const api = univerAPIRef.current
     if (!api) return
-    for (const cached of workbookCacheRef.current.values()) api.disposeUnit(cached.unitId)
+    for (const cached of workbookCacheRef.current.values()) disposeCachedWorkbook(cached)
     workbookCacheRef.current.clear()
     outlineCollapsedRef.current.clear()
     setHasFile(false)

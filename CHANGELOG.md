@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.4 - 2026-09-10
+
+- Completed experimental staged workbook loading in the background after its
+  initial worksheet is displayed. Once ready, switching to another worksheet
+  promotes the prepared complete workbook instead of parsing another staged
+  package. Added Electron coverage for this cache promotion path.
+
 ## 1.8.3 - 2026-09-10
 
 - Updated the Wails MathType Equation Native conversion dependency to
