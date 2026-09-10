@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	mtefmathml "github.com/Maybeka/mtef-mathml"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -159,6 +160,43 @@ func (a *App) RasterizeLegacyEquationPreview(preview []byte, extension string) (
 		return nil, fmt.Errorf("legacy equation preview exceeds the 32 MB limit")
 	}
 	return rasterizeLegacyEquationPreview(preview, extension)
+}
+
+type MathTypeDiagnostic struct {
+	Severity  string `json:"severity"`
+	Offset    int    `json:"offset"`
+	Construct string `json:"construct"`
+	Message   string `json:"message"`
+}
+
+type MathTypeConversionResult struct {
+	Supported   bool                 `json:"supported"`
+	MathML      string               `json:"mathMl,omitempty"`
+	Diagnostics []MathTypeDiagnostic `json:"diagnostics,omitempty"`
+	Error       string               `json:"error,omitempty"`
+}
+
+// ConvertMathTypeOLE converts an embedded Equation Native OLE object to
+// Presentation MathML for the renderer's existing MathJax SVG path.
+func (a *App) ConvertMathTypeOLE(object []byte) MathTypeConversionResult {
+	if len(object) == 0 {
+		return MathTypeConversionResult{Error: "MathType OLE object is empty"}
+	}
+	if len(object) > 32*1024*1024 {
+		return MathTypeConversionResult{Error: "MathType OLE object exceeds the 32 MB limit"}
+	}
+	result, err := mtefmathml.ConvertOLE(object)
+	if err != nil {
+		return MathTypeConversionResult{Error: err.Error()}
+	}
+	converted := MathTypeConversionResult{Supported: result.Supported, MathML: result.MathML}
+	for _, diagnostic := range result.Diagnostics {
+		converted.Diagnostics = append(converted.Diagnostics, MathTypeDiagnostic{
+			Severity: string(diagnostic.Severity), Offset: diagnostic.Offset,
+			Construct: diagnostic.Construct, Message: diagnostic.Message,
+		})
+	}
+	return converted
 }
 
 // JsonSaveResult mirrors the Electron IPC return type.

@@ -37,6 +37,13 @@ export interface BridgeAPI {
   runProjectPython: (project: PythonProjectPackageInput, contextJson: string) => Promise<BridgeResult<PythonProjectResult>>
   exportPythonArtifacts: (projectName: string, artifacts: PythonArtifact[]) => Promise<BridgeResult<PythonArtifactExportResult>>
   rasterizeLegacyEquationPreview?: (preview: Uint8Array, extension: string) => Promise<BridgeResult<ArrayBuffer>>
+  convertMathTypeOLE?: (object: Uint8Array) => Promise<BridgeResult<MathTypeConversionResult>>
+}
+
+export interface MathTypeConversionResult {
+  supported: boolean
+  mathMl?: string
+  diagnostics?: Array<{ severity: string; offset: number; construct: string; message: string }>
 }
 
 // ── Wails bridge ────────────────────────────────────────────────────────────
@@ -63,6 +70,7 @@ export interface WailsGoAPI {
       RunProjectPython: (project: PythonProjectPackageInput, contextJson: string) => Promise<PythonProjectResult>
       ExportPythonArtifacts: (projectName: string, artifactsJson: string) => Promise<{ success: boolean; directory: string; written: number; error: string }>
       RasterizeLegacyEquationPreview: (preview: number[], extension: string) => Promise<number[]>
+      ConvertMathTypeOLE: (object: number[]) => Promise<MathTypeConversionResult>
     }
   }
 }
@@ -89,7 +97,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
     'RequestClose', 'ConfirmQuit',
     'OpenPreviewWindow', 'SetPreviewData', 'GetPreviewData', 'ClosePreviewWindow',
-    'CancelPythonRun', 'RunProjectPython', 'ExportPythonArtifacts', 'RasterizeLegacyEquationPreview',
+    'CancelPythonRun', 'RunProjectPython', 'ExportPythonArtifacts', 'RasterizeLegacyEquationPreview', 'ConvertMathTypeOLE',
   ] as const
   if (requiredMethods.some(method => typeof App[method] !== 'function')) {
     throw new Error('Wails runtime is missing a required desktop capability')
@@ -194,6 +202,9 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
         const raw = await App.RasterizeLegacyEquationPreview(Array.from(preview), extension)
         return bridgeOk(new Uint8Array(raw).buffer as ArrayBuffer)
       } catch (error) { return bridgeError(error) }
+    },
+    convertMathTypeOLE: async (object) => {
+      try { return bridgeOk(await App.ConvertMathTypeOLE(Array.from(object))) } catch (error) { return bridgeError(error) }
     },
   }
 }

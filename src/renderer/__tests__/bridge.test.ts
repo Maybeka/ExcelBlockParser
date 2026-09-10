@@ -24,6 +24,7 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
         RunProjectPython: vi.fn(async () => ({ ok: true, resultJson: '{"count":1}\n', stdout: '', stderr: '', error: '', hostError: '', durationMs: 12 })),
         ExportPythonArtifacts: vi.fn(async () => ({ success: true, directory: '/tmp/output', written: 1, error: '' })),
         RasterizeLegacyEquationPreview: vi.fn(async () => [137, 80, 78, 71]),
+        ConvertMathTypeOLE: vi.fn(async () => ({ supported: true, mathMl: '<math><mi>x</mi></math>' })),
         ...overrides,
       },
     },
@@ -66,6 +67,9 @@ describe('Wails bridge contract', () => {
     expect(await bridge.rasterizeLegacyEquationPreview!(new Uint8Array([1, 2]), 'emf')).toEqual({
       status: 'ok', value: new Uint8Array([137, 80, 78, 71]).buffer,
     })
+    expect(await bridge.convertMathTypeOLE!(new Uint8Array([4, 5]))).toEqual({
+      status: 'ok', value: { supported: true, mathMl: '<math><mi>x</mi></math>' },
+    })
 
     expect(app.OpenXlsx).toHaveBeenCalledOnce()
     expect(app.ReadFile).toHaveBeenCalledWith('/tmp/workbook.xlsx')
@@ -76,6 +80,7 @@ describe('Wails bridge contract', () => {
     expect(app.RunProjectPython).toHaveBeenCalledWith(pythonPackage, '{"data":{}}')
     expect(app.ExportPythonArtifacts).toHaveBeenCalledWith('Demo', '[{"path":"output.py","content":"pass\\n","encoding":"utf-8"}]')
     expect(app.RasterizeLegacyEquationPreview).toHaveBeenCalledWith([1, 2], 'emf')
+    expect(app.ConvertMathTypeOLE).toHaveBeenCalledWith([4, 5])
   })
 
   it('preserves cancellation values and rejects an incomplete generated binding', async () => {

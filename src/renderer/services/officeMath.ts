@@ -1,4 +1,5 @@
 import { strFromU8 } from 'fflate'
+import { convertEmfToDataUrl, convertWmfToDataUrl } from 'emf-converter'
 import type ExcelJS from 'exceljs'
 import { createXlsxZipReader, readXlsxZipCentralDirectory, readXlsxZipEntries, type XlsxZipEntry } from './xlsxZip'
 
@@ -16,6 +17,16 @@ export interface LegacyEquationRasterizer {
   (bytes: ArrayBuffer, extension: string): Promise<ArrayBuffer | null>
 }
 
+export interface MathTypeOleConversion {
+  supported: boolean
+  mathMl?: string
+  diagnostics?: Array<{ severity: string; offset: number; construct: string; message: string }>
+}
+
+export interface MathTypeOleConverter {
+  (bytes: ArrayBuffer): Promise<MathTypeOleConversion>
+}
+
 export interface OfficeMathDiagnostic {
   sheetName: string | null
   message: string
@@ -30,7 +41,8 @@ interface OfficeMathDefinition extends Omit<OfficeMathDrawing, 'source'> {
 let mathJaxDocument: Promise<MathJaxDocument> | null = null
 
 interface MathJaxDocument {
-  convert(mathMl: string, options: { display: boolean; em: number; ex: number; containerWidth: number }): HTMLElement
+  convert(mathMl: string, options: { display: boolean; em: number; ex: number; containerWidth: number }): unknown
+  serialize?: (node: unknown) => string
 }
 
 export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook, report?: OfficeMathDiagnosticReporter): Promise<OfficeMathDrawing[]> {
@@ -49,19 +61,21 @@ export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbo
 }
 
 /**
- * Extract both modern OMML equations and Equation Editor 3.0 OLE previews.
- * Legacy Equation.3 objects are not OMML. Excel stores their on-sheet preview
- * in VML and, on Windows, that preview is commonly an EMF or WMF image.
+ * Extract both modern OMML equations and legacy OLE equation previews.
+ * Equation Editor 3.0 and MathType Equation.DSMT* objects are not OMML.
+ * Excel stores their on-sheet preview in VML and, on Windows, that preview is
+ * commonly an EMF or WMF image.
  */
 export async function extractEquationDrawings(
   arrayBuffer: ArrayBuffer,
   workbook: ExcelJS.Workbook,
   rasterizeLegacyPreview?: LegacyEquationRasterizer,
   report?: OfficeMathDiagnosticReporter,
+  convertMathTypeOle?: MathTypeOleConverter,
 ): Promise<OfficeMathDrawing[]> {
   const [officeMath, legacyEquations] = await Promise.all([
     extractOfficeMathDrawings(arrayBuffer, workbook, report),
-    extractLegacyEquationDrawings(arrayBuffer, workbook, rasterizeLegacyPreview, report),
+    extractLegacyEquationDrawings(arrayBuffer, workbook, rasterizeLegacyPreview, report, convertMathTypeOle),
   ])
   return [...officeMath, ...legacyEquations]
 }
@@ -122,6 +136,7 @@ async function extractLegacyEquationDrawings(
   workbook: ExcelJS.Workbook,
   rasterizeLegacyPreview?: LegacyEquationRasterizer,
   report?: OfficeMathDiagnosticReporter,
+  convertMathTypeOle?: MathTypeOleConverter,
 ): Promise<OfficeMathDrawing[]> {
   if (typeof DOMParser === 'undefined') return []
   const bytes = new Uint8Array(arrayBuffer)
@@ -143,8 +158,15 @@ async function extractLegacyEquationDrawings(
     const worksheetPath = resolvePackagePath('xl/workbook.xml', sheetTarget)
     const worksheetDocument = parseXml(files.get(worksheetPath))
     if (!worksheetDocument) continue
-    const legacyObjects = elementsByName(worksheetDocument, 'oleObject')
-      .filter(object => isEquationEditorObject(object.getAttribute('progId')))
+    // Excel writes the same OLE object into both Choice and Fallback under
+    // mc:AlternateContent. The VML shape and relationship identify one object.
+    const legacyObjectsByKey = new Map<string, Element>()
+    for (const object of elementsByName(worksheetDocument, 'oleObject')) {
+      if (!isLegacyEquationObject(object.getAttribute('progId'))) continue
+      const key = `${object.getAttribute('shapeId')}:${getRelationshipId(object)}`
+      if (!legacyObjectsByKey.has(key)) legacyObjectsByKey.set(key, object)
+    }
+    const legacyObjects = [...legacyObjectsByKey.values()]
     if (legacyObjects.length === 0) continue
 
     const worksheetRelationships = parseRelationships(files.get(relationshipPathFor(worksheetPath)))
@@ -167,7 +189,7 @@ async function extractLegacyEquationDrawings(
       const imageData = shape ? elementsByName(shape, 'imagedata')[0] : undefined
       const imageRelationshipId = imageData ? getRelationshipId(imageData) : null
       const imageTarget = imageRelationshipId ? vmlRelationships.get(imageRelationshipId) : undefined
-      const geometry = shape ? legacyShapeGeometry(shape, worksheet) : null
+      const geometry = shape ? legacyEquationGeometry(object, shape, worksheet) : null
       if (!shape || !geometry) {
         console.warn('[Equation.3] Unable to resolve a positioned equation object.', { sheetName, shapeId: object.getAttribute('shapeId') })
         report?.({ sheetName, message: 'Equation Editor 3.0 object has an invalid drawing anchor and was not displayed.' })
@@ -184,19 +206,30 @@ async function extractLegacyEquationDrawings(
       const embeddedPreview = !vmlPreview && objectBytes ? findEmbeddedOlePreview(objectBytes) : undefined
       const previewBytes = vmlPreview ?? embeddedPreview?.bytes
       const extension = vmlPreview ? vmlExtension : embeddedPreview?.extension ?? ''
-      if (!previewBytes) {
-        console.warn('[Equation.3] No preview image was found in the VML or OLE object.', {
-          sheetName,
-          shapeId: object.getAttribute('shapeId'),
-          oleObject: objectTarget,
-        })
-        report?.({ sheetName, message: 'Equation Editor 3.0 object has no preview image and was not displayed.' })
-        continue
+      let source: string | undefined
+      let conversion: MathTypeOleConversion | undefined
+      if (objectBytes && convertMathTypeOle) {
+        try {
+          conversion = await convertMathTypeOle(toArrayBuffer(objectBytes))
+          if (conversion.supported && conversion.mathMl) {
+            source = await mathMlToSvgDataUri(conversion.mathMl, geometry.width, geometry.height)
+          }
+        } catch (error) {
+          console.warn('[MathType] Unable to convert embedded OLE equation.', { sheetName, error })
+        }
       }
-      const source = await legacyPreviewSource(previewBytes, extension, rasterizeLegacyPreview, { sheetName, extension })
+      if (!source && previewBytes) {
+        source = await legacyPreviewSource(previewBytes, extension, rasterizeLegacyPreview, {
+          sheetName,
+          extension,
+          appearance: legacyEquationAppearance(shape),
+        })
+      }
       if (!source) {
-        console.warn('[Equation.3] Preview format is not renderable in this runtime.', { sheetName, extension })
-        report?.({ sheetName, message: `Equation Editor 3.0 preview format "${extension || 'unknown'}" is unsupported and was not displayed.` })
+        const diagnostic = conversion?.diagnostics?.[0]
+        const detail = diagnostic ? `: ${diagnostic.message}` : ''
+        console.warn('[Equation.3] Preview format is not renderable in this runtime.', { sheetName, extension, diagnostic })
+        report?.({ sheetName, message: `Legacy equation could not be converted or rendered${detail}` })
         continue
       }
       drawings.push({ sheetName, source, ...geometry })
@@ -209,7 +242,7 @@ async function legacyPreviewSource(
   previewBytes: Uint8Array,
   extension: string,
   rasterizeLegacyPreview: LegacyEquationRasterizer | undefined,
-  context: { sheetName: string; extension: string },
+  context: { sheetName: string; extension: string; appearance?: LegacyEquationAppearance },
 ): Promise<string | undefined> {
   let source = imageDataUri(previewBytes, extension)
   if (!source && rasterizeLegacyPreview && ['emf', 'wmf'].includes(extension)) {
@@ -220,7 +253,129 @@ async function legacyPreviewSource(
       console.warn('[Equation.3] Unable to rasterize preview image.', { ...context, error })
     }
   }
+  // MathType's Windows preview commonly contains GDI text with its final
+  // coordinates in EMR_EXTTEXTOUTW.rclBounds. Some generic EMF renderers use
+  // only ptlReference (often 0,0), clipping every glyph at the canvas edge.
+  // Keep the platform rasterizer first when one is available: it has the
+  // original native fonts and therefore remains the highest-fidelity option.
+  if (!source && extension === 'emf') source = mathTypeTextEmfToSvgDataUri(previewBytes, context.appearance)
+  if (!source && ['emf', 'wmf'].includes(extension)) {
+    try {
+      source = extension === 'emf'
+        ? await convertEmfToDataUrl(toArrayBuffer(previewBytes), { dpiScale: 1 })
+        : await convertWmfToDataUrl(toArrayBuffer(previewBytes), { dpiScale: 1 })
+    } catch (error) {
+      console.warn('[LegacyEquation] Unable to render metafile preview in the renderer.', { ...context, error })
+    }
+  }
   return source
+}
+
+interface EmfTextFont {
+  family: string
+  italic: boolean
+  height: number
+}
+
+interface LegacyEquationAppearance {
+  hasFill: boolean
+  hasStroke: boolean
+}
+
+/**
+ * Render the text-only EMF flavour written by MathType. This is deliberately
+ * narrow: malformed records and non-text EMFs fall back to the general
+ * metafile conversion path.
+ */
+export function mathTypeTextEmfToSvgDataUri(bytes: Uint8Array, appearance?: LegacyEquationAppearance): string | undefined {
+  if (bytes.length < 108 || readUint32(bytes, 0) !== 1 || readUint32(bytes, 4) < 108) return undefined
+  const left = readInt32(bytes, 8)
+  const top = readInt32(bytes, 12)
+  const right = readInt32(bytes, 16)
+  const bottom = readInt32(bytes, 20)
+  const width = right - left
+  const height = bottom - top
+  if (![left, top, right, bottom, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return undefined
+
+  const fonts = new Map<number, EmfTextFont>()
+  const textRuns: Array<{ left: number; bottom: number; height: number; fontSize: number; family: string; italic: boolean; text: string }> = []
+  let selectedFont: EmfTextFont | undefined
+  let windowExtentY = height
+  let viewportExtentY = height
+  let offset = readUint32(bytes, 4)
+  while (offset + 8 <= bytes.length) {
+    const type = readUint32(bytes, offset)
+    const size = readUint32(bytes, offset + 4)
+    if (size < 8 || offset + size > bytes.length) return undefined
+    const data = offset + 8
+    if (type === 82 && size >= 368) {
+      const handle = readUint32(bytes, data)
+      const face = readUtf16(bytes, data + 32, 64).replace(/\0.*$/, '').trim()
+      if (face) fonts.set(handle, { family: face, italic: bytes[data + 24] !== 0, height: readInt32(bytes, data + 4) })
+    } else if (type === 37 && size >= 12) {
+      selectedFont = fonts.get(readUint32(bytes, data))
+    } else if (type === 9 && size >= 16) {
+      windowExtentY = readInt32(bytes, data + 4)
+    } else if (type === 11 && size >= 16) {
+      viewportExtentY = readInt32(bytes, data + 4)
+    } else if (type === 84 && size >= 76 && selectedFont) {
+      const runLeft = readInt32(bytes, data)
+      const runTop = readInt32(bytes, data + 4)
+      const runBottom = readInt32(bytes, data + 12)
+      const characterCount = readUint32(bytes, data + 36)
+      const stringOffset = readUint32(bytes, data + 40)
+      const stringStart = offset + stringOffset
+      const runHeight = runBottom - runTop
+      if (characterCount === 0 || stringOffset === 0 || stringStart + characterCount * 2 > offset + size || runHeight <= 0) return undefined
+      textRuns.push({
+        left: runLeft,
+        bottom: runBottom,
+        height: runHeight,
+        fontSize: Math.abs(selectedFont.height * viewportExtentY / (windowExtentY || 1)),
+        family: selectedFont.family,
+        italic: selectedFont.italic,
+        text: normalizeMathTypeSymbolText(readUtf16(bytes, stringStart, characterCount * 2), selectedFont.family),
+      })
+    }
+    if (type === 14) break
+    offset += size
+  }
+  if (textRuns.length === 0) return undefined
+
+  const content = textRuns.map(run => {
+    // Use the LOGFONT height after the EMF's active coordinate mapping. The
+    // bounds are used only as a fallback for malformed producer output.
+    const fontSize = Number.isFinite(run.fontSize) && run.fontSize > 0
+      ? Math.round(run.fontSize * 100) / 100
+      : Math.max(1, Math.round(run.height * 0.86 * 100) / 100)
+    const fontStyle = run.italic ? ' font-style="italic"' : ''
+    // GDI's bounds enclose glyphs while SVG positions text by baseline. Its
+    // default ascent otherwise puts the formula against the lower-left edge.
+    const x = Math.round((run.left + fontSize * 0.12) * 100) / 100
+    const y = Math.round((run.bottom - fontSize * 0.2) * 100) / 100
+    return `<text x="${x}" y="${y}" font-family="${escapeXml(run.family)}, serif" font-size="${fontSize}" fill="#000000"${fontStyle}>${escapeXml(run.text)}</text>`
+  }).join('')
+  const background = appearance?.hasFill ? `<rect x="${left}" y="${top}" width="${width}" height="${height}" fill="#ffffff"/>` : ''
+  const border = appearance?.hasStroke ? `<rect x="${left + 0.5}" y="${top + 0.5}" width="${width - 1}" height="${height - 1}" fill="none" stroke="#000000"/>` : ''
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${left} ${top} ${width} ${height}" width="${width}" height="${height}">${background}${border}${content}</svg>`
+  return `data:image/svg+xml;base64,${toBase64(svg)}`
+}
+
+function normalizeMathTypeSymbolText(text: string, family: string): string {
+  if (!/^symbol$/i.test(family)) return text
+  // MathType stores classic Symbol glyph codes in the private-use area. The
+  // low byte is the character code expected by the Symbol font.
+  return [...text].map(character => {
+    const codePoint = character.codePointAt(0)!
+    return codePoint >= 0xf000 && codePoint <= 0xf0ff ? String.fromCharCode(codePoint & 0xff) : character
+  }).join('')
+}
+
+function legacyEquationAppearance(shape: Element): LegacyEquationAppearance {
+  return {
+    hasFill: shape.getAttribute('filled') !== 'f',
+    hasStroke: shape.getAttribute('stroked') !== 'f',
+  }
 }
 
 interface EmbeddedOlePreview {
@@ -368,8 +523,9 @@ function validEmbeddedLength(bytes: Uint8Array, offset: number, length: number):
   return Number.isFinite(length) && length > 0 && offset + length <= bytes.length ? offset + length : bytes.length
 }
 
-function isEquationEditorObject(programId: string | null): boolean {
-  return !!programId && /(?:^|\.)Equation(?:\.3)?$/i.test(programId.trim())
+function isLegacyEquationObject(programId: string | null): boolean {
+  if (!programId) return false
+  return /^(?:Equation(?:\.3)?|Equation\.DSMT\d+)$/i.test(programId.trim())
 }
 
 function findLegacyEquationShape(document: Document, shapeId: string | null): Element | undefined {
@@ -403,6 +559,14 @@ function legacyShapeGeometry(shape: Element, worksheet: ExcelJS.Worksheet): Omit
   return size && size.width > 0 && size.height > 0 ? { from, ...size } : null
 }
 
+function legacyEquationGeometry(object: Element, shape: Element, worksheet: ExcelJS.Worksheet): Omit<OfficeMathDrawing, 'sheetName' | 'source'> | null {
+  const objectProperties = childByName(object, 'objectPr')
+  const drawingAnchor = objectProperties ? childByName(objectProperties, 'anchor') : null
+  // Newer Excel producers retain a DrawingML objectPr anchor alongside the
+  // VML preview. Prefer it because VML's legacy grid units can be inconsistent.
+  return (drawingAnchor ? anchorGeometry(drawingAnchor, worksheet) : null) ?? legacyShapeGeometry(shape, worksheet)
+}
+
 function imageDataUri(bytes: Uint8Array, extension: string): string | undefined {
   const mimeType = imageMimeType(extension)
   if (!mimeType) return undefined
@@ -428,6 +592,14 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
   }
   return btoa(binary)
+}
+
+function readInt32(bytes: Uint8Array, offset: number): number {
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getInt32(offset, true)
+}
+
+function readUtf16(bytes: Uint8Array, offset: number, byteLength: number): string {
+  return new TextDecoder('utf-16le').decode(bytes.subarray(offset, offset + byteLength))
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -701,9 +873,26 @@ function ommlElement(element: Element): string {
       return `<mfenced open="${escapeXml(opening)}" close="${escapeXml(closing)}">${child('e')}</mfenced>`
     }
     case 'func': return `<mrow>${child('fName')}<mo>⁡</mo>${child('e')}</mrow>`
-    case 'bar': return `<mover accent="true">${child('e')}<mo>¯</mo></mover>`
-    case 'groupChr': return `<mover accent="true">${child('e')}<mo>⏞</mo></mover>`
-    case 'acc': return `<mover accent="true">${child('e')}<mo>ˆ</mo></mover>`
+    case 'bar': {
+      const properties = childByName(element, 'barPr')
+      const position = childByName(properties ?? element, 'pos')?.getAttribute('m:val') ?? childByName(properties ?? element, 'pos')?.getAttribute('val') ?? 'top'
+      const operator = childByName(properties ?? element, 'chr')?.getAttribute('m:val') ?? childByName(properties ?? element, 'chr')?.getAttribute('val') ?? '¯'
+      return accentedMathMl(child('e'), operator, position, true)
+    }
+    case 'groupChr': {
+      const properties = childByName(element, 'groupChrPr')
+      const position = childByName(properties ?? element, 'pos')?.getAttribute('m:val') ?? childByName(properties ?? element, 'pos')?.getAttribute('val') ?? 'top'
+      const operator = childByName(properties ?? element, 'chr')?.getAttribute('m:val') ?? childByName(properties ?? element, 'chr')?.getAttribute('val') ?? '⏞'
+      return accentedMathMl(child('e'), operator, position, true)
+    }
+    case 'acc': {
+      const properties = childByName(element, 'accPr')
+      const operator = childByName(properties ?? element, 'chr')?.getAttribute('m:val') ?? childByName(properties ?? element, 'chr')?.getAttribute('val') ?? 'ˆ'
+      // U+20E1 is a combining left-right arrow. MathJax treats it as a fixed
+      // accent, while Office stretches it over the complete expression.
+      const renderedOperator = operator === '⃡' ? '↔' : operator
+      return accentedMathMl(child('e'), renderedOperator, 'top', operator === '⃡')
+    }
     case 'm': return `<mtable>${ommlChildren(element)}</mtable>`
     case 'mr': return `<mtr>${ommlChildren(element)}</mtr>`
     case 'e': return `<mtd>${ommlChildren(element)}</mtd>`
@@ -716,6 +905,13 @@ function mathToken(value: string): string {
   return /^[+\-*/=<>≤≥×÷∑∫√()\[\],.]$/.test(value) ? `<mo>${escaped}</mo>` : `<mi>${escaped}</mi>`
 }
 
+function accentedMathMl(base: string, operator: string, position: string, stretchy: boolean): string {
+  const accent = `<mo${stretchy ? ' stretchy="true"' : ''}>${escapeXml(operator)}</mo>`
+  return position === 'bot'
+    ? `<munder accentunder="true">${base}${accent}</munder>`
+    : `<mover accent="true">${base}${accent}</mover>`
+}
+
 function escapeXml(value: string): string {
   return value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!)
 }
@@ -726,14 +922,29 @@ async function mathMlToSvgDataUri(mathMl: string, width: number, height: number)
   }
   const mathJax = await loadMathJax()
   const container = mathJax.convert(mathMl, { display: false, em: 16, ex: 8, containerWidth: 16_384 })
-  const svg = container.querySelector('svg')
-  if (!svg) throw new Error('MathJax did not produce an SVG')
-  assertValidSvgGeometry(svg)
-  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-  svg.setAttribute('width', `${width}px`)
-  svg.setAttribute('height', `${height}px`)
-  svg.setAttribute('preserveAspectRatio', 'xMinYMid meet')
-  return `data:image/svg+xml;base64,${toBase64(svg.outerHTML)}`
+  if (isHtmlContainer(container)) {
+    const svg = container.querySelector('svg')
+    if (!svg) throw new Error('MathJax did not produce an SVG')
+    assertValidSvgGeometry(svg)
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+    svg.setAttribute('width', `${width}px`)
+    svg.setAttribute('height', `${height}px`)
+    svg.setAttribute('preserveAspectRatio', 'xMinYMid meet')
+    return `data:image/svg+xml;base64,${toBase64(svg.outerHTML)}`
+  }
+  if (!mathJax.serialize) throw new Error('MathJax did not provide an SVG container')
+  const serialized = mathJax.serialize(container)
+  const start = serialized.indexOf('<svg')
+  const end = serialized.indexOf('</svg>', start)
+  if (start < 0 || end < 0) throw new Error('MathJax did not produce an SVG')
+  const svg = serialized.slice(start, end + '</svg>'.length)
+  if (/(?:^|[^a-z])(?:nan|infinity)(?:$|[^a-z])/i.test(svg)) throw new Error('MathJax produced invalid SVG geometry')
+  const withGeometry = svg.replace('<svg', `<svg xmlns="http://www.w3.org/2000/svg" width="${width}px" height="${height}px" preserveAspectRatio="xMinYMid meet"`)
+  return `data:image/svg+xml;base64,${toBase64(withGeometry)}`
+}
+
+function isHtmlContainer(value: unknown): value is HTMLElement {
+  return !!value && typeof (value as HTMLElement).querySelector === 'function'
 }
 
 async function loadMathJax(): Promise<MathJaxDocument> {
@@ -748,12 +959,19 @@ async function loadMathJax(): Promise<MathJaxDocument> {
       import('@mathjax/src/mjs/adaptors/browserAdaptor.js'),
       import('@mathjax/src/mjs/handlers/html.js'),
       import('@mathjax/mathjax-newcm-font/mjs/svg.js'),
-    ]).then(([{ mathjax }, { MathML }, { SVG }, { browserAdaptor }, { RegisterHTMLHandler }, { MathJaxNewcmFont }]) => {
-      RegisterHTMLHandler(browserAdaptor())
-      return mathjax.document(document, {
+    ]).then(async ([{ mathjax }, { MathML }, { SVG }, { browserAdaptor }, { RegisterHTMLHandler }, { MathJaxNewcmFont }]) => {
+      const adaptor = typeof document === 'undefined'
+        ? (await import('@mathjax/src/mjs/adaptors/liteAdaptor.js')).liteAdaptor()
+        : browserAdaptor()
+      RegisterHTMLHandler(adaptor)
+      const mathDocument = mathjax.document(typeof document === 'undefined' ? '' : document, {
         InputJax: new MathML(),
         OutputJax: new SVG({ fontCache: 'none', fontData: MathJaxNewcmFont }),
-      }) as MathJaxDocument
+      })
+      return {
+        convert: mathDocument.convert.bind(mathDocument),
+        serialize: typeof document === 'undefined' ? adaptor.outerHTML.bind(adaptor) : undefined,
+      } as MathJaxDocument
     })
   }
   return mathJaxDocument

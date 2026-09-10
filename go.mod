@@ -1,8 +1,9 @@
 module excel-block-parser
 
-go 1.25.0
+go 1.26.6
 
 require (
+	github.com/Maybeka/mtef-mathml v0.1.0
 	github.com/goccy/go-python v0.1.0
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/sys v0.30.0

@@ -9,6 +9,7 @@ const root = process.cwd()
 const workbookPath = resolve(root, 'examples', 'test_data.xlsx')
 const secondWorkbookPath = resolve(root, 'examples', 'multi_sheet.xlsx')
 const officeMathWorkbookPath = resolve(root, 'tests-native', 'fixtures', 'office-math-textbox.xlsx')
+const mathTypeWorkbookPath = resolve(root, 'tests-native', 'fixtures', 'mathtype-equation-dsmt4.xlsx')
 
 function block(id: string, label: string, workbookId: string, sheet: string) {
   return {
@@ -37,6 +38,7 @@ test('opens a real workbook through the Electron host bridge', async () => {
     const settings = page.getByRole('dialog', { name: 'Project settings' })
     await settings.getByRole('button', { name: 'Add workbook source' }).click()
     await expect(page.getByRole('tab', { name: 'test_data.xlsx' })).toBeVisible()
+    await expect(settings).toContainText(workbookPath)
     await settings.getByRole('button', { name: 'Done' }).click()
     await expect(settings).toBeHidden()
     await expect(page.getByRole('button', { name: 'Filter worksheet' })).toHaveCount(0)
@@ -170,6 +172,44 @@ test('renders an Office Math drawing from a modern Excel text box', async () => 
     await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserImageState?.() ?? {})).toEqual({
       Sheet1: [expect.objectContaining({ source: expect.stringMatching(/^data:image\/svg\+xml;base64,/) })],
     })
+    await expect.poll(() => warnings).toEqual([])
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('renders a MathType EMF preview through Electron canvas support', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-mathtype-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const warnings: string[] = []
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_OPEN_PATH: mathTypeWorkbookPath,
+  })
+
+  try {
+    page.on('console', message => {
+      if (message.text().includes('[LegacyEquation]') || message.text().includes('[Equation.3]')) warnings.push(message.text())
+    })
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(async () => (window as any).electronAPI.clearRecovery())
+    await page.getByRole('button', { name: 'Project actions' }).click()
+    await page.getByRole('menuitem', { name: 'Project settings' }).click()
+    const settings = page.getByRole('dialog', { name: 'Project settings' })
+    await settings.getByRole('button', { name: 'Add workbook source' }).click()
+    await expect(page.getByRole('tab', { name: 'mathtype-equation-dsmt4.xlsx' })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserImageState?.()?.Sheet1 ?? [])).toEqual([
+      expect.objectContaining({ source: expect.stringMatching(/^data:image\/svg\+xml;base64,/) }),
+    ])
+    await settings.getByRole('button', { name: 'Done' }).click()
+    await expect(settings).toBeHidden()
+    expect(await page.evaluate(() => (window as any).__excelBlockParserScrollToCell?.('Sheet1', 12, 10))).toBe(true)
+    await page.waitForTimeout(200)
+    await page.screenshot({ path: '/tmp/mathtype-electron-preview.png' })
     await expect.poll(() => warnings).toEqual([])
   } finally {
     await closeElectronApp(app, page)
@@ -337,7 +377,7 @@ test('does not change sheets when toggling outlines from a sheet without groups'
   }
 })
 
-test('keeps a single-cell selection while switching populated worksheets', async () => {
+test('keeps a single-cell Univer selection while switching populated worksheets', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-selection-'))
   const userDataDirectory = resolve(directory, 'user-data')
   const workbookFile = resolve(directory, 'populated-sheets.xlsx')
@@ -377,22 +417,141 @@ test('keeps a single-cell selection while switching populated worksheets', async
     await expect(page.getByRole('tab', { name: 'First', exact: true })).toHaveAttribute('aria-selected', 'true')
     await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
       sheetName: 'First',
-      a1Notation: 'C4',
+      a1Notation: 'A1',
     })
 
     await page.getByRole('tab', { name: 'Second', exact: true }).click()
     await expect(page.getByRole('tab', { name: 'Second', exact: true })).toHaveAttribute('aria-selected', 'true')
     await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
       sheetName: 'Second',
-      a1Notation: 'F9',
+      a1Notation: 'A1',
     })
 
     await page.getByRole('tab', { name: 'First', exact: true }).click()
     await expect(page.getByRole('tab', { name: 'First', exact: true })).toHaveAttribute('aria-selected', 'true')
     await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
       sheetName: 'First',
-      a1Notation: 'C4',
+      a1Notation: 'A1',
     })
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('keeps a single-cell selection while restoring source-hidden rows and columns', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-hidden-selection-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const workbookFile = resolve(directory, 'hidden.xlsx')
+  const projectPath = resolve(directory, 'hidden-project.json')
+  const workbook = new ExcelJS.Workbook()
+  const sheet = workbook.addWorksheet('Hidden')
+  for (let row = 1; row <= 12; row += 1) {
+    for (let column = 1; column <= 8; column += 1) sheet.getCell(row, column).value = `${row}-${column}`
+  }
+  sheet.getRow(3).hidden = true
+  sheet.getColumn(4).hidden = true
+  sheet.getRow(6).outlineLevel = 1
+  sheet.getRow(6).hidden = true
+  sheet.getColumn(7).outlineLevel = 1
+  sheet.getColumn(7).hidden = true
+  sheet.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }]
+  await writeFile(workbookFile, Buffer.from(await workbook.xlsx.writeBuffer()))
+  await writeFile(projectPath, JSON.stringify({
+    version: 3,
+    exportedAt: '2026-09-10T00:00:00.000Z',
+    project: {
+      id: 'hidden-selection-project', name: 'Hidden selection project', activeWorkbookId: 'hidden', activeBlockId: '', activeRegionId: null,
+      focusMode: 'always-editable',
+      workbooks: [{ id: 'hidden', name: 'hidden.xlsx', sourcePath: workbookFile, activeSheetName: 'Hidden', sheetNames: ['Hidden'] }],
+      blocks: [], regions: [],
+    },
+    data: {}, blockResults: [],
+  }), 'utf8')
+
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_IMPORT_PATH: projectPath,
+  })
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByRole('button', { name: 'Open Project' }).click()
+    await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
+      sheetName: 'Hidden',
+      a1Notation: 'A1',
+    })
+  } finally {
+    await closeElectronApp(app, page)
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('keeps a single-cell selection while switching cached populated workbooks', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'excel-block-parser-workbook-selection-'))
+  const userDataDirectory = resolve(directory, 'user-data')
+  const firstPath = resolve(directory, 'first.xlsx')
+  const secondPath = resolve(directory, 'second.xlsx')
+  const projectPath = resolve(directory, 'workbook-selection-project.json')
+
+  const writeWorkbook = async (filePath: string, sheetName: string, activeCell: string) => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet(sheetName)
+    for (let row = 1; row <= 12; row += 1) {
+      for (let column = 1; column <= 8; column += 1) sheet.getCell(row, column).value = `${sheetName}-${row}-${column}`
+    }
+    sheet.views = [{ state: 'normal', activeCell }]
+    await writeFile(filePath, Buffer.from(await workbook.xlsx.writeBuffer()))
+  }
+  await writeWorkbook(firstPath, 'First', 'C4')
+  await writeWorkbook(secondPath, 'Second', 'F9')
+  await writeFile(projectPath, JSON.stringify({
+    version: 3,
+    exportedAt: '2026-09-10T00:00:00.000Z',
+    project: {
+      id: 'workbook-selection-project', name: 'Workbook selection project', activeWorkbookId: 'first', activeBlockId: '', activeRegionId: null,
+      focusMode: 'always-editable',
+      workbookLoadSettings: {
+        parseImages: true,
+        parseOfficeMath: true,
+        restoreExcelActiveCell: true,
+        performanceLogging: false,
+        experimentalStagedLoading: false,
+      },
+      workbooks: [
+        { id: 'first', name: 'first.xlsx', sourcePath: firstPath, activeSheetName: 'First', sheetNames: ['First'] },
+        { id: 'second', name: 'second.xlsx', sourcePath: secondPath, activeSheetName: 'Second', sheetNames: ['Second'] },
+      ],
+      blocks: [], regions: [],
+    },
+    data: {}, blockResults: [],
+  }), 'utf8')
+
+  const { app, page } = await launchElectronApp({
+    ELECTRON_E2E_USER_DATA_DIR: userDataDirectory,
+    ELECTRON_E2E_IMPORT_PATH: projectPath,
+  })
+
+  try {
+    await page.getByText('Excel Block Parser').waitFor()
+    await page.evaluate(() => localStorage.setItem('excel-block-parser.locale', 'en-US'))
+    await page.reload()
+    await page.getByRole('button', { name: 'Open Project' }).click()
+    const firstTab = page.getByRole('tab', { name: /first\.xlsx$/ })
+    const secondTab = page.getByRole('tab', { name: /second\.xlsx$/ })
+    await expect(firstTab).toHaveAttribute('aria-selected', 'true')
+
+    for (const [tab, sheetName, activeCell] of [[secondTab, 'Second', 'F9'], [firstTab, 'First', 'C4'], [secondTab, 'Second', 'F9']] as const) {
+      await tab.click()
+      await expect(tab).toHaveAttribute('aria-selected', 'true')
+      await expect(page.getByRole('tab', { name: sheetName, exact: true })).toHaveAttribute('aria-selected', 'true')
+      await expect.poll(() => page.evaluate(() => (window as any).__excelBlockParserSelectionState?.())).toMatchObject({
+        sheetName,
+        a1Notation: activeCell,
+      })
+    }
   } finally {
     await closeElectronApp(app, page)
     await rm(directory, { recursive: true, force: true })

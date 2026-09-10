@@ -1,8 +1,10 @@
 import ExcelJS from 'exceljs'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom'
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import { describe, expect, it, vi } from 'vitest'
-import { extractEquationDrawings, extractOfficeMathDefinitions, findEmbeddedOlePreview, packageMayContainOfficeMathDrawing } from '../services/officeMath'
+import { extractEquationDrawings, extractOfficeMathDefinitions, findEmbeddedOlePreview, mathTypeTextEmfToSvgDataUri, packageMayContainOfficeMathDrawing } from '../services/officeMath'
 
 describe('Office Math extraction', () => {
   it('typesets MathML through the direct source API without browser accessibility services', async () => {
@@ -89,6 +91,25 @@ describe('Office Math extraction', () => {
         from: { column: 1, columnOffset: 22, row: 4, rowOffset: 12.666666666666666 },
         mathMl: '<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><mi>F</mi><mo>=</mo><mi>ma</mi></mrow></math>',
       })])
+    } finally {
+      Object.assign(globalThis, { DOMParser: originalParser })
+    }
+  })
+
+  it('preserves group and accent characters from OMML instead of substituting generic accents', () => {
+    const workbook = new ExcelJS.Workbook()
+    workbook.addWorksheet('Math')
+    const originalParser = globalThis.DOMParser
+    Object.assign(globalThis, { DOMParser: XmlDomParser })
+    try {
+      const definitions = extractOfficeMathDefinitions(officeMathPackage(`
+        <m:groupChr><m:groupChrPr><m:chr m:val="⏜"/><m:pos m:val="top"/></m:groupChrPr><m:e><m:r><m:t>ABC</m:t></m:r></m:e></m:groupChr>
+        <m:acc><m:accPr><m:chr m:val="⃡"/></m:accPr><m:e><m:r><m:t>AB</m:t></m:r></m:e></m:acc>
+      `), workbook)
+
+      expect(definitions[0]?.mathMl).toContain('<mo stretchy="true">⏜</mo>')
+      expect(definitions[0]?.mathMl).toContain('<mo stretchy="true">↔</mo>')
+      expect(definitions[0]?.mathMl).not.toContain('⏞')
     } finally {
       Object.assign(globalThis, { DOMParser: originalParser })
     }
@@ -185,6 +206,83 @@ describe('Office Math extraction', () => {
     }
   })
 
+  it('prefers Wails MathType MathML conversion over an EMF preview', async () => {
+    const workbook = new ExcelJS.Workbook()
+    workbook.addWorksheet('Legacy')
+    const base = await workbook.xlsx.writeBuffer()
+    const files = zipSync({
+      ...Object.fromEntries(Object.entries(unzipSync(new Uint8Array(base as ArrayBuffer)))),
+      'xl/workbook.xml': strToU8(`<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Legacy" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+      'xl/_rels/workbook.xml.rels': strToU8(relationships('rId1', 'worksheets/sheet1.xml')),
+      'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><legacyDrawing r:id="rId2"/><oleObjects><oleObject progId="Equation.DSMT4" shapeId="1025" r:id="rId1"/></oleObjects></worksheet>`),
+      'xl/worksheets/_rels/sheet1.xml.rels': strToU8(`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>`),
+      'xl/drawings/vmlDrawing1.vml': strToU8(`<?xml version="1.0"?><xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:o="urn:schemas-microsoft-com:office:office"><v:shape id="_x0000_s1025"><v:imagedata o:relid="rId1"/><x:ClientData ObjectType="Pict"><x:Anchor>0, 0, 0, 0, 2, 0, 3, 0</x:Anchor></x:ClientData></v:shape></xml>`),
+      'xl/drawings/_rels/vmlDrawing1.vml.rels': strToU8(`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.emf"/></Relationships>`),
+      'xl/embeddings/oleObject1.bin': Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0]),
+      'xl/media/image1.emf': Uint8Array.from([1, 2, 3]),
+    })
+
+    const originalParser = globalThis.DOMParser
+    Object.assign(globalThis, { DOMParser: XmlDomParser })
+    try {
+      const rasterize = vi.fn()
+      const convert = vi.fn(async () => ({ supported: true, mathMl: '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math>' }))
+      const drawings = await extractEquationDrawings(files.buffer.slice(files.byteOffset, files.byteOffset + files.byteLength), workbook, rasterize, undefined, convert)
+      expect(convert).toHaveBeenCalledOnce()
+      expect(rasterize).not.toHaveBeenCalled()
+      expect(drawings[0]?.source).toMatch(/^data:image\/svg\+xml;base64,/)
+    } finally {
+      Object.assign(globalThis, { DOMParser: originalParser })
+    }
+  })
+
+  it('recognizes a MathType Equation.DSMT4 object and prefers its DrawingML anchor', async () => {
+    const bytes = await readFile(resolve(process.cwd(), 'tests-native/fixtures/mathtype-equation-dsmt4.xlsx'))
+    const source = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(source)
+
+    const originalParser = globalThis.DOMParser
+    Object.assign(globalThis, { DOMParser: XmlDomParser })
+    try {
+      const rasterize = vi.fn(async (_preview: ArrayBuffer, extension: string) => {
+        expect(extension).toBe('emf')
+        return Uint8Array.from([0x89, 0x50, 0x4e, 0x47]).buffer
+      })
+      const drawings = await extractEquationDrawings(source, workbook, rasterize)
+
+      expect(rasterize).toHaveBeenCalledOnce()
+      expect(drawings).toHaveLength(1)
+      expect(drawings[0]).toMatchObject({
+        sheetName: 'Sheet1', source: 'data:image/png;base64,iVBORw==',
+        from: expect.objectContaining({ column: 10, row: 12 }),
+      })
+      expect(drawings[0]!.from.columnOffset).toBeCloseTo(23.5)
+      expect(drawings[0]!.from.rowOffset).toBeCloseTo(2.5)
+      expect(drawings[0]!.width).toBeCloseTo(56)
+      expect(drawings[0]!.height).toBeCloseTo(21)
+    } finally {
+      Object.assign(globalThis, { DOMParser: originalParser })
+    }
+  })
+
+  it('renders MathType text EMF previews from their actual text bounds', async () => {
+    const bytes = await readFile(resolve(process.cwd(), 'tests-native/fixtures/mathtype-equation-dsmt4.xlsx'))
+    const media = unzipSync(bytes)['xl/media/image1.emf']
+    const source = mathTypeTextEmfToSvgDataUri(media, { hasFill: true, hasStroke: true })
+
+    expect(source).toMatch(/^data:image\/svg\+xml;base64,/)
+    const svg = new TextDecoder().decode(Uint8Array.from(atob(source!.split(',')[1]!), character => character.charCodeAt(0)))
+    expect(svg).toContain('viewBox="6 -3 154 44"')
+    expect(svg).toContain('x="10.32" y="33.8"')
+    expect(svg).toContain('font-size="36"')
+    expect(svg).toContain('>F</text>')
+    expect(svg).toContain('>ma</text>')
+    expect(svg).toContain('>=</text>')
+    expect(svg).toContain('font-style="italic"')
+    expect(svg).toContain('stroke="#000000"')
+  })
+
   it('uses a presentation cached inside the OLE object when VML has no image relationship', async () => {
     const workbook = new ExcelJS.Workbook()
     workbook.addWorksheet('Legacy')
@@ -242,6 +340,17 @@ describe('Office Math extraction', () => {
 
 function relationships(id: string, target: string): string {
   return `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="${target}"/></Relationships>`
+}
+
+function officeMathPackage(math: string): ArrayBuffer {
+  const files = zipSync({
+    'xl/workbook.xml': strToU8(`<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Math" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+    'xl/_rels/workbook.xml.rels': strToU8(relationships('rId1', 'worksheets/sheet1.xml')),
+    'xl/worksheets/sheet1.xml': strToU8(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><drawing r:id="rId1"/></worksheet>`),
+    'xl/worksheets/_rels/sheet1.xml.rels': strToU8(relationships('rId1', '../drawings/drawing1.xml')),
+    'xl/drawings/drawing1.xml': strToU8(`<?xml version="1.0"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="952500" cy="952500"/><m:oMath>${math}</m:oMath></xdr:oneCellAnchor></xdr:wsDr>`),
+  })
+  return files.buffer.slice(files.byteOffset, files.byteOffset + files.byteLength)
 }
 
 function compoundFileWithPresentation(presentation: Uint8Array): Uint8Array {

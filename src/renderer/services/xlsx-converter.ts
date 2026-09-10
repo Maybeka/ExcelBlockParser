@@ -11,7 +11,7 @@ import {
 import type { IStyleData } from '@univerjs/core'
 import ExcelJS from 'exceljs'
 import { DEFAULT_CELL_FONT, FORCE_DEFAULT_FONT } from '../config'
-import { extractEquationDrawings, stripEmbeddedImagesFromXlsx, type LegacyEquationRasterizer } from './officeMath'
+import { extractEquationDrawings, stripEmbeddedImagesFromXlsx, type LegacyEquationRasterizer, type MathTypeOleConverter } from './officeMath'
 import type { ParseDiagnostic } from '../types'
 
 type CellMatrix = Record<number, Record<number, ICellData>>
@@ -34,6 +34,7 @@ export interface WorkbookConversionOptions {
   parseImages?: boolean
   parseOfficeMath?: boolean
   rasterizeLegacyEquationPreview?: LegacyEquationRasterizer
+  convertMathTypeOLE?: MathTypeOleConverter
 }
 
 export interface WorkbookConversionMetrics {
@@ -124,7 +125,7 @@ export async function convertXlsxToWorkbookData(
         message: diagnostic.message,
         sheetName: diagnostic.sheetName,
       })
-    })
+    }, options.convertMathTypeOLE)
   const officeMathMs = performance.now() - officeMathStartedAt
 
   const sheets: Record<string, Partial<IWorksheetData>> = {}

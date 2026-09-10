@@ -958,6 +958,16 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
             if (result.status === 'error') throw new Error(result.error.message)
             return result.status === 'ok' ? result.value : null
           },
+          convertMathTypeOLE: async (object) => {
+            const convert = bridge.convertMathTypeOLE
+            if (!convert) return { supported: false }
+            const result = await convert(new Uint8Array(object))
+            if (result.status === 'error') return {
+              supported: false,
+              diagnostics: [{ severity: 'error', offset: 0, construct: 'bridge', message: result.error.message }],
+            }
+            return result.status === 'ok' ? result.value : { supported: false }
+          },
         }
         const stagedTargetSheet = requestedSheetName ?? activeSheet ?? (workbookLoadSettings.experimentalStagedLoading
           ? scanXlsxFormulaDependencies(arrayBuffer).sheetNames[0] ?? null

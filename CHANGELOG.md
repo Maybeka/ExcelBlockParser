@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.1 - 2026-09-10
+
+- Stabilized workbook switching and display modes: preserving an Excel active
+  cell is now optional and disabled by default, while temporary Univer
+  selections no longer overwrite the workbook state.
+- Completed experimental staged loading sheet navigation. Univer keeps the
+  source Sheet order and loads a selected placeholder sheet on demand.
+- Show each configured workbook's resolved source path in Project Settings,
+  including source paths relative to the project JSON file.
+- Improved formula and embedded-object rendering: preserve OMML accents,
+  render MathType text EMF previews with source bounds, and use EMF/WMF
+  conversion as a fallback where native rasterization is unavailable.
+- Wails now converts supported MathType Equation Native OLE objects with
+  `mtef-mathml` v0.1.0 and renders the resulting MathML through MathJax before
+  falling back to the cached preview image.
+
 ## 1.8.0 - 2026-09-09
 
 - Added an experimental, project-level staged workbook loading mode. It is

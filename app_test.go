@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"testing"
 )
@@ -40,6 +41,24 @@ func TestAppPreviewDataLifecycle(t *testing.T) {
 	}
 	if len(events) != 2 || events[0] != "open-preview" || events[1] != "close-preview" {
 		t.Fatalf("preview events = %#v", events)
+	}
+}
+
+func TestConvertMathTypeOLE(t *testing.T) {
+	mtef := []byte{3, 1, 1, 3, 0, 10, 1, 2, 131, 'x', 0, 0, 0}
+	payload := make([]byte, 28+len(mtef))
+	binary.LittleEndian.PutUint16(payload, 28)
+	binary.LittleEndian.PutUint32(payload[8:], uint32(len(mtef)))
+	copy(payload[28:], mtef)
+
+	converted := (&App{}).ConvertMathTypeOLE(payload)
+	if !converted.Supported || converted.MathML == "" || len(converted.Diagnostics) != 0 || converted.Error != "" {
+		t.Fatalf("valid MTEF conversion = %#v", converted)
+	}
+
+	invalid := (&App{}).ConvertMathTypeOLE([]byte{1, 2, 3})
+	if invalid.Supported || invalid.Error == "" {
+		t.Fatalf("invalid MTEF conversion = %#v", invalid)
 	}
 }
 
