@@ -192,7 +192,7 @@ the primary evidence for the stable contract described in
 5. Choose **Review change**. Verify the Before and After values identify the
    correct workbook, sheet, and A1 range. Select **Cancel**.
 6. Confirm the Block still points to its original source and that its column,
-   row-filter, tag, and downstream-property configuration is unchanged.
+   row-filter, and tag configuration is unchanged.
 7. Repeat the reset, choose **Apply range change**, and confirm that the app
    switches to and focuses the new range. Save the project and inspect the
    saved JSON.

@@ -42,7 +42,6 @@ export interface BlockConfig {
   rowFilter?: RowFilterConfig
   skipEmptyColumns?: boolean
   tags?: Tag[]
-  computedProperties?: ComputedProperty[]
 }
 
 export interface BlockParseResult {
@@ -115,7 +114,7 @@ export const DEFAULT_WORKBOOK_LOAD_SETTINGS: WorkbookLoadSettings = {
   parseOfficeMath: true,
   restoreExcelActiveCell: false,
   performanceLogging: false,
-  experimentalStagedLoading: false,
+  experimentalStagedLoading: true,
 }
 
 export interface PythonProjectFile {
@@ -255,12 +254,6 @@ export interface Tag {
   type: TagType
   key: string
   value?: string
-}
-
-export interface ComputedProperty {
-  id: string
-  label: string
-  expression: string
 }
 
 export interface RegionConfig {

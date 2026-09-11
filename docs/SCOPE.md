@@ -35,7 +35,7 @@ The implemented application supports this general workflow:
 5. Optionally configure regions that are split into blocks by keyword or blank
    row boundaries.
 6. Apply row filtering and empty-column removal.
-7. Add tags and computed-property metadata.
+7. Add tags.
 8. Run extractors and preview raw versus parsed data from the extraction panel.
 9. Save or save-as the complete project JSON through the desktop lifecycle.
 10. Reconcile existing block definitions after a workbook has changed.
@@ -92,9 +92,6 @@ The implemented application supports this general workflow:
 - Empty-column detection and removal.
 - Label and key/value tags on blocks and regions.
 - Tag utilities for adding, removing, filtering, and enumerating tags.
-- Computed properties with Python-like expression validation. They are stored
-  as template metadata for downstream code-generation workflows; v1 does not
-  execute Python expressions or add computed values to parsed JSON.
 - Parsed JSON output with block and optional region results.
 - One project-owned, self-contained multi-file Python package with a fixed
   `process(context)` entry point, explicit execution, semantic editing support,

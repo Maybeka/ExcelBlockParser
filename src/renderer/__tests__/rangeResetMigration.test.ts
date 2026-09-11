@@ -11,7 +11,6 @@ const block: BlockConfig = {
   ],
   dataSnapshot: null, headerSnapshot: [['Name', 'Amount']],
   rowFilter: { removeEmptyRows: true, emptyCellConditions: { fullyStruck: false }, condition: { type: 'rule', column: 'amount', operator: 'eq', value: 'Y' } },
-  computedProperties: [{ id: 'p', label: 'total', expression: 'amount * 2' }],
 }
 
 describe('range reset migration', () => {

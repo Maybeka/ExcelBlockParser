@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.0 - 2026-09-12
+
+- Enabled staged workbook loading by default for new projects and projects that
+  have not saved this setting.
+- Removed computed-property template metadata from Block configuration, Project
+  v3, and validation. Existing project files still open; the field is dropped on
+  load and is not written back.
+- Updated the Wails MathType Equation Native conversion dependency to
+  `mtef-mathml` v0.2.0. Integrals, fences, boxes, scripts, and n-ary operators
+  now keep reviewed MathML structure instead of collapsing to simpler fallbacks.
+
 ## 1.8.4 - 2026-09-10
 
 - Completed experimental staged workbook loading in the background after its

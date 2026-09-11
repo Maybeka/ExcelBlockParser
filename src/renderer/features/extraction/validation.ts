@@ -1,5 +1,4 @@
 import type { BlockConfig, RowFilterCondition } from '../../types'
-import { validateExpression } from '../../services/pythonValidator'
 import { MAX_ROW_FILTER_DEPTH } from '../../services/rowFilter'
 
 export function isValidVariableName(name: string): boolean {
@@ -30,17 +29,6 @@ export function validateBlocks(blocks: BlockConfig[]): string[] {
       if (block.range && (column.colIndex < block.range.startCol || column.colIndex > block.range.endCol)) {
         errors.push(`Column "${key}" is outside block "${block.label || 'block'}" source range.`)
       }
-    }
-    for (const property of block.computedProperties ?? []) {
-      const label = property.label.trim()
-      const expressionKeys = [...keys.keys()]
-      if (!label) errors.push(`Block "${block.label || 'block'}" has an unnamed downstream property.`)
-      else {
-        keys.set(label, (keys.get(label) ?? 0) + 1)
-        if (!isValidVariableName(label)) errors.push(`Invalid downstream property in "${block.label || 'block'}": "${property.label}"`)
-      }
-      const validation = validateExpression(property.expression, expressionKeys)
-      validation.errors.forEach(error => errors.push(`Invalid downstream property "${label || property.id}" in "${block.label || 'block'}": ${error}`))
     }
     keys.forEach((count, key) => { if (count > 1) errors.push(`Duplicate output key in "${block.label || 'block'}": "${key}"`) })
     const availableKeys = new Set(block.columns.filter(column => !column.skip).map(column => column.key || column.suggestedKey))

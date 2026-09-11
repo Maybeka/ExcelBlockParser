@@ -1,6 +1,25 @@
 import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, DEFAULT_WORKBOOK_LOAD_SETTINGS, type ExportedProject, type ParseResult, type ProjectConfig, type RegionParseResult } from '../types'
 import { isRecord, validateProjectV3Document } from './projectV3Validation'
 
+function omitComputedPropertiesField(block: unknown): unknown {
+  if (!isRecord(block) || !Object.prototype.hasOwnProperty.call(block, 'computedProperties')) return block
+  const { computedProperties: _retired, ...rest } = block
+  return rest
+}
+
+function omitRetiredComputedProperties(project: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...project,
+    blocks: Array.isArray(project.blocks) ? project.blocks.map(omitComputedPropertiesField) : project.blocks,
+    regions: Array.isArray(project.regions)
+      ? project.regions.map(region => {
+          if (!isRecord(region) || !Array.isArray(region.blocks)) return region
+          return { ...region, blocks: region.blocks.map(omitComputedPropertiesField) }
+        })
+      : project.regions,
+  }
+}
+
 export const CURRENT_PROJECT_VERSION = 3 as const
 
 function stableStringify(value: unknown): string {
@@ -33,14 +52,14 @@ export function serializeProject(project: ProjectConfig, parseResult: ParseResul
   return {
     version: CURRENT_PROJECT_VERSION,
     exportedAt: new Date().toISOString(),
-    project: {
+    project: omitRetiredComputedProperties({
       ...project,
       ...(project.workbookLoadSettings ? { workbookLoadSettings: { ...DEFAULT_WORKBOOK_LOAD_SETTINGS, ...project.workbookLoadSettings } } : {}),
       workbooks: project.workbooks.map(workbook => ({
         ...workbook,
         displaySettings: { ...DEFAULT_WORKBOOK_DISPLAY_SETTINGS, ...workbook.displaySettings },
       })),
-    },
+    }) as ProjectConfig,
     data: parseResult?.data || {},
     blockResults: parseResult?.blocks || [],
     ...(parseResult?.regionResults?.length ? { regionResults: parseResult.regionResults } : {}),
@@ -54,9 +73,12 @@ export function canonicalProjectJson(project: ExportedProject): string {
 }
 
 export function loadProject(value: unknown): ProjectLoadResult {
-  const errors = validateProjectV3Document(value)
-  if (errors.length || !isRecord(value) || !isRecord(value.project)) return { errors }
-  const loadedProject = structuredClone(value.project) as ProjectConfig
+  const document = isRecord(value) && isRecord(value.project)
+    ? { ...value, project: omitRetiredComputedProperties(value.project) }
+    : value
+  const errors = validateProjectV3Document(document)
+  if (errors.length || !isRecord(document) || !isRecord(document.project)) return { errors }
+  const loadedProject = structuredClone(document.project) as ProjectConfig
   const project: ProjectConfig = {
     ...loadedProject,
     workbooks: loadedProject.workbooks.map(workbook => ({

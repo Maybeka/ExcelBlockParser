@@ -82,14 +82,5 @@ function referencedKeys(block: BlockConfig): string[] {
     condition.conditions.forEach(visit)
   }
   visit(block.rowFilter?.condition)
-  for (const property of block.computedProperties || []) {
-    for (const key of block.columns.map(column => column.key || column.suggestedKey)) {
-      if (new RegExp(`\\b${escapeRegExp(key)}\\b`).test(property.expression)) result.add(key)
-    }
-  }
   return [...result]
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

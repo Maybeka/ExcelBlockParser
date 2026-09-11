@@ -1,10 +1,9 @@
 /**
- * Smoke tests for regions + features (tags, computed properties).
+ * Smoke tests for regions + features (tags).
  *
  * Region controls are integrated through ConfigPanel after a region is added.
  *
- * Tag management and computed-property validation ARE wired in
- * ConfigPanel.tsx and have real tests below.
+ * Tag management is wired in ConfigPanel.tsx and has real tests below.
  *
  * Run: npx playwright test tests/regions-features.spec.ts
  */
@@ -205,90 +204,6 @@ test.describe('Tag Management', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Downstream Properties
-// ---------------------------------------------------------------------------
-test.describe('Downstream Properties', () => {
-  test.beforeEach(async ({ page }) => {
-    await loadWorkbookFixture(page)
-  })
-
-  const addProperty = (page: import('@playwright/test').Page) => page
-    .getByText('Downstream Properties', { exact: true })
-    .locator('..')
-    .getByRole('button', { name: 'plus Add' })
-
-  test('Expand computed properties section and add a property', async ({ page }) => {
-    // The downstream metadata heading acts as a toggle.
-    await page.locator('text=Downstream Properties').click()
-
-    // The "Add" button should appear inside the expanded section.
-    // (The main "Add" button at the top is for blocks; we want the one scoped
-    //  to computed properties.)
-    const addButton = addProperty(page)
-    // After expanding CP there should be at least one "Add" button visible.
-    await expect(addButton.first()).toBeVisible()
-  })
-
-  test('Valid expression shows green check', async ({ page }) => {
-    await page.locator('text=Downstream Properties').click()
-
-    // Click "Add" to insert a new computed-property row.
-    // Count "Add" buttons first so we click the right one.
-    await addProperty(page).click()
-
-    const exprInput = page.getByPlaceholder('field_a * field_b')
-    await exprInput.fill('1 + 1')
-
-    // A "✓ Valid" message appears in green (#52c41a).
-    // <div style="font-size: 10px; color: #52c41a;">✓ Valid</div>
-    await expect(page.locator('text=✓ Valid')).toBeVisible()
-  })
-
-  test('Invalid expression shows error', async ({ page }) => {
-    await page.locator('text=Downstream Properties').click()
-
-    // Add a new computed property.
-    await addProperty(page).click()
-
-    // Fill with an expression referencing an unknown key.
-    const exprInput = page.getByPlaceholder('field_a * field_b')
-    await exprInput.fill("row['nonexistent_column']")
-
-    // An error message should appear in red (#ff4d4f).
-    // <div style="font-size: 10px; color: #ff4d4f;">Unknown key: 'nonexistent_column'</div>
-    await expect(page.locator('text=Unknown key')).toBeVisible()
-  })
-
-  test('Invalid syntax shows error', async ({ page }) => {
-    await page.locator('text=Downstream Properties').click()
-
-    await addProperty(page).click()
-
-    // Syntax error: unbalanced parentheses.
-    const exprInput = page.getByPlaceholder('field_a * field_b')
-    await exprInput.fill('(1 + 1')
-
-    // Should show a syntax error.
-    await expect(page.locator('text=Syntax error')).toBeVisible()
-  })
-
-  test('Delete computed property removes the row', async ({ page }) => {
-    await page.locator('text=Downstream Properties').click()
-
-    // Add one property.
-    await addProperty(page).click()
-
-    const propertyRow = page.getByPlaceholder('field_a * field_b').locator('xpath=../..')
-    await propertyRow.getByRole('button').click()
-
-    // The CP row should be gone.  Count rows or check no "Add" re-appeared.
-    // Because there were no CPs initially, after adding and deleting one we
-    // should be back to the "No computed properties" placeholder.
-    await expect(page.locator('text=No computed properties')).toBeVisible()
-  })
-})
-
 test.describe('Block range reset', () => {
   test('shows the existing source, requires review, and supports cancellation', async ({ page }) => {
     await loadWorkbookFixture(page)
@@ -298,7 +213,7 @@ test.describe('Block range reset', () => {
     await expect(page.getByText('test_data.xlsx · Sheet1 · A1:D9')).toBeVisible()
     await page.getByRole('button', { name: 'Review change' }).click()
     await expect(page.getByText('Review range change')).toBeVisible()
-    await expect(page.getByText('Compatible column, filter, tag, and property configuration is retained.')).toBeVisible()
+    await expect(page.getByText('Compatible column, filter, and tag configuration is retained.')).toBeVisible()
     await page.locator('.block-range-reset-flow').getByRole('button', { name: 'Cancel', exact: true }).click()
     await expect(page.getByText('Current source')).toHaveCount(0)
   })

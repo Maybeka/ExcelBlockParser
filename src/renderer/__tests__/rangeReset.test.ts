@@ -9,7 +9,6 @@ const block: BlockConfig = {
   columns: [{ colIndex: 0, colLetter: 'A', suggestedKey: 'name', key: 'name', type: 'string', skip: false, valueMap: [] }],
   dataSnapshot: [['Name'], ['Ada']], tags: [{ type: 'label', key: 'customer' }],
   rowFilter: { removeEmptyRows: true, emptyCellConditions: { fullyStruck: true }, condition: null },
-  computedProperties: [{ id: 'p', label: 'display', expression: 'name' }],
 }
 
 describe('block range reset', () => {
@@ -24,7 +23,6 @@ describe('block range reset', () => {
     expect(updated.headerRows).toEqual(block.headerRows)
     expect(updated.rowFilter).toEqual(block.rowFilter)
     expect(updated.tags).toEqual(block.tags)
-    expect(updated.computedProperties).toEqual(block.computedProperties)
     expect(updated.dataSnapshot).toEqual(block.dataSnapshot)
   })
 

@@ -82,7 +82,6 @@ export function ConfigPanel({
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
   const [reconcilingBlockId, setReconcilingBlockId] = useState<string | null>(null)
   const [expandedRowFilters, setExpandedRowFilters] = useState<Set<string>>(new Set())
-  const [expandedComputedProperties, setExpandedComputedProperties] = useState<Set<string>>(new Set())
   const [visibleTags, setVisibleTags] = useState<Set<string>>(new Set())
   const [addingTagForBlock, setAddingTagForBlock] = useState<string | null>(null)
   const [newTagInput, setNewTagInput] = useState('')
@@ -219,7 +218,6 @@ export function ConfigPanel({
               reconciling={reconcilingBlockId === block.id}
               duplicateLabel={duplicateLabels.has(block.label?.trim() || '')}
               rowFilterExpanded={expandedRowFilters.has(block.id)}
-              computedPropertiesExpanded={expandedComputedProperties.has(block.id)}
               infoVisible={visibleTags.has(block.id)}
               addingTag={addingTagForBlock === block.id}
               newTagInput={newTagInput}
@@ -232,7 +230,6 @@ export function ConfigPanel({
               onDelete={label => setDeleteTarget({ id: block.id, label })}
               onColumnFocus={onColumnFocus}
               onToggleRowFilter={() => setExpandedRowFilters(current => toggleSetValue(current, block.id))}
-              onToggleComputedProperties={() => setExpandedComputedProperties(current => toggleSetValue(current, block.id))}
               onToggleInfo={() => setVisibleTags(current => toggleSetValue(current, block.id))}
               onStartAddingTag={() => setAddingTagForBlock(block.id)}
               onNewTagInputChange={setNewTagInput}

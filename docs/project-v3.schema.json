@@ -129,16 +129,6 @@
       },
       "additionalProperties": false
     },
-    "computedProperty": {
-      "type": "object",
-      "required": ["id", "label", "expression"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "label": { "type": "string" },
-        "expression": { "type": "string" }
-      },
-      "additionalProperties": false
-    },
     "block": {
       "type": "object",
       "required": ["id", "label", "range", "activeSheet", "headerRows", "collapsed", "selectionLocked", "columns", "dataSnapshot"],
@@ -166,8 +156,7 @@
         },
         "rowFilter": { "$ref": "#/$defs/rowFilter" },
         "skipEmptyColumns": { "type": "boolean" },
-        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } },
-        "computedProperties": { "type": "array", "items": { "$ref": "#/$defs/computedProperty" } }
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag" } }
       },
       "additionalProperties": false
     },

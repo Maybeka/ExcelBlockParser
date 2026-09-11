@@ -7,7 +7,7 @@ type RecordValue = Record<string, unknown>
 const blockKeys = new Set([
   'id', 'label', 'workbookId', 'range', 'activeSheet', 'headerRows', 'collapsed',
   'selectionLocked', 'columns', 'dataSnapshot', 'headerSnapshot', 'rowFilter',
-  'skipEmptyColumns', 'tags', 'computedProperties',
+  'skipEmptyColumns', 'tags',
 ])
 const columnKeys = new Set(['colIndex', 'colLetter', 'suggestedKey', 'key', 'type', 'skip', 'valueMap', 'valueMapFallbackType'])
 const columnTypes = new Set(['auto', 'string', 'integer', 'float', 'boolean', 'date', 'valueMapping'])
@@ -121,9 +121,6 @@ export function validateProjectBlock(value: unknown, index: number, nested = fal
   if (value.rowFilter !== undefined && !validateRowFilter(value.rowFilter)) return invalidBlock(value, index, nested, 'field "rowFilter" does not match the current filter format.')
   if (value.skipEmptyColumns !== undefined && typeof value.skipEmptyColumns !== 'boolean') return invalidBlock(value, index, nested, 'field "skipEmptyColumns" must be a boolean.')
   if (value.tags !== undefined && (!Array.isArray(value.tags) || !value.tags.every(validateTag))) return invalidBlock(value, index, nested, 'field "tags" contains an invalid tag.')
-  if (value.computedProperties !== undefined && (!Array.isArray(value.computedProperties) || value.computedProperties.some(item => !isRecord(item)
-    || Boolean(unknownKey(item, new Set(['id', 'label', 'expression'])))
-    || typeof item.id !== 'string' || !item.id || typeof item.label !== 'string' || typeof item.expression !== 'string'))) return invalidBlock(value, index, nested, 'field "computedProperties" contains an invalid property.')
   return null
 }
 

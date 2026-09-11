@@ -55,35 +55,6 @@ describe('Tag', () => {
   })
 })
 
-describe('ComputedProperty', () => {
-  it('creates computed property', () => {
-    const prop: import('../types').ComputedProperty = {
-      id: 'cp1',
-      label: 'Total',
-      expression: "row['amount'] * row['price']",
-    }
-    expect(prop.id).toBe('cp1')
-    expect(prop.expression).toContain('amount')
-  })
-})
-
-describe('RegionConfig', () => {
-  it('creates region with blocks', () => {
-    const region: import('../types').RegionConfig = {
-      id: 'r1',
-      label: 'Region 1',
-      range: null,
-      activeSheet: null,
-      splitRules: [],
-      blocks: [],
-      collapsed: false,
-      selectionLocked: false,
-    }
-    expect(region.id).toBe('r1')
-    expect(region.blocks).toEqual([])
-  })
-})
-
 describe('BlockConfig extensions', () => {
   it('creates BlockConfig with optional region fields', () => {
     const config: import('../types').BlockConfig = {
@@ -103,11 +74,27 @@ describe('BlockConfig extensions', () => {
       },
       skipEmptyColumns: true,
       tags: [{ type: 'label' as const, key: 'invoice' }],
-      computedProperties: [{ id: 'cp1', label: 'Total', expression: 'sum' }],
     }
     expect(config.skipEmptyColumns).toBe(true)
     expect(config.tags).toHaveLength(1)
     expect(config.rowFilter!.condition).toMatchObject({ operator: 'empty' })
+  })
+})
+
+describe('RegionConfig', () => {
+  it('creates region with blocks', () => {
+    const region: import('../types').RegionConfig = {
+      id: 'r1',
+      label: 'Region 1',
+      range: null,
+      activeSheet: null,
+      splitRules: [],
+      blocks: [],
+      collapsed: false,
+      selectionLocked: false,
+    }
+    expect(region.id).toBe('r1')
+    expect(region.blocks).toEqual([])
   })
 })
 

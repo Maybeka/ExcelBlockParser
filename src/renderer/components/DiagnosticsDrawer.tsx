@@ -56,8 +56,6 @@ function validationTarget(error: string): { kind: ValidationItemKind; name: stri
     ?? /^Block "(.+)" /.exec(error)
     ?? /^Invalid key in "(.+)":/.exec(error)
     ?? /^Column ".+" is outside block "(.+)" source range\.$/.exec(error)
-    ?? /^Invalid downstream property in "(.+)":/.exec(error)
-    ?? /^Invalid downstream property ".+" in "(.+)":/.exec(error)
     ?? /^Duplicate output key in "(.+)":/.exec(error)
   if (block) return { kind: 'block', name: block[1] }
 
@@ -97,12 +95,6 @@ function validationMessage(error: string, t: (key: string, values?: Record<strin
   if (invalidKey) return t('diagnostics.validation.invalidKey', { block: invalidKey[1], key: invalidKey[2] })
   const columnOutsideRange = /^Column "(.+)" is outside block "(.+)" source range\.$/.exec(error)
   if (columnOutsideRange) return t('diagnostics.validation.columnOutsideRange', { key: columnOutsideRange[1], block: columnOutsideRange[2] })
-  const unnamedProperty = /^Block "(.+)" has an unnamed downstream property\.$/.exec(error)
-  if (unnamedProperty) return t('diagnostics.validation.unnamedProperty', { block: unnamedProperty[1] })
-  const invalidProperty = /^Invalid downstream property in "(.+)": "(.+)"$/.exec(error)
-  if (invalidProperty) return t('diagnostics.validation.invalidProperty', { block: invalidProperty[1], property: invalidProperty[2] })
-  const invalidPropertyExpression = /^Invalid downstream property "(.+)" in "(.+)": (.+)$/.exec(error)
-  if (invalidPropertyExpression) return t('diagnostics.validation.invalidPropertyExpression', { property: invalidPropertyExpression[1], block: invalidPropertyExpression[2], reason: localizeExpressionReason(invalidPropertyExpression[3], t) })
   const duplicateOutputKey = /^Duplicate output key in "(.+)": "(.+)"$/.exec(error)
   if (duplicateOutputKey) return t('diagnostics.validation.duplicateOutputKey', { block: duplicateOutputKey[1], key: duplicateOutputKey[2] })
   const filterDepth = /^Block "(.+)" row filter (.+) exceeds the maximum nesting depth of (\d+)\.$/.exec(error)
@@ -122,8 +114,4 @@ function validationMessage(error: string, t: (key: string, values?: Record<strin
   const invalidGap = /^Region "(.+)" rule (\d+) requires a positive integer minimum gap\.$/.exec(error)
   if (invalidGap) return t('diagnostics.validation.regionGap', { region: invalidGap[1], rule: invalidGap[2] })
   return error
-}
-
-function localizeExpressionReason(reason: string, t: (key: string, values?: Record<string, string | number>) => string): string {
-  return reason === 'invalid Python syntax' ? t('diagnostics.validation.invalidPythonSyntax') : reason
 }

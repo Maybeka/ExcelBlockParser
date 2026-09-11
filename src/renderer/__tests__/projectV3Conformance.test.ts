@@ -102,4 +102,18 @@ describe('Project v3 strict conformance', () => {
     expect(loadProject(completeFixture).errors).toEqual([])
   })
 
+  it('drops retired computedProperties on load without mutating the input document', () => {
+    const input = clone(completeFixture) as unknown as Record<string, any>
+    input.project.blocks[0].computedProperties = [{ id: 'computed-1', label: 'total', expression: 'amount * 2' }]
+    input.project.regions[0].blocks[0].computedProperties = [{ id: 'nested-computed', label: 'unused', expression: '1' }]
+    const original = clone(input)
+    const loaded = loadProject(input)
+    expect(loaded.errors).toEqual([])
+    expect(input).toEqual(original)
+    expect(loaded.project?.project.blocks[0]).not.toHaveProperty('computedProperties')
+    expect(loaded.project?.project.regions[0].blocks[0]).not.toHaveProperty('computedProperties')
+    const encoded = serializeProject(loaded.project!.project, loaded.project!.parseResult)
+    expect(JSON.stringify(encoded)).not.toContain('computedProperties')
+  })
+
 })

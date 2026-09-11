@@ -45,7 +45,7 @@ describe('project workspace', () => {
       parseOfficeMath: true,
       restoreExcelActiveCell: false,
       performanceLogging: false,
-      experimentalStagedLoading: false,
+      experimentalStagedLoading: true,
     })
     expect(serializeProject(project, null).project.workbookLoadSettings).toEqual(project.workbookLoadSettings)
   })
@@ -120,19 +120,16 @@ describe('project workspace', () => {
     expect(validateBlocks([block('first', 'sales'), block('second', 'sales')]).join(' ')).toContain('Duplicate block name')
   })
 
-  it('validates row filters and downstream output metadata before save or run', () => {
+  it('validates row filters before save or run', () => {
     const configured = block('configured', 'sales')
     configured.rowFilter = {
       removeEmptyRows: true,
       emptyCellConditions: { fullyStruck: true },
       condition: { type: 'rule', column: 'missing', operator: 'regex', value: '[' },
     }
-    configured.computedProperties = [{ id: 'computed', label: 'name', expression: "row['missing']" }]
     const errors = validateBlocks([configured]).join(' ')
     expect(errors).toContain('references unavailable column "missing"')
     expect(errors).toContain('invalid regular expression')
-    expect(errors).toContain('Duplicate output key')
-    expect(errors).toContain("Unknown key: 'missing'")
   })
 
   it('keeps other workbooks when deleting the last block of one workbook', () => {

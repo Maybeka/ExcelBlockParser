@@ -8,9 +8,8 @@ import { isValidVariableName } from '../../features/extraction/validation'
 import { countRowFilterRules, RowFilterEditor } from '../RowFilterEditor'
 import { HeaderRowsEditor } from './HeaderRowsEditor'
 import { ResetBlockRangeFlow } from './ResetBlockRangeFlow'
-import type { BlockRangeReset, BlockRangeSource } from '../../features/extraction/rangeReset'
+import type { BlockRangeReset } from '../../features/extraction/rangeReset'
 import { ColumnEditor } from './ColumnEditor'
-import { DownstreamPropertiesEditor } from './DownstreamPropertiesEditor'
 import type { ColumnConfigurationController } from './useColumnConfiguration'
 import { useI18n } from '../../i18n'
 
@@ -24,7 +23,6 @@ export interface BlockInspectorProps {
   reconciling: boolean
   duplicateLabel: boolean
   rowFilterExpanded: boolean
-  computedPropertiesExpanded: boolean
   infoVisible: boolean
   addingTag: boolean
   newTagInput: string
@@ -37,7 +35,6 @@ export interface BlockInspectorProps {
   onDelete: (label: string) => void
   onColumnFocus: (colIndex: number | null) => void
   onToggleRowFilter: () => void
-  onToggleComputedProperties: () => void
   onToggleInfo: () => void
   onStartAddingTag: () => void
   onNewTagInputChange: (value: string) => void
@@ -58,9 +55,9 @@ export function BlockInspector(props: BlockInspectorProps) {
   const { t } = useI18n()
   const {
     block, blockIndex, active, activeColIndex, controlsLocked, otherBlockReconciling, reconciling,
-    duplicateLabel, rowFilterExpanded, computedPropertiesExpanded,
+    duplicateLabel, rowFilterExpanded,
     infoVisible, addingTag, newTagInput, spreadsheet, columnController, onActivate, onChange, onDelete,
-    onColumnFocus, onToggleRowFilter, onToggleComputedProperties, onToggleInfo, onStartAddingTag,
+    onColumnFocus, onToggleRowFilter, onToggleInfo, onStartAddingTag,
     onNewTagInputChange, onCancelAddingTag, onStartRangeReset, onEndRangeReset, onApplyRangeReset, onActivateWorkbook,
     onReconcilingChange, onReselectRange, onPreviewSheet, onFocusRange, setContainerRef, setInputRef, workbooks, loadedWorkbookId,
   } = props
@@ -74,10 +71,6 @@ export function BlockInspector(props: BlockInspectorProps) {
   block.columns.filter(column => !column.skip).forEach(column => {
     const key = column.key || column.suggestedKey
     keyCounts.set(key, (keyCounts.get(key) || 0) + 1)
-  })
-  ;(block.computedProperties || []).forEach(property => {
-    const key = property.label?.trim()
-    if (key) keyCounts.set(key, (keyCounts.get(key) || 0) + 1)
   })
   keyCounts.forEach((count, key) => { if (count > 1) duplicateKeys.add(key) })
 
@@ -194,7 +187,6 @@ export function BlockInspector(props: BlockInspectorProps) {
                 </div>
                 {rowFilterExpanded && <RowFilterEditor config={block.rowFilter} columnKeys={block.columns.filter(column => !column.skip).map(column => column.key || column.suggestedKey)} onChange={rowFilter => onChange({ rowFilter })} />}
               </div>
-              <DownstreamPropertiesEditor block={block} expanded={computedPropertiesExpanded} duplicateKeys={duplicateKeys} onToggle={onToggleComputedProperties} onChange={onChange} />
             </>
           )}
         </div>

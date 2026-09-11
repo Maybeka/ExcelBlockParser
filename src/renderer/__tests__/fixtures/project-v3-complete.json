@@ -64,8 +64,7 @@
           "condition": { "type": "rule", "column": "status", "operator": "eq", "value": "ignored" }
         },
         "skipEmptyColumns": true,
-        "tags": [{ "type": "label", "key": "primary" }, { "type": "kv", "key": "owner", "value": "finance" }],
-        "computedProperties": [{ "id": "computed-1", "label": "total", "expression": "amount * 2" }]
+        "tags": [{ "type": "label", "key": "primary" }, { "type": "kv", "key": "owner", "value": "finance" }]
       },
       {
         "id": "costs-block",
