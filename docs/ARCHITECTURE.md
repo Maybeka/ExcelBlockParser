@@ -47,12 +47,12 @@ changed source workbook.
 
 ## Feature Architecture Direction
 
-The production architecture uses compile-time built-in modules and a
-host-neutral desktop bridge, with Wails as the production adapter. Phase A core
-boundaries and Gate B evidence are complete; Phase B operationalizes the admitted
-module contract while runtime plugins remain deferred.
+The production architecture uses a host-neutral desktop bridge, with Wails as
+the production adapter. The historical compile-time feature-module work and
+Gate B evidence are recorded in `FEATURE_MODULE_ARCHITECTURE.md`.
 
-Post-v1 scenario growth will first use compile-time built-in feature modules,
-not dynamically installed plugins. The exact boundaries, adoption gates, exit
-standards, and current readiness assessment are defined in
-`FEATURE_MODULE_ARCHITECTURE.md`.
+As of `v1.9.0`, the application-owned feature set is frozen at Block, Region,
+and project Python workflows. New scenario modules are not planned. A modular
+extension interface will be considered only when a concrete new scenario proves
+that these workflows are insufficient; its contract must be designed around
+that scenario rather than introduced speculatively.

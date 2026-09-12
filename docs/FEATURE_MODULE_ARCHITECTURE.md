@@ -1,14 +1,19 @@
 # Feature Module Architecture and Adoption Gates
 
-**Status:** Gate B admitted; Phase B implementation complete
-**Applies to:** Post-v1 scenario growth
-**Last assessed:** 2026-08-10 after Phase B strict-exit verification
+**Status:** Historical Gate B record; superseded for future roadmap decisions by the v1.9.0 frozen baseline
+**Applies to:** Historical Phase B implementation and evidence
+**Last assessed:** 2026-09-12
 
 ## 1. Decision
 
-Excel Block Parser will first adopt a compile-time built-in feature-module
-architecture. It will not start with dynamically installed or third-party
-plugins.
+This document records the compile-time built-in feature-module architecture
+admitted for Phase B. It is retained as implementation and verification history,
+not as the current scenario-growth roadmap.
+
+As of `v1.9.0`, Block, Region, and project Python are frozen as the complete
+application-owned feature set. A modular extension interface is deferred until
+a concrete new scenario establishes a need and can define its data, lifecycle,
+persistence, diagnostics, navigation, and right-panel requirements.
 
 Each supported scenario still has dedicated implementation code. The module
 architecture standardizes how that code uses workbook capabilities, persists
@@ -337,9 +342,10 @@ Project v1/v2 compatibility.
 | Failure and cancellation | Contract tests isolate execution/save failures, lifecycle cleanup, panel render failures, and late async cancellation. |
 | Verification | Type check; 206 renderer tests; 3 main tests; 33 browser tests with 4 expected Electron-only skips; 18 Electron E2E tests; Go tests; 7 release-script tests; production build. |
 
-## 11. Approved Next Work
+## 11. Successor Strategy
 
-Do not start runtime plugins. Phase B is complete. Continue feature refinement,
-Project v3 regression coverage, and Windows 11 release preparation. External
-Structured Result Review remains development-only until a separate product and
-persistence decision promotes it; Gate C remains closed.
+Do not add more built-in scenario modules. Maintain the frozen Block, Region,
+and project Python product for verified defects, performance, compatibility,
+and necessary usability improvements. When a concrete new scenario is ready,
+use it to define the smallest trusted-extension contract; no marketplace,
+sandbox, or untrusted-plugin model is required.

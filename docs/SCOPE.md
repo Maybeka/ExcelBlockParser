@@ -1,9 +1,9 @@
 # Excel Block Parser: Product and Repository Scope
 
-**Status:** active maintenance and feature refinement
+**Status:** v1.9.0 frozen baseline; maintenance pending a concrete extension need
 **Production runtime target:** Wails, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
-**Last assessed:** 2026-08-16
+**Last assessed:** 2026-09-12
 
 ## 1. Product Intent
 
@@ -183,10 +183,12 @@ objects or React state. It returns JSON by value. An optional top-level
 output directory or direct host filesystem access. The Wails host validates,
 previews, confirms conflicts, and writes those files.
 
-Finite application-owned scenarios will first be implemented as compile-time
-built-in feature modules. A runtime plugin system is not justified by scenario
-count alone and remains gated on independent distribution, external ownership,
-and an approved trust model. See `FEATURE_MODULE_ARCHITECTURE.md`.
+The application-owned feature set is frozen at Block extraction, Region
+extraction, and the project Python workflow. No additional built-in scenario
+modules are planned. A modular extension interface will be designed only when
+a concrete new scenario has established its lifecycle, data contract, and panel
+requirements. Extensions are intended for trusted organizational distribution;
+a marketplace and untrusted-code sandbox are not goals.
 
 The current design intentionally has no generator workspace, per-Block/Region
 entry points, pip management, or independently packaged generator manifests.
@@ -203,11 +205,12 @@ runtime boundary only as validated result data. Third-party scripts still
 require a separate trust decision and are not part of this project-owned script
 surface.
 
-## 8. Current Refinement Priorities
+## 8. Maintenance and Future Extensions
 
-Phase A is complete and Phase B established the compile-time built-in module
-architecture. The unified Project Python workflow is implemented without
-opening Gate C or weakening Block and Region extraction quality.
+`v1.9.0` is the final release before introducing a modular extension interface.
+The current product remains focused on Block, Region, and project Python
+workflows. Changes on this line are limited to verified defects, performance,
+compatibility, and necessary usability improvements.
 
 ### Baseline maintenance
 
@@ -215,19 +218,21 @@ opening Gate C or weakening Block and Region extraction quality.
   synchronized with the tagged release and current development line.
 - Preserve the complete automated Electron development suite and Windows/Wails
   release acceptance without expanding GitHub verification unnecessarily.
-- Treat reported data loss, workbook identity, recovery, and persistence
-  defects as higher priority than architecture expansion.
+- Treat reported data loss, workbook identity, recovery, persistence, and
+  extraction correctness defects as higher priority than extension work.
+- Preserve strict current Project v3 schema/runtime conformance and its
+  round-trip, malformed-input, ownership, and persistence tests. Versions 1
+  and 2 remain unsupported.
 
-### Phase B implementation status
+### Extension trigger
 
-- Block and Region use the admitted registration, lifecycle, transaction,
-  diagnostics, execution, panel, preview, save-preparation, and navigation contracts.
-- Strict current Project v3 schema/runtime conformance and complete golden round-trips,
-  malformed input, ownership, and persistence tests protect the current format.
-- Session v1/v2 import is removed; before 2.0.0 only the current Project v3 shape is supported.
-- External Structured Result Review remains a bounded development fixture with
-  strict candidate validation and no filesystem, execution, or production navigation.
-- Runtime plugins, in-app LLM calls, and generated-code execution remain deferred.
+- Do not implement an extension runtime speculatively.
+- When a new scenario is proven and cannot be expressed by Block, Region, or
+  project Python, define the smallest extension contract around that scenario.
+- The contract must cover data access, lifecycle, persistence, diagnostics,
+  navigation, and a fully custom right-panel surface before implementation.
+- Trusted organizational distribution is assumed; no marketplace, sandbox, or
+  third-party trust model is required at this stage.
 
 Large-file decomposition is not an independent product goal. The remaining
 `WorkspaceApplication`, `ConfigPanel`, and reconciliation code should be split
@@ -236,9 +241,10 @@ boundary and focused tests.
 
 ## 9. Delivery Boundary
 
-The v1.1 release preserves the extraction product while operationalizing
-compile-time built-in feature modules. Runtime extensions and generators remain
-outside the current delivery boundary.
+The `v1.9.0` release defines the frozen pre-extension product boundary. Runtime
+extensions, in-app LLM workflows, and new extraction scenarios remain outside
+this boundary until an approved concrete requirement initiates the next major
+development phase.
 
 ## 10. Definition of a Production-Ready First Release
 
@@ -251,4 +257,5 @@ contract, reject unsupported versions clearly, and provide clear errors when inp
 boundary.
 
 Code generation remains a consumer of reliable JSON rather than a substitute
-for extraction correctness. Its implementation is not part of Phase B.
+for extraction correctness. New generation workflows remain outside the frozen
+pre-extension product boundary.
