@@ -8,8 +8,12 @@ const noProxy = [process.env.NO_PROXY, process.env.no_proxy, localTestHosts]
 process.env.NO_PROXY = noProxy
 process.env.no_proxy = noProxy
 
+const requestedWorkers = process.env.PLAYWRIGHT_WORKERS
+if (requestedWorkers && !/^[1-9]\d*$/.test(requestedWorkers)) throw new Error('PLAYWRIGHT_WORKERS must be a positive integer')
+
 export default defineConfig({
   testDir: './tests',
+  workers: requestedWorkers ? Number(requestedWorkers) : undefined,
   timeout: 30000,
   retries: 0,
   use: {
