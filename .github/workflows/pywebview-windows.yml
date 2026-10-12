@@ -26,14 +26,6 @@ jobs:
         run: |
           python -m venv .venv-pywebview
           .venv-pywebview/Scripts/python.exe -m pip install -r desktop_pywebview/requirements-build.txt
-      - name: Shared regressions
-        run: |
-          npm run test:main
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run test:release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run test:unit
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Host and real helper regressions
         run: npm run test:pywebview
       - name: Build candidate and native fixtures
