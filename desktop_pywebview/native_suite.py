@@ -224,6 +224,8 @@ def run(window, api, directory):
     saved = wait_saved(output)
     if saved['project']['name'] != 'output':
         raise RuntimeError('Save As did not derive project name from the filename')
+    if not isinstance(saved.get('data'), dict) or not {'sales', 'catalog'} <= saved['data'].keys():
+        raise RuntimeError(f"Save As lost workbook result groups: {json.dumps(saved, ensure_ascii=False)}")
     if saved['data']['sales']['records'][0] != {'name': 'Alice', 'age': 25}:
         raise RuntimeError(f"Sales results were not isolated: {saved['data']}")
     catalog = saved['data']['catalog']['records'][0]
