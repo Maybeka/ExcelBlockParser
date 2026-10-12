@@ -429,6 +429,7 @@ export function WorkspaceApplication() {
       message.error(t('project.notWorkbookSource', { name }))
       return
     }
+    setParseResult(null)
     updateWorkbookRuntime(current => requestWorkbookLoad(current, source.id, path, source.activeSheetName))
   }, [updateWorkbookRuntime])
 
@@ -444,6 +445,7 @@ export function WorkspaceApplication() {
       return
     }
     const workbook = createProjectWorkbook(name, undefined, path)
+    setParseResult(null)
     setProject(current => addProjectWorkbook(current, workbook))
     updateWorkbookRuntime(current => requestWorkbookLoad(current, workbook.id, path))
     setHasUnsavedChanges(true)
@@ -454,6 +456,7 @@ export function WorkspaceApplication() {
     if (result.status !== 'ok') return
     const path = result.value
     const name = path.split(/[/\\]/).pop() ?? 'workbook.xlsx'
+    setParseResult(null)
     setProject(current => reassignProjectWorkbook(current, workbookId, name, path))
     updateWorkbookRuntime(current => requestWorkbookLoad(current, workbookId, path))
     setHasUnsavedChanges(true)
@@ -486,7 +489,7 @@ export function WorkspaceApplication() {
     setHasUnsavedChanges(true)
   }, [detachWorkbook])
 
-  const handleFileLoaded = useCallback((workbookId: string, fileName: string, filePath: string, loadedSheetNames: string[], sheetTabColors: Record<string, string>, loadedActiveSheetName: string | null, contentChanged = true) => {
+  const handleFileLoaded = useCallback((workbookId: string, fileName: string, filePath: string, loadedSheetNames: string[], sheetTabColors: Record<string, string>, loadedActiveSheetName: string | null) => {
     const currentProject = projectRef.current
     const workbook = currentProject.workbooks.find(item => item.id === workbookId)
     if (!workbook) {
@@ -502,8 +505,8 @@ export function WorkspaceApplication() {
       sheetTabColors,
       activeSheetName: loadedActiveSheetName,
     }, builtInFeatureRegistry))
-    // Promoting the same source's staged view does not invalidate extraction data.
-    if (contentChanged) setParseResult(null)
+    // A display load can finish after a newer extraction. Only explicit source
+    // changes invalidate results, before starting the replacement load.
   }, [updateWorkbookRuntime])
 
   const handleSelectWorkbook = useCallback((workbookId: string, sheetName?: string) => {
@@ -529,6 +532,7 @@ export function WorkspaceApplication() {
     const path = workbookRuntimeRef.current.paths[workbookId]
     const workbook = projectRef.current.workbooks.find(item => item.id === workbookId)
     if (!path || !workbook) return
+    setParseResult(null)
     updateWorkbookRuntime(current => requestWorkbookRefresh(current, workbookId, path, workbook.activeSheetName))
   }, [updateWorkbookRuntime])
 
