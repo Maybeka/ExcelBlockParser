@@ -1,10 +1,18 @@
 """Complete v3 document and source-management UI acceptance in a native WebView."""
 
 import json
+import ntpath
+import os
 from pathlib import Path
 import time
 
 from .native_suite import NativeUI, read_saved
+
+
+def expected_external_source_path(source_path, destination, windows=os.name == 'nt'):
+    if windows and ntpath.splitdrive(source_path)[0].lower() == ntpath.splitdrive(str(destination))[0].lower():
+        return ntpath.relpath(source_path, ntpath.dirname(str(destination))).replace('\\', '/')
+    return source_path
 
 
 def wait_saved(path):
@@ -46,7 +54,9 @@ def run(window, api, directory):
     ui.choose('Validation errors', 2)
     saved = wait_saved(output)
     saved_paths = [workbook.get('sourcePath') for workbook in saved['project']['workbooks']]
-    if saved_paths != ['../input/workbooks/sales.xlsx', source['project']['workbooks'][1]['sourcePath']]:
+    external_source = source['project']['workbooks'][1]['sourcePath']
+    expected_external = expected_external_source_path(external_source, output)
+    if saved_paths != ['../input/workbooks/sales.xlsx', expected_external]:
         raise RuntimeError(f'Golden source paths were not rebased correctly: {saved_paths}')
     expected = json.loads(json.dumps(source))
     actual = json.loads(json.dumps(saved))
