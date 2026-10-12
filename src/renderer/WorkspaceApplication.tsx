@@ -77,7 +77,19 @@ export function WorkspaceApplication() {
     return builtInFeatureRegistry.initialize(createProject())
   })
   const { workbooks: projectWorkbooks, activeWorkbookId } = project
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null)
+  const [parseResult, setParseResultState] = useState<ParseResult | null>(null)
+  const setParseResult = useCallback((result: ParseResult | null) => {
+    if (automatedSession) {
+      const target = window as Window & { __excelBlockParserParseTransitions?: unknown[] }
+      const transitions = target.__excelBlockParserParseTransitions ??= []
+      transitions.push({ dataKeys: result ? Object.keys(result.data) : null, stack: new Error().stack })
+      if (transitions.length > 40) transitions.shift()
+    }
+    setParseResultState(result)
+  }, [automatedSession])
+  useEffect(() => () => {
+    delete (window as Window & { __excelBlockParserParseTransitions?: unknown[] }).__excelBlockParserParseTransitions
+  }, [])
   const [loadSignal, setLoadSignal] = useState(0)
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null)
   const [pendingSaveAs, setPendingSaveAs] = useState(false)
