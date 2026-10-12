@@ -391,7 +391,7 @@ export function WorkspaceApplication() {
   }, [hasUnsavedChanges])
 
   useEffect(() => {
-    if (window.electronAPI || e2eMode || automatedSession || !hasUnsavedChanges) return
+    if (window.electronAPI || window.pywebview || e2eMode || automatedSession || !hasUnsavedChanges) return
     const confirmClose = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue = ''
@@ -1100,7 +1100,10 @@ export function WorkspaceApplication() {
         </div>
         <dl className="about-dialog-details">
           <div><dt>{t('about.format')}</dt><dd>{t('about.formatValue')}</dd></div>
-          <div><dt>{t('about.wails')}</dt><dd>v{wailsVersion}</dd></div>
+          {window.pywebview?.runtimeInfo
+            ? <><div><dt>pywebview</dt><dd>v{window.pywebview.runtimeInfo.pywebview}</dd></div>
+              <div><dt>Python</dt><dd>v{window.pywebview.runtimeInfo.hostPython}</dd></div></>
+            : <div><dt>{t('about.wails')}</dt><dd>v{wailsVersion}</dd></div>}
           <div><dt>{t('about.electron')}</dt><dd>v{electronVersion}</dd></div>
           <div><dt>{t('about.univer')}</dt><dd>v{univerVersion}</dd></div>
         </dl>

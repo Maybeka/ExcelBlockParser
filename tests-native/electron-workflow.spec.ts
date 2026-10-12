@@ -315,10 +315,13 @@ test.describe('Electron native workflow', () => {
       ELECTRON_E2E_SAVE_PATH: output,
     })
     try {
+      const source = JSON.parse(await readFile(completeProjectV3FixturePath, 'utf8'))
       await page.getByRole('button', { name: 'Open Project' }).click()
       const settings = page.getByRole('dialog', { name: 'Project settings' })
-      await expect(settings.getByText('sales.xlsx')).toBeVisible()
-      await expect(settings.getByText('costs.xlsx')).toBeVisible()
+      for (const workbook of source.project.workbooks) {
+        await expect(settings.getByText(workbook.name, { exact: true })).toBeVisible()
+        await expect(settings.getByText(workbook.sourcePath, { exact: true })).toBeVisible()
+      }
       await expect(settings.getByText('Unavailable', { exact: true })).toHaveCount(2)
       await settings.getByRole('button', { name: 'Done' }).click()
 
@@ -328,7 +331,6 @@ test.describe('Electron native workflow', () => {
       if (await saveAnyway.isVisible().catch(() => false)) await saveAnyway.click()
       await expect.poll(async () => { try { await access(output); return true } catch { return false } }).toBe(true)
 
-      const source = JSON.parse(await readFile(completeProjectV3FixturePath, 'utf8'))
       const saved = JSON.parse(await readFile(output, 'utf8'))
       delete source.exportedAt
       delete saved.exportedAt
@@ -359,8 +361,13 @@ test.describe('Electron native workflow', () => {
       const saveAnyway = page.getByRole('button', { name: 'Save anyway' })
       if (await saveAnyway.isVisible().catch(() => false)) await saveAnyway.click()
       await expect.poll(async () => {
-        const saved = JSON.parse(await readFile(projectPath, 'utf8'))
-        return saved.version === 3 ? saved.project?.name : null
+        try {
+          const saved = JSON.parse(await readFile(projectPath, 'utf8'))
+          return saved.version === 3 ? saved.project?.name : null
+        } catch {
+          // The IPC save may still be writing when polling first reads it.
+          return null
+        }
       }).toBe('Current project')
     } finally {
       await closeElectronApp(app, page)

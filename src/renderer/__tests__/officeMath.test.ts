@@ -226,11 +226,21 @@ describe('Office Math extraction', () => {
     Object.assign(globalThis, { DOMParser: XmlDomParser })
     try {
       const rasterize = vi.fn()
-      const convert = vi.fn(async () => ({ supported: true, mathMl: '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math>' }))
+      const convert = vi.fn(async () => ({ supported: true, mathMl: '<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><mi>a</mi><mstyle mathsize="58%"><mi>f</mi></mstyle><mi>x</mi></mrow></math>' }))
       const drawings = await extractEquationDrawings(files.buffer.slice(files.byteOffset, files.byteOffset + files.byteLength), workbook, rasterize, undefined, convert)
       expect(convert).toHaveBeenCalledOnce()
       expect(rasterize).not.toHaveBeenCalled()
       expect(drawings[0]?.source).toMatch(/^data:image\/svg\+xml;base64,/)
+      const svg = Buffer.from(drawings[0]!.source.split(',')[1]!, 'base64').toString('utf8')
+      const rootTag = svg.slice(0, svg.indexOf('>') + 1)
+      expect(rootTag.match(/\swidth=/g)).toHaveLength(1)
+      expect(rootTag.match(/\sheight=/g)).toHaveLength(1)
+      expect(rootTag).toContain(`width="${drawings[0]!.width}px"`)
+      expect(rootTag).toContain(`height="${drawings[0]!.height}px"`)
+      expect(svg).toContain('scale(0.58)')
+      expect(svg).not.toContain('scale(0.3364)')
+      expect(svg).toContain('fill="#ffffff"')
+      expect(svg).toContain('fill="none" stroke="#000000"')
     } finally {
       Object.assign(globalThis, { DOMParser: originalParser })
     }

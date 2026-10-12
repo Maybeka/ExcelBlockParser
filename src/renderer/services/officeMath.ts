@@ -42,7 +42,7 @@ let mathJaxDocument: Promise<MathJaxDocument> | null = null
 
 interface MathJaxDocument {
   convert(mathMl: string, options: { display: boolean; em: number; ex: number; containerWidth: number }): unknown
-  serialize?: (node: unknown) => string
+  serialize?: (node: unknown, width: number, height: number) => string
 }
 
 export async function extractOfficeMathDrawings(arrayBuffer: ArrayBuffer, workbook: ExcelJS.Workbook, report?: OfficeMathDiagnosticReporter): Promise<OfficeMathDrawing[]> {
@@ -212,7 +212,7 @@ async function extractLegacyEquationDrawings(
         try {
           conversion = await convertMathTypeOle(toArrayBuffer(objectBytes))
           if (conversion.supported && conversion.mathMl) {
-            source = await mathMlToSvgDataUri(conversion.mathMl, geometry.width, geometry.height)
+            source = await mathMlToSvgDataUri(conversion.mathMl, geometry.width, geometry.height, legacyEquationAppearance(shape))
           }
         } catch (error) {
           console.warn('[MathType] Unable to convert embedded OLE equation.', { sheetName, error })
@@ -916,7 +916,16 @@ function escapeXml(value: string): string {
   return value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!)
 }
 
-async function mathMlToSvgDataUri(mathMl: string, width: number, height: number): Promise<string> {
+function equationSvgDataUri(svg: string, width: number, height: number, appearance?: LegacyEquationAppearance): string {
+  if (appearance?.hasFill || appearance?.hasStroke) {
+    const background = appearance.hasFill ? `<rect width="${width}" height="${height}" fill="#ffffff"/>` : ''
+    const border = appearance.hasStroke ? `<rect x="0.5" y="0.5" width="${Math.max(0, width - 1)}" height="${Math.max(0, height - 1)}" fill="none" stroke="#000000"/>` : ''
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}px" height="${height}px" viewBox="0 0 ${width} ${height}">${background}${svg}${border}</svg>`
+  }
+  return `data:image/svg+xml;base64,${toBase64(svg)}`
+}
+
+async function mathMlToSvgDataUri(mathMl: string, width: number, height: number, appearance?: LegacyEquationAppearance): Promise<string> {
   if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
     throw new Error('Office Math drawing has invalid SVG geometry')
   }
@@ -930,17 +939,16 @@ async function mathMlToSvgDataUri(mathMl: string, width: number, height: number)
     svg.setAttribute('width', `${width}px`)
     svg.setAttribute('height', `${height}px`)
     svg.setAttribute('preserveAspectRatio', 'xMinYMid meet')
-    return `data:image/svg+xml;base64,${toBase64(svg.outerHTML)}`
+    return equationSvgDataUri(svg.outerHTML, width, height, appearance)
   }
   if (!mathJax.serialize) throw new Error('MathJax did not provide an SVG container')
-  const serialized = mathJax.serialize(container)
+  const serialized = mathJax.serialize(container, width, height)
   const start = serialized.indexOf('<svg')
   const end = serialized.indexOf('</svg>', start)
   if (start < 0 || end < 0) throw new Error('MathJax did not produce an SVG')
   const svg = serialized.slice(start, end + '</svg>'.length)
   if (/(?:^|[^a-z])(?:nan|infinity)(?:$|[^a-z])/i.test(svg)) throw new Error('MathJax produced invalid SVG geometry')
-  const withGeometry = svg.replace('<svg', `<svg xmlns="http://www.w3.org/2000/svg" width="${width}px" height="${height}px" preserveAspectRatio="xMinYMid meet"`)
-  return `data:image/svg+xml;base64,${toBase64(withGeometry)}`
+  return equationSvgDataUri(svg, width, height, appearance)
 }
 
 function isHtmlContainer(value: unknown): value is HTMLElement {
@@ -960,17 +968,30 @@ async function loadMathJax(): Promise<MathJaxDocument> {
       import('@mathjax/src/mjs/handlers/html.js'),
       import('@mathjax/mathjax-newcm-font/mjs/svg.js'),
     ]).then(async ([{ mathjax }, { MathML }, { SVG }, { browserAdaptor }, { RegisterHTMLHandler }, { MathJaxNewcmFont }]) => {
-      const adaptor = typeof document === 'undefined'
-        ? (await import('@mathjax/src/mjs/adaptors/liteAdaptor.js')).liteAdaptor()
-        : browserAdaptor()
-      RegisterHTMLHandler(adaptor)
+      let serialize: MathJaxDocument['serialize']
+      if (typeof document === 'undefined') {
+        const adaptor = (await import('@mathjax/src/mjs/adaptors/liteAdaptor.js')).liteAdaptor()
+        RegisterHTMLHandler(adaptor)
+        serialize = (node, width, height) => {
+          const container = node as Parameters<typeof adaptor.tags>[0]
+          const svg = adaptor.tags(container, 'svg')[0]
+          if (!svg) throw new Error('MathJax did not produce an SVG')
+          adaptor.setAttribute(svg, 'xmlns', 'http://www.w3.org/2000/svg')
+          adaptor.setAttribute(svg, 'width', `${width}px`)
+          adaptor.setAttribute(svg, 'height', `${height}px`)
+          adaptor.setAttribute(svg, 'preserveAspectRatio', 'xMinYMid meet')
+          return adaptor.outerHTML(container)
+        }
+      } else {
+        RegisterHTMLHandler(browserAdaptor())
+      }
       const mathDocument = mathjax.document(typeof document === 'undefined' ? '' : document, {
         InputJax: new MathML(),
         OutputJax: new SVG({ fontCache: 'none', fontData: MathJaxNewcmFont }),
       })
       return {
         convert: mathDocument.convert.bind(mathDocument),
-        serialize: typeof document === 'undefined' ? adaptor.outerHTML.bind(adaptor) : undefined,
+        serialize,
       } as MathJaxDocument
     })
   }

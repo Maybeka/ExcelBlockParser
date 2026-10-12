@@ -9,8 +9,10 @@ import { DEFAULT_WORKBOOK_DISPLAY_SETTINGS, type CellRange, type ParseDiagnostic
 import { convertXlsxToWorkbookData, type ConvertedWorkbookImage, type SheetDisplaySettings, type SheetOutlineGroup } from '../services/xlsx-converter'
 import { convertStagedXlsxToWorkbookData } from '../services/xlsxStagedParser'
 import { scanXlsxFormulaDependencies } from '../services/xlsxFormulaDependencies'
-import { ImageSourceType } from '@univerjs/core'
+import { ImageSourceType, LifecycleService } from '@univerjs/core'
+import { IRenderManagerService, SHEET_VIEWPORT_KEY } from '@univerjs/engine-render'
 import { getBridge } from '../services/bridge'
+import { applyWorksheetVisibility } from '../services/worksheetVisibility'
 import { visibleCanvasRanges } from '../services/canvasRangeVisibility'
 import { findMatchesInSheets, formatCellsAsTsv, type WorkbookSearchMatch } from '../services/readOnlyWorkbookTools'
 import { estimateWorkbookCacheBytes, workbookCacheEvictions } from '../services/workbookCachePolicy'
@@ -160,6 +162,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
   const loadVersionRef = useRef(0)
   const selectionDisposableRef = useRef<{ dispose: () => void } | null>(null)
   const commandDisposableRef = useRef<{ dispose: () => void } | null>(null)
+  const listenerUnitIdRef = useRef<string | null>(null)
   const renameObserverRef = useRef<MutationObserver | null>(null)
   const highlightDisposablesRef = useRef<Array<{ dispose: () => void }>>([])
   const workbookCacheRef = useRef<Map<string, CachedWorkbook>>(new Map())
@@ -210,6 +213,14 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
   const disposeCachedWorkbook = (cached: CachedWorkbook) => {
     const api = univerAPIRef.current
     if (!api) return
+    if (listenerUnitIdRef.current === cached.unitId || listenerUnitIdRef.current === cached.hydrated?.unitId) {
+      // Disposing the current unit emits selection events with no current workbook.
+      selectionDisposableRef.current?.dispose()
+      commandDisposableRef.current?.dispose()
+      selectionDisposableRef.current = null
+      commandDisposableRef.current = null
+      listenerUnitIdRef.current = null
+    }
     api.disposeUnit(cached.unitId)
     if (cached.hydrated?.unitId && cached.hydrated.unitId !== cached.unitId) api.disposeUnit(cached.hydrated.unitId)
   }
@@ -236,6 +247,8 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     workbookId: string,
     sheetName?: string | null,
   ) => {
+    const api = univerAPIRef.current
+    if (!api) return
     const displayModes = displayModesRef.current
     const activeSheet = workbook.getActiveSheet()
     const activeSheetName = activeSheet?.getSheetName() ?? null
@@ -247,7 +260,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     applyingDisplayModesRef.current = true
     workbook.setEditable(true)
     try {
-      const targetSettings = sheetName
+      const targetSettings: Array<[string, SheetDisplaySettings]> = sheetName
         ? settings[sheetName] ? [[sheetName, settings[sheetName]]] : []
         : Object.entries(settings)
       for (const [targetSheetName, sheetSettings] of targetSettings) {
@@ -261,6 +274,8 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           }
 
           mutatedDisplayState = applyOutlineGroups(
+            api,
+            workbook.getId(),
             sheet,
             sheetSettings,
             displayModes.showOutlines,
@@ -584,6 +599,8 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       if (!sheet || !settings) return {}
       const rawSheet = sheet.getSheet()
       const state: Record<string, boolean> = {}
+      for (const index of settings.sourceHiddenRows) state[`row:${index}`] = rawSheet.getRowManager().getRow(index)?.hd === 1
+      for (const index of settings.sourceHiddenColumns) state[`column:${index}`] = rawSheet.getColumnManager().getColumn(index)?.hd === 1
       for (const group of settings.outlineGroups) {
         for (let index = group.start; index <= group.end; index += 1) {
           const hidden = group.axis === 'row'
@@ -646,6 +663,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     try {
       selectionDisposableRef.current?.dispose()
       commandDisposableRef.current?.dispose()
+      selectionDisposableRef.current = null
+      commandDisposableRef.current = null
+      listenerUnitIdRef.current = null
       const api = univerAPIRef.current
       if (!api) return
 
@@ -681,6 +701,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       })
 
       selectionDisposableRef.current = disposable
+      listenerUnitIdRef.current = workbook.getId()
 
       commandDisposableRef.current = workbook.onCommandExecuted((command: any) => {
         const commandId = (command as any)?.id?.toLowerCase() || ''
@@ -718,6 +739,8 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           if (sheet && sheetName && cached?.sheetDisplaySettings[sheetName]) {
             const sheetSettings = cached.sheetDisplaySettings[sheetName]
             window.setTimeout(() => {
+              const api = univerAPIRef.current
+              if (!api || workbookCacheRef.current.get(sourceWorkbookId)?.unitId !== workbook.getId()) return
               applyingDisplayModesRef.current = true
               workbook.setEditable(true)
               try {
@@ -727,7 +750,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
                 ))
                 const sourceHidden = axis === 'row' ? sheetSettings.sourceHiddenRows : sheetSettings.sourceHiddenColumns
                 const protectedIndexes = new Set<number>(sourceHidden.filter(index =>
-                  displayModesRef.current.showOutlines || !outlineIndexes.has(index),
+                  !outlineIndexes.has(index),
                 ))
                 if (axis === 'row') nativeFilterHiddenRowsFor(sheet).forEach(row => protectedIndexes.add(row))
                 if (displayModesRef.current.showOutlines) {
@@ -737,8 +760,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
                   }
                 }
                 for (const [start, count] of contiguousRanges([...protectedIndexes])) {
-                  if (axis === 'row') sheet.hideRows(start, count)
-                  else sheet.hideColumns(start, count)
+                  applyWorksheetVisibility(api, workbook.getId(), sheet, axis, start, count, false)
                 }
               } finally {
                 workbook.setEditable(false)
@@ -788,7 +810,45 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     try {
       initializedRef.current = true
 
-      const { univerAPI: api } = setupUniver(containerRef.current, initialLocaleRef.current)
+      const { univerAPI: api, univer } = setupUniver(containerRef.current, initialLocaleRef.current)
+
+      if (window.navigator.webdriver) {
+        const shapes = (axis: 'row' | 'column') => {
+          const workbook = univerAPIRef.current?.getActiveWorkbook()
+          const scene = workbook && univer.__getInjector().get(IRenderManagerService).getRenderById(workbook.getId())?.scene
+          return (scene?.getAllObjects() ?? []).filter((shape: any) => shape._outlineToggle && shape._unhideType === (axis === 'row' ? 0 : 1))
+            .sort((a: any, b: any) => axis === 'row' ? a.left - b.left || a.top - b.top : a.top - b.top || a.left - b.left)
+        }
+        const target = window as Window & {
+          __excelBlockParserOutlineControls?: (axis: 'row' | 'column') => unknown[]
+          __excelBlockParserActivateOutlineControl?: (axis: 'row' | 'column', index: number) => boolean
+          __excelBlockParserDrawingRenderState?: () => unknown
+        }
+        target.__excelBlockParserDrawingRenderState = () => {
+          const workbook = univerAPIRef.current?.getActiveWorkbook()
+          const scene = workbook && univer.__getInjector().get(IRenderManagerService).getRenderById(workbook.getId())?.scene
+          const viewport = scene?.getViewport(SHEET_VIEWPORT_KEY.VIEW_MAIN)
+          return {
+            stage: univer.__getInjector().get(LifecycleService).stage,
+            sheet: workbook?.getActiveSheet()?.getSheetName(),
+            scrollX: viewport?.viewportScrollX ?? 0,
+            scrollY: viewport?.viewportScrollY ?? 0,
+            images: (scene?.getAllObjects() ?? []).filter((shape: any) => shape.classType === 'Image').map((shape: any) => ({
+              key: shape.oKey, left: shape.left, top: shape.top, width: shape.width, height: shape.height,
+              visible: shape.visible, complete: shape.getNative()?.complete,
+              naturalWidth: shape.getNative()?.naturalWidth,
+            })),
+          }
+        }
+        target.__excelBlockParserOutlineControls = axis => shapes(axis).map((shape: any) => ({ left: shape.left, top: shape.top, collapsed: shape._collapsed }))
+        target.__excelBlockParserActivateOutlineControl = (axis, index) => {
+          const shape = shapes(axis)[index]
+          if (!shape) return false
+          // Use the actual native control subscription, not a replacement command.
+          shape.onPointerDown$.emitEvent({} as any)
+          return true
+        }
+      }
 
       // Univer's header-unhide shapes invoke their command during pointer down,
       // after its permission controller has already been installed. Briefly
@@ -883,6 +943,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
     }
 
     return () => {
+      delete (window as Window & { __excelBlockParserOutlineControls?: unknown }).__excelBlockParserOutlineControls
+      delete (window as Window & { __excelBlockParserActivateOutlineControl?: unknown }).__excelBlockParserActivateOutlineControl
+      delete (window as Window & { __excelBlockParserDrawingRenderState?: unknown }).__excelBlockParserDrawingRenderState
       if (allowNativeCanvasViewAction) containerRef.current?.removeEventListener('pointerdown', allowNativeCanvasViewAction, true)
       selectionDisposableRef.current?.dispose()
       commandDisposableRef.current?.dispose()
@@ -891,6 +954,28 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       initializedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    if (closeSignal === 0) return
+    loadVersionRef.current += 1
+    setLoading(false)
+    const api = univerAPIRef.current
+    if (!api) return
+    for (const cached of workbookCacheRef.current.values()) disposeCachedWorkbook(cached)
+    workbookCacheRef.current.clear()
+    outlineCollapsedRef.current.clear()
+    setHasFile(false)
+    setSelection(null)
+    setSearchOpen(false)
+    setSearchMatches([])
+    setSearchIndex(-1)
+    setSearchRan(false)
+    setNativeFilterRevision(0)
+    searchPlacedRef.current = false
+    setSheetNames([])
+    onLoadedWorkbookChange(null)
+    setError(null)
+  }, [closeSignal, setSheetNames])
 
   useEffect(() => {
     const externalRequest = requestedWorkbook && requestedWorkbook.requestId !== requestedWorkbookRef.current
@@ -1086,6 +1171,10 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         }
         await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
         await registerWorkbookImages(newWorkbook, images)
+        if (loadVersion !== loadVersionRef.current) {
+          api.disposeUnit(newWorkbook.getId())
+          return
+        }
         const univerMs = performance.now() - univerStartedAt
 
         setTimeout(() => {
@@ -1168,7 +1257,9 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         // Reapply the view-only outline state on the next frame so a large
         // imported workbook does not require a manual refresh before its group
         // controls take effect.
-        window.requestAnimationFrame(() => applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId, newWorkbook.getActiveSheet()?.getSheetName()))
+        window.requestAnimationFrame(() => {
+          if (loadVersion === loadVersionRef.current) applyDisplayModes(newWorkbook, sheetDisplaySettings, sourceWorkbookId, newWorkbook.getActiveSheet()?.getSheetName())
+        })
         setHasFile(true)
         onFileLoaded(sourceWorkbookId, fileName, filePath, availableSheetNames, sheetTabColors, loadedActiveSheetName)
         onWorkbookDiagnostics(sourceWorkbookId, diagnostics.map(diagnostic => ({ ...diagnostic, workbookId: sourceWorkbookId })))
@@ -1180,6 +1271,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         // pass. Keep the loading veil up until that pass is complete, then set
         // the saved single-cell selection before exposing the workbook.
         await new Promise<void>(resolve => window.setTimeout(resolve, 50))
+        if (loadVersion !== loadVersionRef.current) return
         if (initialSelection) {
           try {
             const cell = parseExcelActiveCell(initialSelection)
@@ -1203,6 +1295,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
           })
         }
       } catch (err) {
+        if (loadVersion !== loadVersionRef.current) return
         const msg = String(err)
         if (workbookLoadSettings.performanceLogging) {
           console.info('[Workbook performance]', {
@@ -1219,7 +1312,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
         if (err instanceof Error && err.stack) console.error(err.stack)
         setError(msg)
       } finally {
-        if (!deferLoadingCompletion) setLoading(false)
+        if (!deferLoadingCompletion && loadVersion === loadVersionRef.current) setLoading(false)
       }
     }
 
@@ -1244,26 +1337,6 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
       outlineCollapsedRef.current.delete(workbookId)
     }
   }, [openWorkbookIds])
-
-  useEffect(() => {
-    if (closeSignal === 0) return
-    const api = univerAPIRef.current
-    if (!api) return
-    for (const cached of workbookCacheRef.current.values()) disposeCachedWorkbook(cached)
-    workbookCacheRef.current.clear()
-    outlineCollapsedRef.current.clear()
-    setHasFile(false)
-    setSelection(null)
-    setSearchOpen(false)
-    setSearchMatches([])
-    setSearchIndex(-1)
-    setSearchRan(false)
-    setNativeFilterRevision(0)
-    searchPlacedRef.current = false
-    setSheetNames([])
-    onLoadedWorkbookChange(null)
-    setError(null)
-  }, [closeSignal, setSheetNames])
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -1444,6 +1517,8 @@ function rangesOverlap(start: number, end: number, otherStart: number, otherEnd:
 }
 
 function applyOutlineGroups(
+  api: any,
+  unitId: string,
   sheet: any,
   settings: SheetDisplaySettings,
   showOutlines: boolean,
@@ -1471,7 +1546,7 @@ function applyOutlineGroups(
     const sourceHidden = axis === 'row' ? settings.sourceHiddenRows : settings.sourceHiddenColumns
     // A disabled outline view reveals rows/columns hidden solely by an Excel
     // outline, while retaining ordinary source-hidden cells.
-    const hidden = new Set<number>(sourceHidden.filter(index => showOutlines || !outlineIndexes.has(index)))
+    const hidden = new Set<number>(sourceHidden.filter(index => !outlineIndexes.has(index)))
     for (const group of groups) {
       const collapsed = showOutlines && stateFor(workbookId, sheetName, group)
       for (let index = group.start; index <= group.end; index += 1) {
@@ -1481,10 +1556,9 @@ function applyOutlineGroups(
     if (axis === 'row') filterHiddenRows.forEach(row => hidden.add(row))
     const requiresVisibilityUpdate = groups.length > 0 || sourceHidden.length > 0 || (axis === 'row' && filterHiddenRows.length > 0)
     if (!requiresVisibilityUpdate) continue
-    if (lastIndex >= 0) axis === 'row' ? sheet.showRows(0, lastIndex + 1) : sheet.showColumns(0, lastIndex + 1)
+    if (lastIndex >= 0) applyWorksheetVisibility(api, unitId, sheet, axis, 0, lastIndex + 1, true)
     for (const [start, count] of contiguousRanges([...hidden])) {
-      if (axis === 'row') sheet.hideRows(start, count)
-      else sheet.hideColumns(start, count)
+      applyWorksheetVisibility(api, unitId, sheet, axis, start, count, false)
     }
   }
   return settings.outlineGroups.length > 0 || settings.sourceHiddenRows.length > 0 || settings.sourceHiddenColumns.length > 0 || filterHiddenRows.length > 0

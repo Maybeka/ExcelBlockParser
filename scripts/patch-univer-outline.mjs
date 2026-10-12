@@ -86,20 +86,33 @@ function upgradeV4ToV5(input) {
   return upgraded
 }
 
-if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V5')) process.exit(0)
+function upgradeV5ToV6(input) {
+  return replaceOnce(
+    input.replace('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V5', 'EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V6'),
+    'outlineGroups.filter((group) => group.axis === "column").map((group) => {',
+    'outlineGroups.filter((group) => group.axis === "column" && !isHiddenByCollapsedParent(group)).map((group) => {',
+  )
+}
+
+if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V6')) process.exit(0)
+
+if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V5')) {
+  await writeFile(target, upgradeV5ToV6(source))
+  process.exit(0)
+}
 
 if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V2')) {
-  await writeFile(target, upgradeV4ToV5(upgradeV3ToV4(upgradeV2ToV3(source))))
+  await writeFile(target, upgradeV5ToV6(upgradeV4ToV5(upgradeV3ToV4(upgradeV2ToV3(source)))))
   process.exit(0)
 }
 
 if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V3')) {
-  await writeFile(target, upgradeV4ToV5(upgradeV3ToV4(source)))
+  await writeFile(target, upgradeV5ToV6(upgradeV4ToV5(upgradeV3ToV4(source))))
   process.exit(0)
 }
 
 if (source.includes('EXCEL_BLOCK_PARSER_OUTLINE_PATCH_V4')) {
-  await writeFile(target, upgradeV4ToV5(source))
+  await writeFile(target, upgradeV5ToV6(upgradeV4ToV5(source)))
   process.exit(0)
 }
 
@@ -289,7 +302,7 @@ const newControllerBodyV2 = newControllerBody
     'ranges: [range],\n\t\t\t\t__excelBlockParserOutlineGroupId: group.id\n\t\t\t}));\n\t\t}) : hiddenColRanges.map',
   )
 
-const newControllerBodyV5 = upgradeV4ToV5(upgradeV3ToV4(upgradeV2ToV3(newControllerBodyV2)))
+const newControllerBodyV6 = upgradeV5ToV6(upgradeV4ToV5(upgradeV3ToV4(upgradeV2ToV3(newControllerBodyV2))))
 
-patched = replaceOnce(patched, oldControllerBody, newControllerBodyV5)
+patched = replaceOnce(patched, oldControllerBody, newControllerBodyV6)
 await writeFile(target, patched)

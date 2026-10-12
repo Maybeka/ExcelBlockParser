@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { persistPywebviewLocale } from './services/pywebviewBootstrap'
 
 export type AppLocale = 'en-US' | 'zh-CN'
 
@@ -308,6 +309,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const setLocale = (nextLocale: AppLocale) => setLocaleState(nextLocale)
   useEffect(() => {
     localStorage.setItem(storageKey, locale)
+    void persistPywebviewLocale(locale).catch(error => console.error('Unable to save application language:', error))
     document.documentElement.lang = locale
   }, [locale])
   const value = useMemo<I18nContextValue>(() => ({

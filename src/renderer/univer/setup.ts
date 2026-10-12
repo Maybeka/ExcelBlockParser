@@ -14,7 +14,7 @@ import type { AppLocale } from '../i18n'
 
 export function setupUniver(container: HTMLElement, appLocale: AppLocale) {
   const locale = appLocale === 'zh-CN' ? LocaleType.ZH_CN : LocaleType.EN_US
-  const { univerAPI } = createUniver({
+  const { univerAPI, univer } = createUniver({
     locale,
     locales: {
       [LocaleType.ZH_CN]: mergeLocales(sheetsCoreZhCN, sheetsFilterZhCN, sheetsCoreEnUS, sheetsFilterEnUS),
@@ -37,5 +37,5 @@ export function setupUniver(container: HTMLElement, appLocale: AppLocale) {
     ],
   })
 
-  return { univerAPI }
+  return { univerAPI, univer }
 }

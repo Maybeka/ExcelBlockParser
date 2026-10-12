@@ -1,0 +1,57 @@
+name: Pywebview Windows Candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-candidate:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: npm ci
+      - name: Install desktop runtime and packager
+        run: |
+          python -m venv .venv-pywebview
+          .venv-pywebview/Scripts/python.exe -m pip install -r desktop_pywebview/requirements-build.txt
+      - name: Shared regressions
+        run: |
+          npm run test:main
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:unit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Host and real helper regressions
+        run: npm run test:pywebview
+      - name: Build candidate and native fixtures
+        run: npm run package:pywebview
+      - name: Source WebView2 native acceptance
+        run: .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_native
+      - name: Packaged WebView2 native acceptance
+        run: .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_native --executable "release-pywebview/Excel Block Parser/Excel Block Parser.exe" --logs .tmp/pywebview-packaged-native-logs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pywebview-windows-native-logs
+          path: |
+            .tmp/pywebview-native-logs/
+            .tmp/pywebview-packaged-native-logs/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pywebview-windows-x64-candidate
+          path: release-pywebview/Excel Block Parser/
+          if-no-files-found: error

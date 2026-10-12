@@ -1,12 +1,14 @@
 /**
- * Platform-agnostic bridge — auto-detects Electron vs Wails at runtime.
+ * Platform-agnostic bridge: detects the desktop host at runtime.
  *
  * Electron: uses window.electronAPI (contextBridge from preload)
  * Wails:    uses generated Go bindings from wailsjs/go/main/App
+ * pywebview: uses Python methods after native readiness
  * Browser:  throws descriptive errors (used for dev/testing)
  */
 import { bridgeCancelled, bridgeError, bridgeOk, type BridgeResult } from '../../shared/bridgeResult'
 import type { PythonArtifact, PythonArtifactExportResult, PythonProjectPackageInput, PythonProjectResult } from '../../shared/pythonRuntime'
+import type { PywebviewAPI } from './pywebviewBootstrap'
 
 export type { PythonProjectResult } from '../../shared/pythonRuntime'
 
@@ -209,6 +211,19 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
   }
 }
 
+export function createPywebviewBridge(api: PywebviewAPI): BridgeAPI {
+  // Both hosts implement the same application contract and result normalization.
+  return {
+    ...createWailsBridge({ main: { App: api } }),
+    minimizeWindow: () => api.Minimize(),
+    toggleWindowMaximize: () => api.ToggleMaximize(),
+    confirmCloseWindow: async () => {
+      await api.ConfirmQuit()
+      document.dispatchEvent(new Event('desktopquit'))
+    },
+  }
+}
+
 // ── Browser fallback (dev/playwright) ───────────────────────────────────────
 
 function createBrowserBridge(): BridgeAPI {
@@ -250,6 +265,8 @@ export function getBridge(): BridgeAPI {
   const runtimeWindow = typeof window === 'undefined' ? undefined : window
   if (runtimeWindow?.electronAPI) {
     _bridge = runtimeWindow.electronAPI
+  } else if (runtimeWindow?.pywebview?.api) {
+    _bridge = createPywebviewBridge(runtimeWindow.pywebview.api)
   } else if (runtimeWindow?.go?.main?.App) {
     _bridge = createWailsBridge(runtimeWindow.go)
   } else {
