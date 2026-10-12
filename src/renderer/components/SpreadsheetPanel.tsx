@@ -43,7 +43,7 @@ interface SpreadsheetPanelProps {
   projectLoading: boolean
   loadedWorkbookId: string | null
   openWorkbookIds: string[]
-  onFileLoaded: (workbookId: string, fileName: string, filePath: string, sheetNames: string[], sheetTabColors: Record<string, string>, activeSheetName: string | null) => void
+  onFileLoaded: (workbookId: string, fileName: string, filePath: string, sheetNames: string[], sheetTabColors: Record<string, string>, activeSheetName: string | null, contentChanged?: boolean) => void
   onWorkbookDiagnostics: (workbookId: string, diagnostics: ParseDiagnostic[]) => void
   onLoadedWorkbookChange: (workbookId: string | null) => void
   onStagedSheetRequest: (workbookId: string, sheetName: string) => void
@@ -1038,7 +1038,7 @@ export function SpreadsheetPanel({ activeWorkbookId, activeSheet, workbookBrowse
                 cached.hydrated = undefined
                 if (targetSheetName && cachedWorkbook.getActiveSheet()?.getSheetName() !== targetSheetName) targetSheet?.activate()
                 applyDisplayModes(cachedWorkbook, cached.sheetDisplaySettings, sourceWorkbookId, targetSheetName)
-                onFileLoaded(sourceWorkbookId, performanceFileName, filePath, cached.sheetNames, hydrated.sheetTabColors, targetSheetName)
+                onFileLoaded(sourceWorkbookId, performanceFileName, filePath, cached.sheetNames, hydrated.sheetTabColors, targetSheetName, false)
                 onWorkbookDiagnostics(sourceWorkbookId, hydrated.diagnostics.map(diagnostic => ({ ...diagnostic, workbookId: sourceWorkbookId })))
                 api.setCurrent(cached.unitId)
                 api.disposeUnit(stagedUnitId)

@@ -474,7 +474,7 @@ export function WorkspaceApplication() {
     setHasUnsavedChanges(true)
   }, [detachWorkbook])
 
-  const handleFileLoaded = useCallback((workbookId: string, fileName: string, filePath: string, loadedSheetNames: string[], sheetTabColors: Record<string, string>, loadedActiveSheetName: string | null) => {
+  const handleFileLoaded = useCallback((workbookId: string, fileName: string, filePath: string, loadedSheetNames: string[], sheetTabColors: Record<string, string>, loadedActiveSheetName: string | null, contentChanged = true) => {
     const currentProject = projectRef.current
     const workbook = currentProject.workbooks.find(item => item.id === workbookId)
     if (!workbook) {
@@ -490,7 +490,8 @@ export function WorkspaceApplication() {
       sheetTabColors,
       activeSheetName: loadedActiveSheetName,
     }, builtInFeatureRegistry))
-    setParseResult(null)
+    // Promoting the same source's staged view does not invalidate extraction data.
+    if (contentChanged) setParseResult(null)
   }, [updateWorkbookRuntime])
 
   const handleSelectWorkbook = useCallback((workbookId: string, sheetName?: string) => {
