@@ -197,6 +197,10 @@ in source and packaged modes. macOS restores a saved native frame because
 pywebview 6.2.1 Cocoa restore only deminiaturizes. Windows retains native
 maximize/restore behavior. These tests do not establish physical dragging,
 resize-edge behavior, minimizing, or Windows 11 acceptance.
+The Windows geometry suite shows its test window because a hidden WinForms form
+does not exercise actual maximized bounds. Other behavior suites remain hidden.
+Its normal 1000-by-600 frame fits the hosted CI desktop; exact position and size
+restoration are still required.
 
 Passing the original Electron, browser, and Go suites is shared-code regression
 evidence, not proof that all their scenarios have been replayed on pywebview.
@@ -264,7 +268,7 @@ This fixture evidence does not establish general font/placement fidelity.
 
 `.github/workflows/pywebview-windows.yml` is a manual-only candidate workflow.
 It does not publish a release or replace the Wails workflows. It installs the
-Python runtime, runs shared and host/helper regressions, builds the application,
+Python runtime, runs pywebview host/helper regressions, builds the application,
 and replays all source and packaged native suites through WebView2. Each suite
 has a ten-minute limit, its own log and completion report, and process-tree
 termination on timeout or interruption. Zero exit status without a fresh,
@@ -288,7 +292,26 @@ A passing Windows hosted-runner job does not establish Windows 11 physical or
 visual acceptance. Check the downloaded candidate's native dialogs, JSON drag/drop,
 dirty-close choices, maximize/restore, outline hit targets, worksheet selection
 flashes, and image/OMML/MathType placement on a Windows 11 machine before retiring
-Wails. The workflow has not been dispatched as part of the local implementation.
+Wails.
+
+On 2026-10-13, the Windows Server 2025 hosted runner passed both source and
+packaged WebView2 acceptance at commit `61d2a90`: all 11 groups in each mode
+produced fresh `completed=true` reports (50 scenarios plus both smoke exit paths).
+Host/helper/harness tests ran 74 cases: 73 passed and the private local MathType
+workbook case was explicitly skipped because it is not distributed. The public
+MathType fixture and Windows-only real GDI+ EMF-to-PNG check passed.
+See the [verified workflow run](https://github.com/Maybeka/ExcelBlockParser/actions/runs/38337167023).
+The `pywebview-windows-x64-candidate` artifact is a candidate application directory,
+not a release. CI dialog choices are supplied by the harness; physical Windows 11
+dialogs, drag/drop, pointer hit targets, and visual placement still need acceptance.
+
+The Windows replay exposed a display-load completion race that cleared newer
+extraction results before Save As. Results now invalidate before explicit source
+attachment, addition, reassignment or refresh, not when a display load completes.
+The same multi-workbook preview/save/reopen assertions passed on Windows after
+the fix. The source-path golden test now distinguishes same-drive relative paths
+from cross-drive absolute paths using platform path rules; application path
+persistence logic was not changed for that test correction.
 
 Install build dependencies in the same virtual environment:
 
