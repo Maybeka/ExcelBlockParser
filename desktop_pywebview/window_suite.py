@@ -1,6 +1,7 @@
 """Real native bounds checks through the renderer's titlebar controls."""
 
 import time
+import sys
 
 from .native_suite import NativeUI
 
@@ -16,12 +17,17 @@ def wait_bounds(window, predicate, timeout=10):
         if predicate(current):
             return current
         time.sleep(0.05)
-    raise RuntimeError(f'Native window bounds did not reach the expected state: {bounds(window)}')
+    native_state = getattr(window.native, 'WindowState', None) if sys.platform == 'win32' else None
+    raise RuntimeError(f'Native window bounds did not reach the expected state: {bounds(window)}; native state: {native_state}')
 
 
 def run(window, api, directory):
     ui = NativeUI(window)
     ui.wait("Boolean(window.pywebview?.runtimeInfo) && Boolean(document.querySelector('.window-controls'))")
+    if sys.platform == 'win32':
+        # WinForms needs a shown form to exercise actual maximized geometry.
+        # Other behavior suites stay hidden; the runner closes this test window.
+        window.show()
     # Fit the CI desktop as well as local monitors; the app minimum is 1000x600.
     window.resize(1000, 600)
     wait_bounds(window, lambda value: value[2:] == (1000, 600))
