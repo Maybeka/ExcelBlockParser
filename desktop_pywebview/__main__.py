@@ -73,6 +73,7 @@ def main():
         "Excel Block Parser", f"http://127.0.0.1:{server.server_port}/?desktop=pywebview", js_api=api,
         width=1400, height=900, min_size=(1000, 600), frameless=True,
         easy_drag=False, text_select=True, hidden=testing,
+        focus=not (testing and sys.platform == 'darwin'),
     )
     api._attach(window)
     window.events.closing += api._before_close
@@ -126,8 +127,10 @@ def main():
         # A closed WebView cannot answer outstanding JavaScript evaluations.
         # Keep test work daemonized so a failed close test cannot strand the app.
         launch_smoke = lambda: threading.Thread(target=smoke_test, daemon=True).start()
-        webview.start(launch_smoke if testing else None, debug=args.debug,
-                      gui="edgechromium" if sys.platform == "win32" else None)
+        from .native_background import native_test_background
+        with native_test_background(testing):
+            webview.start(launch_smoke if testing else None, debug=args.debug,
+                          gui="edgechromium" if sys.platform == "win32" else None)
     finally:
         if testing:
             smoke_completed.wait(5)

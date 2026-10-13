@@ -134,6 +134,22 @@ active leave phase, so it checks behavior and data, not visual painting
 or physical interaction with OS dialogs. The packaged executable accepts
 `--native-suite` as well.
 
+On macOS, native test flags also install a non-activating Cocoa application
+policy and suppress the backend's hidden-window activation request. Test windows
+cannot become key windows. A native workspace observer detects activation of
+the test process, and its foreground state is checked again after cleanup;
+focus theft fails the test instead of producing a background pass. The original
+backend object, observer and activation policy are restored on every exit path.
+Normal startup does not install this handling or change its window focus policy.
+Windows geometry acceptance still shows its test window and is not a background
+interaction test.
+On 2026-10-14, both macOS source and rebuilt packaged runs passed all 11 groups
+with fresh completion reports; all 17 native processes in each mode passed the
+activation observer and final foreground-state checks. Eight focused tests cover
+normal/non-Cocoa no-ops, native method delegation, activation rejection, and
+cleanup on failure. The complete host/helper/harness suite ran 82 cases: 81
+passed and the Windows-only GDI+ case was explicitly skipped on macOS.
+
 The recovery suite uses five fresh native application processes in two isolated
 cycles: renderer autosave, restart and Recover, then restart and Discard; and
 actual titlebar Discard exit followed by a fresh restart and Recover. It checks real reachable workbook restoration without
