@@ -22,10 +22,11 @@ def wait_bounds(window, predicate, timeout=10):
 def run(window, api, directory):
     ui = NativeUI(window)
     ui.wait("Boolean(window.pywebview?.runtimeInfo) && Boolean(document.querySelector('.window-controls'))")
-    window.resize(1100, 700)
-    wait_bounds(window, lambda value: value[2:] == (1100, 700))
-    window.move(60, 70)
-    normal = wait_bounds(window, lambda value: value == (60, 70, 1100, 700))
+    # Fit the CI desktop as well as local monitors; the app minimum is 1000x600.
+    window.resize(1000, 600)
+    wait_bounds(window, lambda value: value[2:] == (1000, 600))
+    window.move(10, 10)
+    normal = wait_bounds(window, lambda value: value == (10, 10, 1000, 600))
     print(f'Native normal window bounds: {normal}', flush=True)
 
     ui.read("document.querySelector('.window-controls button:nth-child(2)').click()")
