@@ -4,6 +4,8 @@ import tempfile
 import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 from .file_io import FileReader
 
@@ -17,6 +19,25 @@ def exited_worker(connection, path, limit, inspect_only):
 
 
 class FileReaderTests(unittest.TestCase):
+    def test_concurrent_cleanup_serializes_process_polling_and_joining(self):
+        reader = FileReader()
+        active = peak = 0
+        lock = threading.Lock()
+        def is_alive():
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.002)
+            with lock:
+                active -= 1
+            return False
+        process = SimpleNamespace(is_alive=is_alive, join=lambda _: None)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            list(executor.map(reader._stop, [process] * 24))
+        self.assertEqual(peak, 1)
+        reader.close()
+
     def test_worker_exit_does_not_wait_for_read_timeout(self):
         reader = FileReader(worker=exited_worker)
         self.addCleanup(reader.close)

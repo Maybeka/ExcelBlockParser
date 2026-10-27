@@ -32,11 +32,17 @@ class FileReader:
         self._worker = worker
         self._context = multiprocessing.get_context("spawn")
         self._lock = threading.Lock()
+        self._stop_lock = threading.Lock()
         self._processes = set()
         self._closed = False
 
+    def _stop(self, process):
+        # multiprocessing.Process polling/joining is not thread-safe.
+        with self._stop_lock:
+            self._stop_process(process)
+
     @staticmethod
-    def _stop(process):
+    def _stop_process(process):
         if process.is_alive():
             process.terminate()
         process.join(5)
@@ -69,7 +75,9 @@ class FileReader:
                 # Windows pipe polling does not reliably wake when the worker is terminated.
                 if receive.poll(min(0.05, remaining)):
                     break
-                if not process.is_alive() and not receive.poll(0):
+                with self._stop_lock:
+                    alive = process.is_alive()
+                if not alive and not receive.poll(0):
                     raise RuntimeError("File read worker exited without a response")
             try:
                 success, value, data = receive.recv()
