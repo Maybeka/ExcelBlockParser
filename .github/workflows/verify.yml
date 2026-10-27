@@ -12,10 +12,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
       - run: npm ci
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npx playwright install --with-deps chromium
+      - run: |
+          python -m venv .venv-pywebview
+          .venv-pywebview/bin/python -m pip install -r desktop_pywebview/requirements-build.txt
+      - run: npm run test:pywebview
+      - run: go test ./cmd/native-helper/...
       - run: npm run test:main
       - run: npm run test:release
       - run: npm run test:unit
@@ -38,24 +47,3 @@ jobs:
           name: electron-test-results-windows
           path: test-results/
           if-no-files-found: ignore
-
-  wails-production-build:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-      - run: npm run build:vite
-      - run: go test ./...
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-      - run: '& "$(go env GOPATH)\bin\wails.exe" build -platform windows/amd64'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wails-windows-x64
-          path: build/bin/
-          if-no-files-found: error

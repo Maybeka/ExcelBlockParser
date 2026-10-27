@@ -1,6 +1,6 @@
-import type { WailsGoAPI } from './bridge'
+import type { DesktopHostAPI } from './bridge'
 
-export type PywebviewAPI = NonNullable<NonNullable<WailsGoAPI['main']>['App']> & {
+export type PywebviewAPI = DesktopHostAPI & {
   Ready: () => Promise<void>
   Minimize: () => Promise<void>
   ToggleMaximize: () => Promise<boolean>
@@ -39,9 +39,7 @@ export async function initializePywebview() {
   const locale = await api.LoadAppLocale()
   if (locale === 'en-US' || locale === 'zh-CN') localStorage.setItem('excel-block-parser.locale', locale)
   window.pywebview!.runtimeInfo = await api.RuntimeInfo()
-  window.runtime = {
-    WindowMinimise: () => { void api.Minimize() },
-    WindowToggleMaximise: () => { void api.ToggleMaximize() },
+  window.desktopEvents = {
     EventsOn: (event, callback) => {
       const listener = (value: Event) => {
         const detail = (value as CustomEvent<{ event: string; args: unknown[] }>).detail

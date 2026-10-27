@@ -1,5 +1,3 @@
-//go:build pywebview_helper
-
 package main
 
 import (

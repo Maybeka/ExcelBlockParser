@@ -97,8 +97,8 @@ const api: ElectronAPI = {
     return () => { ipcRenderer.removeListener('preview:reload', handler) }
   },
   cancelPythonRun: async () => bridgeOk(false),
-  runProjectPython: async () => bridgeError('Project Python requires the Wails runtime.'),
-  exportPythonArtifacts: async () => bridgeError('Saving generated files requires the Wails runtime.'),
+  runProjectPython: async () => bridgeError('Project Python requires the pywebview runtime.'),
+  exportPythonArtifacts: async () => bridgeError('Saving generated files requires the pywebview runtime.'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

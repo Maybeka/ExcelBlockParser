@@ -2,6 +2,7 @@ name: Pywebview Windows Candidate
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -22,12 +23,16 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: npm ci
+      - name: Release version and artifact integrity tests
+        run: npm run test:release
       - name: Install desktop runtime and packager
         run: |
           python -m venv .venv-pywebview
           .venv-pywebview/Scripts/python.exe -m pip install -r desktop_pywebview/requirements-build.txt
       - name: Host and real helper regressions
         run: npm run test:pywebview
+      - name: Shared Go runtime regressions
+        run: go test ./cmd/native-helper/...
       - name: Build candidate and native fixtures
         run: npm run package:pywebview
       - name: Source WebView2 native acceptance
@@ -40,6 +45,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Downloaded EXE full WebView2 native acceptance
         run: .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_native --executable ".tmp/pywebview-downloaded-distribution/Downloaded app with spaces/Excel Block Parser.exe" --logs .tmp/pywebview-packaged-native-logs
+      - name: Prepare release bytes and provenance without rebuilding
+        run: node scripts/prepare-pywebview-release.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -53,7 +60,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: pywebview-windows-x64-candidate
-          path: |
-            release-pywebview/Excel Block Parser.exe
-            release-pywebview/ExcelBlockParser-pywebview-windows-x64.zip
+          path: release-pywebview/assets/
           if-no-files-found: error

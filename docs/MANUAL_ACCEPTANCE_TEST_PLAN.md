@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Use this guide to decide whether a packaged Wails Excel Block Parser release is
-fit for distribution. Run it against the Wails ZIP artifact on Windows 11 x64,
+Use this optional guide to check physical and visual behavior of the production
+pywebview EXE on Windows 11 x64,
 not `npm run dev`, an Electron package, or a browser build.
 
 Each case has a pass/fail result. Stop the release and file a defect for any
@@ -40,7 +40,8 @@ separate `output/` directory for generated JSON files and screenshots.
 
 ### Install The Artifact
 
-1. Extract the Wails ZIP artifact to a writable local folder.
+1. Download the single-file EXE to a writable local folder. No companion `_internal`
+   folder or separate Python installation is required.
 2. Launch **Excel Block Parser** from the installed location. Confirm the
    application can start and has its required GUI/WebView dependency. Record
    any Windows security notice: the v1 candidate is intentionally unsigned.

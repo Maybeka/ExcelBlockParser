@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 
 const commands = [
+  ['npm', ['run', 'test:pywebview']],
   ['npm', ['run', 'test:main']],
   ['npm', ['run', 'test:release']],
   ['npm', ['run', 'test:unit']],

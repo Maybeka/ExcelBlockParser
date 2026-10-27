@@ -1,77 +1,66 @@
 # Release Acceptance
 
-The gates below are the baseline for release candidates unless a
-version-specific release plan explicitly strengthens them. Wails is the
-production runtime. Electron checks protect the shared renderer and bridge
-contract during development; they do not produce release artifacts.
-
-## Current Verification Status
-
-Automated desktop UI coverage currently runs through Electron only. The Wails
-Go layer has tests and build checks, but no Wails desktop/WebView E2E suite
-exists yet; that coverage is not a current release requirement. Electron is
-the automated desktop regression path for the current development line.
+pywebview is the production desktop host. Electron and browser checks protect
+shared application behavior but do not substitute for production-host tests.
+The application-owned feature scope stays at Block, Region and project Python.
 
 ## Product Gates
 
-1. The documented workbook-to-JSON workflow works without data loss for every
-   supported fixture: project open/save, workbook loading, sheet navigation,
-   range capture, Block and Region configuration, parse, diagnostics, preview,
-   reconciliation, and recovery.
-2. All destructive or context-changing actions have clear, correct state
-   handling: switching workbooks, removing workbook sources, closing projects,
-   discard confirmation, and left-navigation synchronization.
-3. The workspace is dense, keyboard-accessible, responsive at supported window
-   sizes, and has no stale sheet, selection, preview, or diagnostic state.
-4. Project v3 round-trips through JSON serialization/import without semantic
-   data loss. Versions 1 and 2 are rejected as unsupported.
+1. Project v3 round-trips without losing workbook sources, extraction settings,
+   Python files or results. Unsupported schema versions fail explicitly.
+2. Multi-workbook loading, switching, global extraction navigation, filtering,
+   preview and source-change reconciliation preserve correct ownership and state.
+3. Save, Save As, cancellation, unsaved close and restart/recovery preserve data.
+4. Known image, OMML, MathType and Windows EMF fixtures render nonblank resources
+   without invalid SVG or speech-service requests. This is fixture coverage,
+   not universal Excel-content or typography compatibility.
 
 ## Engineering Gates
 
-1. Type checking, configured quality checks, unit tests, and fixture-based
-   integration tests pass in continuous integration. A linter is required only
-   after it is intentionally configured as a repository check.
-2. Tests cover extraction semantics, malformed projects, reconciliation,
-   recovery, bridge errors, workbook lifecycle, and regression cases for every
-   fixed release-blocking defect.
-3. Browser renderer tests and Electron development E2E pass. Wails
-   desktop/WebView E2E is not a current gate; native bridge behavior is covered by
-   Go tests and the Windows 11 manual-acceptance gate.
-4. The Wails Go layer has unit/integration coverage for path authorization,
-   size and time limits, recovery persistence, import/export, and bridge error
-   translation.
-5. No known critical or high-severity defect remains. A defect that corrupts
-   template/output data, loses recoverable state, bypasses a filesystem policy,
-   blocks the documented workflow, or creates materially inconsistent UI state
-   blocks release.
+1. Main-process, renderer/unit, browser, Electron development and production
+   host/helper tests pass. Existing skips must be identified, not counted as passes.
+2. The independent Go interpreter retains execution, imports, errors, isolation
+   and cancellation tests. Removing the old GUI host must not delete these tests.
+3. File authorization, regular-file checks, size bounds, 30-second read deadlines,
+   JSON save targets, safe generated-file paths and overwrite confirmation have
+   regressions. Timeout and shutdown must reap file workers and helper processes.
+4. Local GUI acceptance is non-activating on macOS in test mode only. Normal
+   application focus behavior is unchanged.
+5. No known critical or high-severity data-loss, workflow-blocking or ownership
+   regression remains. Repository-wide type checks have a historical baseline;
+   new host work must not introduce additional diagnostics or claim a clean
+   whole-repository type check without executing the referenced configurations.
 
-## Wails Production Gates
+## Windows Distribution Gates
 
-1. The Wails bridge implements every production capability used by the renderer
-   with stable typed behavior: workbook/project open, project save,
-   recovery save/load/clear, preview events, and error reporting.
-2. Wails uses explicit, tested path and size controls. Arbitrary renderer file
-   access is prohibited.
-3. A packaged Wails build is smoke-tested on Windows 11 x64. Electron packages
-   are not release candidates.
-4. Launch, open, export, recovery, and close behavior is documented and
-   manually accepted from the Wails ZIP candidate on Windows 11 x64.
-5. The candidate ZIP and its SHA-256 sidecar are retained with the release
-   evidence. Authenticode signing and installer metadata remain deferred.
+1. Build on Windows using pinned desktop dependencies and the required Go/Node/
+   Python versions. The shipped application is a single EXE plus checksum and
+   provenance assets, not an EXE with a separately shipped `_internal` folder.
+2. Source and packaged applications complete all eleven native acceptance groups
+   with fresh completion reports. An exit code alone is not completion evidence.
+3. The previous Internet-marked directory preview must reproduce its known CLR
+   failure. The marked single-file replacement must complete real Save/Discard
+   flows and clean temporary runtime files without unblocking its download marker.
+4. Full packaged acceptance runs against the downloaded/extracted marked EXE.
+   Release preparation checks its hash against the exact tested executable.
+5. The publishing job verifies source commit, version and SHA-256, then uploads
+   the same bytes. No rebuild is allowed between verification and publication.
+6. Signing and installers remain deferred. Windows Server hosted-runner results
+   are not Windows 11 physical/visual passes. Optional manual checks cover native
+   file dialogs, pointer gestures, IME, DPI and multi-monitor behavior; they are
+   not a required migration completion gate.
 
-## Performance Gate
+## Performance and Compatibility
 
-A generated 50,000-cell workbook loads and extracts to JSON in under 12
-seconds on the designated release runner. Workbooks that exceed documented
-limits are rejected with actionable diagnostics rather than partially
-processed.
+Keep the generated workbook parser benchmark reproducible and record timings
+when changing workbook or host I/O. Shared parser timings do not establish cold
+onefile startup time, peak WebView2 memory, or large-project end-to-end latency.
+These remain explicit measurement gaps, not claimed performance improvements.
+Do not enlarge the frozen business scope to close unrelated Excel limitations.
 
-## Architecture Boundary
+## Recovery Handoff
 
-Runtime plugins and in-app LLM integration are not part of the current release
-scope.
-Project-owned Python code-generation execution is included, while external
-Python packages, host filesystem access, and terminal tooling remain outside
-the product boundary. Built-in feature-module work is governed by
-`FEATURE_MODULE_ARCHITECTURE.md`; Gate B and its Phase B implementation have
-preserved the release gates above.
+Saved project files retain the current v3 contract. Existing pywebview profile
+paths remain unchanged. Old GUI-host recovery is left untouched and is not
+silently imported; users should save old sessions before switching applications.
+Keep the previous stable release available for rollback.

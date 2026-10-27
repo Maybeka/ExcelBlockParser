@@ -10,12 +10,13 @@ import threading
 
 from .artifacts import decode_artifacts, prepare_artifacts, write_artifacts
 from .helper import NativeHelper
+from .file_io import FileReader
 
 
 class DesktopAPI:
     """Desktop methods matching the current renderer bridge contract."""
 
-    def __init__(self, recovery_dir=None, helper=None):
+    def __init__(self, recovery_dir=None, helper=None, reader=None):
         self._window = None
         self._workbooks = {}
         self._projects = set()
@@ -28,6 +29,7 @@ class DesktopAPI:
         self._recovery = Path(recovery_dir or self._config_dir()) / "recovery.json"
         self._preferences = self._recovery.parent / "preferences.json"
         self._helper = helper or NativeHelper()
+        self._reader = reader or FileReader()
 
     @staticmethod
     def _config_dir():
@@ -92,19 +94,13 @@ class DesktopAPI:
             payload = json.dumps({"event": event, "args": args})
             self._window.evaluate_js(f"window.dispatchEvent(new CustomEvent('desktop-event', {{detail: {payload}}}))")
 
-    @staticmethod
-    def _read(path, limit):
-        path = Path(path).resolve(strict=True)
-        if not path.is_file():
-            raise ValueError("Selected path is not a regular file")
-        with path.open("rb") as stream:
-            data = stream.read(limit + 1)
-        if len(data) > limit:
-            raise ValueError("File exceeds the size limit")
-        return path, data
+    def _read(self, path, limit):
+        return self._reader.read(path, limit)
 
     @staticmethod
     def _write(path, content):
+        if Path(path).suffix.lower() != ".json":
+            raise ValueError("Project save path must use the .json extension")
         json.loads(content)
         encoded = content.encode("utf-8")
         if len(encoded) > 25 * 1024 * 1024:
@@ -129,13 +125,12 @@ class DesktopAPI:
         return self._window.create_confirmation_dialog(title, message)
 
     def _approve(self, alias, source):
-        path = Path(source).resolve(strict=True)
-        if path.suffix.lower() not in (".xlsx", ".xls") or not path.is_file():
+        path, _ = self._reader.read(source, 100 * 1024 * 1024, inspect_only=True)
+        if path.suffix.lower() not in (".xlsx", ".xls"):
             raise ValueError("Select an .xlsx or .xls workbook")
-        if path.stat().st_size > 100 * 1024 * 1024:
-            raise ValueError("Workbook exceeds the 100 MB limit")
-        self._workbooks[self._workbook_key(str(alias))] = path
-        self._workbooks[self._workbook_key(str(path))] = path
+        with self._lock:
+            self._workbooks[self._workbook_key(str(alias))] = path
+            self._workbooks[self._workbook_key(str(path))] = path
         return str(path)
 
     @staticmethod
@@ -170,8 +165,7 @@ class DesktopAPI:
 
     def OpenXlsx(self):
         selected = self._dialog("OPEN", allow_multiple=False, file_types=("Excel (*.xlsx;*.xls)",))
-        with self._lock:
-            return self._approve(selected[0], selected[0]) if selected else ""
+        return self._approve(selected[0], selected[0]) if selected else ""
 
     def ReadFile(self, path):
         with self._lock:
@@ -195,7 +189,7 @@ class DesktopAPI:
         json.loads(content)
         with self._lock:
             self._projects.add(str(path))
-            self._authorize_sources(content, path)
+        self._authorize_sources(content, path)
         return {"filePath": str(path), "content": content}
 
     def SaveJson(self, name, content):
@@ -228,8 +222,7 @@ class DesktopAPI:
             return None
         _, data = self._read(self._recovery, 25 * 1024 * 1024)
         content = data.decode("utf-8")
-        with self._lock:
-            self._authorize_sources(content)
+        self._authorize_sources(content)
         return content
 
     def ClearRecovery(self):
@@ -261,6 +254,7 @@ class DesktopAPI:
         self._window.destroy()
 
     def _shutdown(self):
+        self._reader.close()
         self._helper.close()
 
     def Minimize(self):

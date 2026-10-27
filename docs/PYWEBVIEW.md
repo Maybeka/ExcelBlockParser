@@ -1,9 +1,10 @@
-# pywebview Desktop Adapter
+# pywebview Desktop Host
 
-The `codex/pywebview-desktop` development line adds a Python-owned desktop host
-for the existing React/Univer application. Project v3 and extraction behavior
-are shared with the Wails application. This adapter is under development and
-does not yet have Windows 11 release acceptance.
+The application uses a Python-owned desktop host for the React/Univer frontend.
+It replaces the previous Wails GUI host while preserving Project v3, Block,
+Region and isolated Python behavior. Windows 11 x64 is the production target;
+macOS supports local development. Automated Windows acceptance does not assert
+physical Windows 11 or general font/placement fidelity.
 
 ## Architecture
 
@@ -69,8 +70,9 @@ The command builds the shared frontend and native helper, then opens pywebview.
 For an already built frontend/helper, launch `python -m desktop_pywebview
 --debug` using the virtual environment. Set `PYWEBVIEW_PYTHON` when using a
 different interpreter location. Windows explicitly uses EdgeChromium/WebView2;
-macOS uses WKWebView. Recovery is stored separately from the production Wails
-application during this migration.
+macOS uses WKWebView. Recovery remains in the existing pywebview profile,
+separate from old Wails recovery. Save old sessions before switching; old
+recovery is neither automatically imported nor deleted. See `SUPPORT.md`.
 
 ## Verification
 
@@ -222,7 +224,8 @@ Passing the original Electron, browser, and Go suites is shared-code regression
 evidence, not proof that all their scenarios have been replayed on pywebview.
 Automated parity does not cover physical target-platform window interaction,
 drag/drop, directory dialogs, or visual Windows EMF placement. No physical
-acceptance is claimed. Wails remains available; removing it is a separate task.
+acceptance is claimed. Historical Wails releases remain available as rollback
+artifacts, not as a second source/build runtime.
 
 The Python workspace suite uses actual renderer actions and the real isolated
 helper. It checks refreshed two-workbook Block/Region input without executing a
@@ -282,8 +285,9 @@ This fixture evidence does not establish general font/placement fidelity.
 
 ### Windows CI Candidate
 
-`.github/workflows/pywebview-windows.yml` is a manual-only candidate workflow.
-It does not publish a release or replace the Wails workflows. It installs the
+`.github/workflows/pywebview-windows.yml` is a manual and reusable candidate workflow.
+The tag release workflow calls it before publishing the same verified bytes.
+It installs the
 Python runtime, runs pywebview host/helper regressions, builds the application,
 and replays all source and packaged native suites through WebView2. Each suite
 has a ten-minute limit, its own log and completion report, and process-tree
@@ -334,9 +338,10 @@ The full eleven packaged suites then run against that same marked, extracted EXE
 not the build-directory copy. This is automated Internet-zone simulation, not a
 claim of driving a real browser download or Explorer UI.
 
-The `pywebview-windows-x64-candidate` artifact contains the standalone EXE and a
-ZIP containing only that EXE. It is uploaded only after all acceptance checks
-pass. Neither distribution requires a separately shipped `_internal` directory,
+The `pywebview-windows-x64-candidate` artifact contains the standalone EXE,
+`SHA256SUMS.txt`, and a build manifest recording source and runtime versions.
+It is uploaded only after all acceptance checks pass, without rebuilding the
+verified executable. The distribution requires no separately shipped `_internal` directory,
 automatic unblocking, a changed .NET trust configuration, or installed Python.
 
 The Windows replay exposed a display-load completion race that cleared newer
@@ -371,7 +376,7 @@ a complete Windows package.
 
 ## Capability Acceptance
 
-| Wails capability | pywebview implementation | Automated evidence |
+| Desktop capability | pywebview implementation | Automated evidence |
 | --- | --- | --- |
 | Project open/save/save as | Native dialogs and authorized atomic JSON writes | Host tests, native bridge round trips and complete v3 golden documents |
 | Workbook reads | Dialog/project-authorized bounded reads | Host tests and native workbook load |
@@ -385,7 +390,23 @@ a complete Windows package.
 | EMF/WMF | Existing Windows GDI+ helper | Windows real EMF rasterization, decoded PNG dimensions and nonwhite pixels |
 | Distribution | Windows single-file EXE; macOS application bundle | Source/native regressions plus downloaded-package Internet-zone and cleanup checks in Windows CI |
 
-The current migration development goal is accepted using automated evidence.
+The production host is verified using automated source and packaged evidence.
 Physical Windows 11 interaction and visual acceptance are not claimed and are
-not completion requirements for this goal. Mainline migration, Wails removal,
-and release publication remain separate operations.
+not completion requirements for the host migration. Publication remains a
+separate operation from merging source changes.
+
+## Filesystem and Startup Boundaries
+
+Source inspection and reads run in spawn-based worker processes with a 30-second
+deadline. Timeouts and application exit terminate and join those workers, so a
+blocked read cannot strand a bridge thread indefinitely. Packaged entry points
+divert multiprocessing workers before starting the GUI. The frontend still owns
+source availability reconciliation; project/recovery reads stay bounded at 25 MB
+and workbook reads at 100 MB. Final project save targets must end in `.json`
+(case-insensitive); an invalid or missing extension is rejected without writing.
+
+Windowless startup exceptions write bounded, data-free metadata to
+`startup-error.json` in the application profile and show an actionable error.
+No project payload or exception message is copied into that diagnostic file.
+Build manifests record actual dependency and tool versions; Windows Python.NET,
+CLR loader and packager versions are pinned to the tested versions.

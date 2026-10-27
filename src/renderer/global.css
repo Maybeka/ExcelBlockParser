@@ -51,9 +51,8 @@ html, body, #root {
   line-height: normal;
   padding: 0 10px;
   -webkit-app-region: drag;
-  --wails-draggable: drag;
 }
-.app-header button, .app-header input, .app-header .ant-select, .app-header .ant-dropdown-trigger { -webkit-app-region: no-drag; --wails-draggable: no-drag; }
+.app-header button, .app-header input, .app-header .ant-select, .app-header .ant-dropdown-trigger { -webkit-app-region: no-drag; }
 .app-brand { align-items: center; display: flex; flex: 0 0 auto; gap: 8px; min-width: 142px; }
 .app-brand-copy { display: flex; line-height: 1.2; }
 .app-brand-copy strong { color: var(--fluent-text); font-size: 14px; font-weight: 700; }
@@ -101,7 +100,7 @@ html, body, #root {
 .project-save-notice { align-items: center; animation: workspace-success-notice-enter .2s ease-out; background: #edf8f2; border: 1px solid #95d5b2; border-radius: 8px; box-shadow: 0 4px 12px rgba(40, 86, 61, .16); color: #196b42; display: flex; font-size: 13px; font-weight: 650; gap: 7px; left: 50%; padding: 9px 14px; pointer-events: none; position: fixed; top: 52px; transform: translateX(-50%); z-index: 1400; }
 .project-save-notice .anticon { color: #1e9a5b; }
 @keyframes workspace-success-notice-enter { from { opacity: 0; transform: translate(-50%, -8px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
-.window-controls { align-items: stretch; align-self: stretch; display: flex; margin-right: -10px; -webkit-app-region: no-drag; --wails-draggable: no-drag; }
+.window-controls { align-items: stretch; align-self: stretch; display: flex; margin-right: -10px; -webkit-app-region: no-drag; }
 .window-controls .ant-btn { align-items: center; border: 0; border-radius: 0; color: #536575; display: inline-flex; height: 100%; justify-content: center; min-width: 42px; }
 .window-controls .ant-btn:hover { background: #e8f1f7; color: #1e66f5; }
 .window-controls .window-control-close:hover { background: #e64553; color: #fff; }
@@ -199,7 +198,7 @@ html, body, #root {
 .json-validation-report { display: flex; flex-direction: column; gap: 12px; }
 .json-validation-report > strong { color: var(--fluent-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .json-validation-errors { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; white-space: pre-wrap; }
-.workbook-search { background: var(--m3-surface-container-lowest); border: 1px solid var(--fluent-stroke); border-radius: 8px; box-shadow: var(--fluent-elevation); display: flex; flex-direction: column; gap: 6px; max-height: min(560px, calc(100vh - 16px)); padding: 8px; position: fixed; width: min(380px, calc(100vw - 16px)); z-index: 1200; -webkit-app-region: no-drag; --wails-draggable: no-drag; }
+.workbook-search { background: var(--m3-surface-container-lowest); border: 1px solid var(--fluent-stroke); border-radius: 8px; box-shadow: var(--fluent-elevation); display: flex; flex-direction: column; gap: 6px; max-height: min(560px, calc(100vh - 16px)); padding: 8px; position: fixed; width: min(380px, calc(100vw - 16px)); z-index: 1200; -webkit-app-region: no-drag; }
 .workbook-search .ant-input-affix-wrapper { flex: 1; min-width: 0; }
 .workbook-search .ant-input-affix-wrapper .ant-input-suffix { margin-inline-end: -4px; }
 .workbook-search .ant-input-affix-wrapper .ant-input-suffix .ant-btn { color: var(--fluent-accent); height: 22px; min-width: 22px; padding: 0; }
@@ -540,12 +539,12 @@ html, body, #root {
 .python-project-workspace { background: var(--fluent-canvas); bottom: 0; display: flex; flex-direction: column; left: 0; position: fixed; right: 0; top: 42px; z-index: 900; }
 .python-project-workspace-body { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; padding: 0; }
 .python-header-tabs { align-self: stretch; flex: 1 1 auto; min-width: 0; overflow: hidden; padding: 0 2px; }
-.python-header-tab-list { align-items: stretch; background: var(--m3-surface-container-low); border: 1px solid var(--fluent-stroke); border-radius: 14px; display: flex; gap: 0; height: 30px; margin-top: 6px; max-width: 100%; overflow-x: auto; padding: 2px; scrollbar-width: none; width: fit-content; -webkit-app-region: no-drag; --wails-draggable: no-drag; }
+.python-header-tab-list { align-items: stretch; background: var(--m3-surface-container-low); border: 1px solid var(--fluent-stroke); border-radius: 14px; display: flex; gap: 0; height: 30px; margin-top: 6px; max-width: 100%; overflow-x: auto; padding: 2px; scrollbar-width: none; width: fit-content; -webkit-app-region: no-drag; }
 .python-header-tab-list::-webkit-scrollbar { display: none; }
 .python-header-tab-list button { background: transparent; border: 0; border-radius: 10px; color: var(--fluent-text-muted); cursor: pointer; flex: 0 0 auto; font: inherit; font-size: 12px; line-height: 22px; min-height: 0; padding: 0 10px; }
 .python-header-tab-list button:hover { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
 .python-header-tab-list button.is-active { background: var(--m3-surface-container-lowest); box-shadow: 0 1px 2px rgba(25, 28, 33, .12); color: var(--fluent-accent); font-weight: 650; }
-.python-header-actions { align-items: center; display: flex; gap: var(--space-2); margin-left: auto; min-width: 0; -webkit-app-region: no-drag; --wails-draggable: no-drag; }
+.python-header-actions { align-items: center; display: flex; gap: var(--space-2); margin-left: auto; min-width: 0; -webkit-app-region: no-drag; }
 .python-header-actions .ant-btn { background: var(--m3-surface-container-lowest); border: 1px solid var(--fluent-stroke-strong); border-radius: 12px; color: var(--fluent-accent); height: 28px; padding-inline: 10px; }
 .python-header-actions .ant-btn-primary { background: var(--m3-surface-container-lowest); border-color: var(--fluent-accent); color: var(--fluent-accent); }
 .python-header-actions .ant-btn:not(:disabled):hover { background: var(--m3-secondary-container); border-color: var(--fluent-accent); color: var(--m3-on-secondary-container); }

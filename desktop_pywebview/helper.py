@@ -32,7 +32,7 @@ class NativeHelper:
                 raise RuntimeError("Desktop helper exited unexpectedly")
             return
         if not self._executable.is_file():
-            raise RuntimeError("Native helper is missing. Run: python -m desktop_pywebview.build_helper")
+            raise RuntimeError("Native helper is missing. Reinstall the complete application, or rebuild the helper in a development checkout.")
         self._process = subprocess.Popen(
             [str(self._executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             # Keep stdout strictly reserved for the JSON protocol.

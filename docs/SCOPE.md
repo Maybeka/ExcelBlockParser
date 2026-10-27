@@ -1,7 +1,7 @@
 # Excel Block Parser: Product and Repository Scope
 
 **Status:** v1.9.0 frozen baseline; maintenance pending a concrete extension need
-**Production runtime target:** Wails, React, TypeScript, Go
+**Production runtime target:** pywebview, React, TypeScript, Go
 **Development runtime:** Electron, React, TypeScript
 **Last assessed:** 2026-09-12
 
@@ -40,7 +40,7 @@ The implemented application supports this general workflow:
 9. Save or save-as the complete project JSON through the desktop lifecycle.
 10. Reconcile existing block definitions after a workbook has changed.
 11. Optionally run the project Python script, preview returned files, and save
-    them to a user-selected directory through the Wails host.
+    them to a user-selected directory through the pywebview host.
 
 ## 3. Implemented Scope
 
@@ -97,7 +97,7 @@ The implemented application supports this general workflow:
   `process(context)` entry point, explicit execution, semantic editing support,
   JSON input/result views,
   captured output and errors, cancellation, and bounded UTF-8 generated-file
-  preview/export in the Wails runtime.
+  preview/export in the pywebview runtime.
 
 ### 3.5 Project persistence and reconciliation
 
@@ -117,14 +117,14 @@ The implemented application supports this general workflow:
 
 - Electron main and preload processes for fast local development and native
   workflow diagnostics.
-- Wails bindings and Go application code for the production desktop host.
+- Python desktop bridge and a standalone Go helper for isolated scripts and equations.
 - Native file open/save dialogs for workbooks and project JSON.
 - Modal preview flow. The Electron-only preview window is not a v1 requirement.
 
 ## 4. Current Technical Architecture
 
 ```text
-Wails production host / Electron development host
+pywebview production host / Electron development host
   - native dialogs, constrained filesystem access, recovery persistence
         |
         | context-isolated preload API
@@ -140,7 +140,7 @@ ExcelJS
   - workbook ingestion and conversion source
 ```
 
-Wails is the production desktop host. Electron remains a
+pywebview is the production desktop host. Electron remains a
 development-only shell for rapid renderer work and diagnostic E2E coverage.
 The renderer must use the narrow bridge contract so both hosts retain behavioral
 parity during ongoing development.
@@ -148,9 +148,10 @@ parity during ongoing development.
 ## 5. Quality and Verification Status
 
 The repository contains example workbooks plus unit, browser, Electron-native,
-Electron-main, Go safety, and Wails-build checks. Electron remains development
-coverage only; Wails desktop/WebView E2E is not a current requirement. Windows
-11 artifact acceptance is required for each production release. See
+Electron-main, Python host/helper, Go core, and production build checks. Electron
+remains development coverage only; production candidates also run source and
+downloaded single-file pywebview WebView regressions on Windows. Physical Windows
+11 checks are supplementary rather than a required migration gate. See
 `docs/RELEASE_ACCEPTANCE.md` for the authoritative release gates rather than
 treating a historical test count as a release claim.
 
@@ -180,7 +181,7 @@ Workbook -> extraction template -> validated JSON -> project Python package -> p
 The script consumes the documented project context rather than workbook runtime
 objects or React state. It returns JSON by value. An optional top-level
 `artifacts` list describes relative UTF-8 text files; Python never receives an
-output directory or direct host filesystem access. The Wails host validates,
+output directory or direct host filesystem access. The pywebview host validates,
 previews, confirms conflicts, and writes those files.
 
 The application-owned feature set is frozen at Block extraction, Region
@@ -198,7 +199,7 @@ that the project-owned package is insufficient.
 ### Safety boundary
 
 Python code does not execute in the renderer and is never implicitly run. The
-Wails host owns an isolated embedded interpreter with memory, source, context,
+pywebview host owns an isolated embedded interpreter with memory, source, context,
 and result-size limits; cancellation and diagnostics are captured. Host files,
 network access, and child processes are denied. Generated files cross the
 runtime boundary only as validated result data. Third-party scripts still
@@ -216,7 +217,7 @@ compatibility, and necessary usability improvements.
 
 - Keep version, changelog, support, release, schema, and architecture documents
   synchronized with the tagged release and current development line.
-- Preserve the complete automated Electron development suite and Windows/Wails
+- Preserve the complete automated Electron development suite and Windows/pywebview
   release acceptance without expanding GitHub verification unnecessarily.
 - Treat reported data loss, workbook identity, recovery, persistence, and
   extraction correctness defects as higher priority than extension work.

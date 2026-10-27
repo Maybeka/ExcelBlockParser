@@ -67,7 +67,6 @@ export function WorkspaceApplication() {
   const appVersion = import.meta.env.APP_VERSION ?? 'development'
   const electronVersion = import.meta.env.ELECTRON_VERSION ?? 'unknown'
   const univerVersion = import.meta.env.UNIVER_VERSION ?? 'unknown'
-  const wailsVersion = import.meta.env.WAILS_VERSION ?? 'unknown'
   const e2eMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')
   const automatedSession = typeof window !== 'undefined' && Boolean(window.navigator?.webdriver)
   const { univerAPI, sheetNames } = useUniver()
@@ -483,9 +482,6 @@ export function WorkspaceApplication() {
     detachWorkbook(workbookId)
     setProject(current => removeProjectWorkbook(current, workbookId, builtInFeatureRegistry))
     setPendingProjectRemoval(null)
-    setPendingImportContent(null)
-    setPendingImportProjectName(null)
-    setShowImportWarning(false)
     setHasUnsavedChanges(true)
   }, [detachWorkbook])
 
@@ -1120,7 +1116,7 @@ export function WorkspaceApplication() {
           {window.pywebview?.runtimeInfo
             ? <><div><dt>pywebview</dt><dd>v{window.pywebview.runtimeInfo.pywebview}</dd></div>
               <div><dt>Python</dt><dd>v{window.pywebview.runtimeInfo.hostPython}</dd></div></>
-            : <div><dt>{t('about.wails')}</dt><dd>v{wailsVersion}</dd></div>}
+            : null}
           <div><dt>{t('about.electron')}</dt><dd>v{electronVersion}</dd></div>
           <div><dt>{t('about.univer')}</dt><dd>v{univerVersion}</dd></div>
         </dl>

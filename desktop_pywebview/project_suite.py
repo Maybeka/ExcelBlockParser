@@ -102,6 +102,9 @@ def run(window, api, directory):
     ui.wait("document.querySelectorAll('.project-workbook-setting').length === 0 && document.querySelectorAll('.workbook-tab').length === 0")
     ui.button('Done')
     ui.finish_exit(ui.modal('Project settings'))
+    api.RequestClose()
+    ui.wait(ui.modal_open('Close application?'))
+    ui.choose('Close application?', 1)
     empty_path = temporary / 'after removal.json'
     api._select('SAVE', empty_path)
     ui.menu('Save Project')

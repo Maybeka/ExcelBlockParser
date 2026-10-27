@@ -11,6 +11,48 @@ from desktop_pywebview.host import DesktopAPI
 
 
 class HostTests(unittest.TestCase):
+    def test_preview_payload_lifecycle_and_close_event(self):
+        self.api._emit = Mock()
+        payload = {"columns": ["name"], "data": [{"name": "sample"}]}
+        self.api.SetPreviewData("block", payload)
+        self.assertEqual(self.api.GetPreviewData("block"), payload)
+        self.api.OpenPreviewWindow("block")
+        self.api._emit.assert_called_with("open-preview", "block")
+        self.api.ClosePreviewWindow()
+        self.assertIsNone(self.api.GetPreviewData("block"))
+        self.api._emit.assert_called_with("close-preview")
+
+    def test_size_limits_and_regular_file_policy(self):
+        workbook = self.root / "oversized.xlsx"
+        with workbook.open("wb") as stream:
+            stream.truncate(100 * 1024 * 1024 + 1)
+        with self.assertRaisesRegex(ValueError, "size limit"):
+            self.api._approve(str(workbook), workbook)
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            self.api._read(self.root, 4096)
+        destination = self.root / "large.json"
+        destination.write_text('{}')
+        with self.assertRaisesRegex(ValueError, "25 MB"):
+            self.api._write(destination, json.dumps("x" * (25 * 1024 * 1024)))
+        self.assertEqual(destination.read_text(), '{}')
+
+    def test_save_rejects_wrong_or_missing_suffix_without_writing_or_authorizing(self):
+        for name in ("project.txt", "project"):
+            destination = self.root / name
+            destination.write_text("original")
+            self.api._dialog = Mock(return_value=str(destination))
+            with self.assertRaisesRegex(ValueError, ".json extension"):
+                self.api.SaveJson("project.json", "{}")
+            self.assertEqual(destination.read_text(), "original")
+            self.assertNotIn(str(destination), self.api._projects)
+
+    def test_uppercase_json_and_unicode_name_remain_supported(self):
+        destination = self.root / "项目.JSON"
+        self.api._dialog = Mock(return_value=str(destination))
+        self.assertTrue(self.api.SaveJson("项目", "{}")['success'])
+        self.api.SaveJsonToPath(str(destination), '{"saved":true}')
+        self.assertTrue(json.loads(destination.read_text())["saved"])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

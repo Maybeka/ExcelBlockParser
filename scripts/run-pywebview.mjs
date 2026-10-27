@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { releaseVersionForPackage } from './release-version.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const windows = process.platform === 'win32'
@@ -18,6 +20,10 @@ function run(command, args, extraEnv = {}) {
 }
 
 const mode = process.argv[2] || 'dev'
+if (mode === 'package') {
+  releaseVersionForPackage(JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version,
+    process.env.GITHUB_REF_TYPE, process.env.GITHUB_REF_NAME)
+}
 if (mode === 'test') {
   run(process.execPath, ['--test', 'scripts/patch-univer-formula-buffer.test.mjs'])
   run(python, ['-m', 'desktop_pywebview.build_helper'])
@@ -31,6 +37,7 @@ if (mode === 'test') {
     run(python, ['-m', 'PyInstaller', '--noconfirm', '--distpath', 'release-pywebview', '--workpath', '.tmp/pywebview-build', 'scripts/pywebview.spec'], {
       PYINSTALLER_CONFIG_DIR: process.env.PYINSTALLER_CONFIG_DIR || resolve(root, '.tmp/pyinstaller-cache'),
     })
+    run(python, ['-m', 'desktop_pywebview.build_manifest'])
   } else if (mode === 'recovery') {
     run(python, ['-m', 'desktop_pywebview.recovery_suite'])
   } else if (mode === 'preferences') {

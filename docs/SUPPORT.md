@@ -4,19 +4,18 @@
 
 | Runtime | Status | Purpose |
 | --- | --- | --- |
-| Wails | Production runtime since v1.0.0 | Distributed desktop application |
+| pywebview | Production desktop target | Windows single-file application; macOS development |
 | Electron | Development-only | Fast renderer development and diagnostic E2E |
 | Browser mode | Development-only | Renderer tests without native bridge behavior |
 
-The supported release platform is Windows 11 x64 through Wails. Version 1.0.0
-was distributed as a ZIP package; installer selection remains separate
-distribution-hardening work.
+The supported release platform is Windows 11 x64 through pywebview and the system
+WebView2 Runtime. Python and the isolated-script helper are bundled in one EXE.
 Electron packaging is not a supported distribution channel.
 
-The tag workflow builds and publishes an unsigned Windows 11 x64 Wails ZIP
-candidate plus a SHA-256 sidecar. Manual acceptance on Windows 11 is required
-as release evidence for each tagged candidate. Authenticode signing remains
-deferred distribution hardening.
+The tag workflow verifies and publishes an unsigned EXE, SHA-256 sidecar and
+build provenance. Windows automated acceptance runs on a hosted Server 2025
+runner; physical Windows 11 behavior is not asserted by those tests. Manual
+checks are supplementary, not a required migration gate. Signing remains deferred.
 
 ## Supported Workbook Behavior
 
@@ -34,14 +33,24 @@ deferred distribution hardening.
   recommended input format.
 - Macros, external links, pivot tables, charts, and every Excel formula/result
   are not preserved or executed.
-- Browser and Electron tests do not constitute Wails production acceptance.
-- The application protects workbook access with a 100 MB and 30-second read/
-  conversion guard. Larger workbooks are intentionally rejected.
+- Browser and Electron tests do not constitute production-host acceptance.
+- Workbook reads/source inspection have a 100 MB limit and 30-second worker
+  deadline. Conversion has separate renderer limits; the I/O deadline is not
+  a claim that every workbook renders within 30 seconds.
 - Autosave preserves workspace configuration and current parsed state, not an
   external workbook copy.
-- Project Python is available only in the Wails runtime. It executes one
+- Project Python is available in the pywebview runtime. It executes one
   explicitly invoked `process(context)` script in an isolated embedded
   interpreter. There is no pip management, terminal, debugger, LSP, direct host
   filesystem access, network access, or child-process access. A script may
   return bounded UTF-8 text artifacts; after preview and user directory
-  selection, the Wails host validates and writes them.
+  selection, the desktop host validates and writes them.
+
+## Upgrading From The Previous Desktop Host
+
+Save open projects before changing applications. Saved Project v3 JSON uses the
+same contract. Existing unsaved recovery from the old host is not automatically
+imported or deleted. The new Windows profile remains under
+`%APPDATA%/Excel Block Parser Pywebview/` with `recovery.json` and `preferences.json`.
+The old host used `%APPDATA%/Excel Block Parser/recovery/workspace-session.json`.
+Profiles remain separate so upgrading or rolling back does not overwrite recovery.

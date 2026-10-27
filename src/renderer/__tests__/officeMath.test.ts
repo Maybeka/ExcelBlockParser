@@ -206,7 +206,7 @@ describe('Office Math extraction', () => {
     }
   })
 
-  it('prefers Wails MathType MathML conversion over an EMF preview', async () => {
+  it('prefers desktop MathType MathML conversion over an EMF preview', async () => {
     const workbook = new ExcelJS.Workbook()
     workbook.addWorksheet('Legacy')
     const base = await workbook.xlsx.writeBuffer()

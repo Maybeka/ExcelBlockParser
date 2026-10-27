@@ -160,6 +160,7 @@ def main():
         "completed": True, "negativeControl": failure, "downloadMarkersPreserved": True,
         "archive": str(archive), "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
         "extractedExecutable": str(executable), "singleFile": True,
+        "executableSha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
     }, indent=2), encoding="utf-8")
 
 

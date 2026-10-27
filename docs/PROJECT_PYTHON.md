@@ -138,7 +138,7 @@ The **Files** tab previews this structured file collection and selects one file
 at a time. Python (`.py`), JSON (`.json`), Verilog (`.v`, `.vh`) and
 SystemVerilog (`.sv`, `.svh`) previews use the bundled Shiki TextMate grammars
 with the Catppuccin Latte theme; other UTF-8 text is shown verbatim. **Save generated files** asks the user
-to select one output directory; the Wails host, not Python, writes the files.
+to select one output directory; the pywebview host, not Python, writes the files.
 Existing regular files require explicit replacement confirmation.
 
 Artifact paths are platform-neutral relative paths using `/`. Absolute paths,
@@ -150,7 +150,7 @@ replacement for each destination.
 
 ## Runtime Boundary
 
-The Wails host creates a fresh embedded interpreter for every run. Global
+The pywebview host creates a fresh embedded interpreter for every run. Global
 variables and imported module state do not persist between runs. Only the
 bundled Python standard library is available.
 
@@ -164,7 +164,7 @@ the script.
 
 ## Manual Verification
 
-1. Open a Project v3 document in the Wails application.
+1. Open a Project v3 document in the pywebview application.
 2. Open **Project actions > Project Python** and use the generated text-file
    example above as the `process(context)` return value.
 3. Select **Run**. Verify that the workspace prepares the current extraction

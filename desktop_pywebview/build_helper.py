@@ -19,8 +19,7 @@ def main():
     if args.windows:
         environment.update(GOOS="windows", GOARCH="amd64", CGO_ENABLED="0")
     subprocess.run([
-        "go", "build", "-trimpath", "-o", str(destination), "pywebview_helper.go",
-        "python_runtime.go", "legacy_equation_windows.go" if windows else "legacy_equation_stub.go",
+        "go", "build", "-trimpath", "-o", str(destination), "./cmd/native-helper",
     ], cwd=root, env=environment, check=True)
     print(destination)
 

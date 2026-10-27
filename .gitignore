@@ -38,7 +38,7 @@ REPO_SUMMARY.md
 # Playwright
 test-results/
 
-# Wails
+# Legacy generated desktop bindings (keep local leftovers out of Git)
 wailsjs/
 
 # Env

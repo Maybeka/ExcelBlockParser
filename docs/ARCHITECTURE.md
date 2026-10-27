@@ -13,11 +13,11 @@ runtime transitions, extraction execution, or diagnostics decisions.
 | Project | `services/serializer.ts`, `services/project.ts`, `services/projectLifecycle.ts` | Strict Project v3 serialization, import validation, source inspection, save/save-as, and feature-neutral state commands. |
 | Workbook runtime | `services/workbookRuntime.ts`, `services/spreadsheetCapability.ts` | Authorized paths, load generations, attachment/selection state, and bounded workbook/sheet/range capabilities. |
 | Execution | `services/projectExecution.ts`, feature registry | Reader collection and stale-run rejection; registered modules own parsing, snapshots, previews, and save preparation. |
-| Project Python | `services/pythonProject.ts`, `python_runtime.go` | Versioned JSON context construction, isolated interpreter lifecycle, cancellation, and structured result transport. |
+| Project Python | `services/pythonProject.ts`, `cmd/native-helper/python_runtime.go` | Versioned JSON context construction, isolated interpreter lifecycle, cancellation, and structured result transport. |
 | Workspace | `services/workspaceHistory.ts`, `services/diagnostics.ts` | Atomic history/dirty transitions, deterministic diagnostics, and cross-workbook focus targets. |
 | Validation | `services/extraction.ts`, `components/ConfigPanel.tsx` | Parse-time deterministic diagnostics and UI-time configuration checks. |
 | UI | `WorkspaceApplication.tsx`, `components/` | User interactions, rendering, previews, and notifications. |
-| Platform | `services/bridge.ts`, Wails Go bindings, Electron dev adapter | Native file dialogs and filesystem boundaries. |
+| Platform | `services/bridge.ts`, `desktop_pywebview/`, Electron dev adapter | Typed desktop contract, native dialogs, bounded worker-process reads, filesystem boundaries and close handshake. |
 
 ## Project schema
 
@@ -47,7 +47,7 @@ changed source workbook.
 
 ## Feature Architecture Direction
 
-The production architecture uses a host-neutral desktop bridge, with Wails as
+The production architecture uses a host-neutral desktop bridge, with pywebview as
 the production adapter. The historical compile-time feature-module work and
 Gate B evidence are recorded in `FEATURE_MODULE_ARCHITECTURE.md`.
 
@@ -56,3 +56,10 @@ and project Python workflows. New scenario modules are not planned. A modular
 extension interface will be considered only when a concrete new scenario proves
 that these workflows are insufficient; its contract must be designed around
 that scenario rather than introduced speculatively.
+
+The Python desktop host owns the window and filesystem operations. A separately
+managed Go helper retains the isolated Python interpreter, MathType conversion
+and Windows GDI+ rasterization. It has no GUI-runtime dependency. File reads and
+source inspection run in cancelable worker processes with a 30-second deadline;
+shutdown terminates both file workers and the helper. Windows production builds
+are onefile EXEs whose temporary runtime dependencies are cleaned on normal exit.

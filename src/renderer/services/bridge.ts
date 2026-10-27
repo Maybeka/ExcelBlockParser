@@ -2,7 +2,6 @@
  * Platform-agnostic bridge: detects the desktop host at runtime.
  *
  * Electron: uses window.electronAPI (contextBridge from preload)
- * Wails:    uses generated Go bindings from wailsjs/go/main/App
  * pywebview: uses Python methods after native readiness
  * Browser:  throws descriptive errors (used for dev/testing)
  */
@@ -48,13 +47,9 @@ export interface MathTypeConversionResult {
   diagnostics?: Array<{ severity: string; offset: number; construct: string; message: string }>
 }
 
-// ── Wails bridge ────────────────────────────────────────────────────────────
-
-export interface WailsGoAPI {
-  main?: {
-    App?: {
+export interface DesktopHostAPI {
       OpenXlsx: () => Promise<string>
-      ReadFile: (path: string) => Promise<number[]>
+      ReadFile: (path: string) => Promise<number[] | string>
       SaveJson: (name: string, data: string) => Promise<{ success: boolean; filePath: string; error: string }>
       SaveJsonToPath: (path: string, data: string) => Promise<{ success: boolean; filePath: string; error: string }>
       OpenJson: () => Promise<{ filePath: string; content: string } | null>
@@ -73,27 +68,21 @@ export interface WailsGoAPI {
       ExportPythonArtifacts: (projectName: string, artifactsJson: string) => Promise<{ success: boolean; directory: string; written: number; error: string }>
       RasterizeLegacyEquationPreview: (preview: number[], extension: string) => Promise<number[]>
       ConvertMathTypeOLE: (object: number[]) => Promise<MathTypeConversionResult>
-    }
-  }
 }
 
-interface WailsRuntimeAPI {
-  WindowMinimise?: () => void
-  WindowToggleMaximise?: () => void
+interface DesktopEvents {
   EventsOn?: (eventName: string, callback: (...data: unknown[]) => void) => () => void
 }
 
 declare global {
   interface Window {
     electronAPI?: BridgeAPI
-    go?: WailsGoAPI
-    runtime?: WailsRuntimeAPI
+    desktopEvents?: DesktopEvents
   }
 }
 
-export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
-  const App = go?.main?.App
-  if (!App) throw new Error('Wails runtime not available')
+export function createDesktopBridge(App: DesktopHostAPI): BridgeAPI {
+  if (!App) throw new Error('Desktop runtime not available')
   const requiredMethods = [
     'OpenXlsx', 'ReadFile', 'SaveJson', 'SaveJsonToPath', 'OpenJson', 'OpenDroppedJson',
     'SaveRecovery', 'LoadRecovery', 'ClearRecovery',
@@ -102,9 +91,9 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     'CancelPythonRun', 'RunProjectPython', 'ExportPythonArtifacts', 'RasterizeLegacyEquationPreview', 'ConvertMathTypeOLE',
   ] as const
   if (requiredMethods.some(method => typeof App[method] !== 'function')) {
-    throw new Error('Wails runtime is missing a required desktop capability')
+    throw new Error('Desktop runtime is missing a required desktop capability')
   }
-  const runtime = typeof window === 'undefined' ? undefined : window.runtime
+  const runtime = typeof window === 'undefined' ? undefined : window.desktopEvents
 
   return {
     openXlsx: async () => {
@@ -160,8 +149,8 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
     saveRecovery: async (jsonData) => { try { await App.SaveRecovery(jsonData); return bridgeOk(undefined) } catch (error) { return bridgeError(error) } },
     loadRecovery: async () => { try { return bridgeOk(await App.LoadRecovery()) } catch (error) { return bridgeError(error) } },
     clearRecovery: async () => { try { await App.ClearRecovery(); return bridgeOk(undefined) } catch (error) { return bridgeError(error) } },
-    minimizeWindow: async () => { runtime?.WindowMinimise?.() },
-    toggleWindowMaximize: async () => { runtime?.WindowToggleMaximise?.(); return false },
+    minimizeWindow: async () => {},
+    toggleWindowMaximize: async () => false,
     closeWindow: async () => {
       await App.RequestClose()
     },
@@ -183,7 +172,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
       await App.ClosePreviewWindow()
     },
     onPreviewReload: () => {
-      console.warn('onPreviewReload not available in Wails')
+      console.warn('onPreviewReload not available in the desktop host')
       return () => {}
     },
     cancelPythonRun: async () => {
@@ -214,7 +203,7 @@ export function createWailsBridge(go: WailsGoAPI | undefined): BridgeAPI {
 export function createPywebviewBridge(api: PywebviewAPI): BridgeAPI {
   // Both hosts implement the same application contract and result normalization.
   return {
-    ...createWailsBridge({ main: { App: api } }),
+    ...createDesktopBridge(api),
     minimizeWindow: () => api.Minimize(),
     toggleWindowMaximize: () => api.ToggleMaximize(),
     confirmCloseWindow: async () => {
@@ -228,12 +217,12 @@ export function createPywebviewBridge(api: PywebviewAPI): BridgeAPI {
 
 function createBrowserBridge(): BridgeAPI {
   return {
-    openXlsx: async () => bridgeError('openXlsx requires Electron or Wails'),
-    readFile: async () => bridgeError('readFile requires Electron or Wails'),
-    saveJson: async () => bridgeError('saveJson requires Electron or Wails'),
-    saveJsonToPath: async () => bridgeError('saveJsonToPath requires Electron or Wails'),
-    openJson: async () => bridgeError('openJson requires Electron or Wails'),
-    openDroppedJson: async () => bridgeError('openDroppedJson requires Electron or Wails'),
+    openXlsx: async () => bridgeError('openXlsx requires a desktop host'),
+    readFile: async () => bridgeError('readFile requires a desktop host'),
+    saveJson: async () => bridgeError('saveJson requires a desktop host'),
+    saveJsonToPath: async () => bridgeError('saveJsonToPath requires a desktop host'),
+    openJson: async () => bridgeError('openJson requires a desktop host'),
+    openDroppedJson: async () => bridgeError('openDroppedJson requires a desktop host'),
     saveRecovery: async (jsonData) => { localStorage.setItem('excel-block-parser.recovery', jsonData); return bridgeOk(undefined) },
     loadRecovery: async () => bridgeOk(localStorage.getItem('excel-block-parser.recovery')),
     clearRecovery: async () => { localStorage.removeItem('excel-block-parser.recovery'); return bridgeOk(undefined) },
@@ -241,17 +230,17 @@ function createBrowserBridge(): BridgeAPI {
     toggleWindowMaximize: async () => false,
     closeWindow: async () => undefined,
     log: (level, ...args) => { console.log(`[${level}]`, ...args) },
-    openPreviewWindow: async () => { console.warn('openPreviewWindow requires Electron or Wails') },
-    setPreviewData: async () => { console.warn('setPreviewData requires Electron or Wails') },
-    getPreviewData: async () => { console.warn('getPreviewData requires Electron or Wails'); return undefined },
-    closePreviewWindow: async () => { console.warn('closePreviewWindow requires Electron or Wails') },
+    openPreviewWindow: async () => { console.warn('openPreviewWindow requires a desktop host') },
+    setPreviewData: async () => { console.warn('setPreviewData requires a desktop host') },
+    getPreviewData: async () => { console.warn('getPreviewData requires a desktop host'); return undefined },
+    closePreviewWindow: async () => { console.warn('closePreviewWindow requires a desktop host') },
     onPreviewReload: () => {
-      console.warn('onPreviewReload requires Electron or Wails')
+      console.warn('onPreviewReload requires a desktop host')
       return () => {}
     },
     cancelPythonRun: async () => bridgeOk(false),
-    runProjectPython: async () => bridgeError('Project Python requires the Wails runtime.'),
-    exportPythonArtifacts: async () => bridgeError('Saving generated files requires the Wails runtime.'),
+    runProjectPython: async () => bridgeError('Project Python requires the pywebview runtime.'),
+    exportPythonArtifacts: async () => bridgeError('Saving generated files requires the pywebview runtime.'),
   }
 }
 
@@ -267,8 +256,6 @@ export function getBridge(): BridgeAPI {
     _bridge = runtimeWindow.electronAPI
   } else if (runtimeWindow?.pywebview?.api) {
     _bridge = createPywebviewBridge(runtimeWindow.pywebview.api)
-  } else if (runtimeWindow?.go?.main?.App) {
-    _bridge = createWailsBridge(runtimeWindow.go)
   } else {
     _bridge = createBrowserBridge()
   }

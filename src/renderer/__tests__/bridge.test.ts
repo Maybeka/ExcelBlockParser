@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createWailsBridge, type WailsGoAPI } from '../services/bridge'
+import { createDesktopBridge, type DesktopHostAPI } from '../services/bridge'
 
-function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['main']>['App']>> = {}): WailsGoAPI {
+function desktopRuntime(overrides: Partial<DesktopHostAPI> = {}): DesktopHostAPI {
   return {
-    main: {
-      App: {
         OpenXlsx: vi.fn(async () => '/tmp/workbook.xlsx'),
         ReadFile: vi.fn(async () => [1, 2, 3]),
         SaveJson: vi.fn(async () => ({ success: true, filePath: '/tmp/project.json', error: '' })),
@@ -26,16 +24,13 @@ function wailsRuntime(overrides: Partial<NonNullable<NonNullable<WailsGoAPI['mai
         RasterizeLegacyEquationPreview: vi.fn(async () => [137, 80, 78, 71]),
         ConvertMathTypeOLE: vi.fn(async () => ({ supported: true, mathMl: '<math><mi>x</mi></math>' })),
         ...overrides,
-      },
-    },
   }
 }
 
-describe('Wails bridge contract', () => {
-  it('adapts every required Wails capability through the renderer bridge', async () => {
-    const runtime = wailsRuntime()
-    const app = runtime.main!.App!
-    const bridge = createWailsBridge(runtime)
+describe('Desktop bridge contract', () => {
+  it('adapts every required desktop capability through the renderer bridge', async () => {
+    const app = desktopRuntime()
+    const bridge = createDesktopBridge(app)
 
     expect(await bridge.openXlsx()).toEqual({ status: 'ok', value: '/tmp/workbook.xlsx' })
     const readResult = await bridge.readFile('/tmp/workbook.xlsx')
@@ -84,16 +79,16 @@ describe('Wails bridge contract', () => {
   })
 
   it('preserves cancellation values and rejects an incomplete generated binding', async () => {
-    const bridge = createWailsBridge(wailsRuntime({ OpenXlsx: async () => '', OpenJson: async () => null }))
+    const bridge = createDesktopBridge(desktopRuntime({ OpenXlsx: async () => '', OpenJson: async () => null }))
     await expect(bridge.openXlsx()).resolves.toEqual({ status: 'cancelled' })
     await expect(bridge.openJson()).resolves.toEqual({ status: 'cancelled' })
 
-    const incompleteRuntime = { main: { App: { OpenXlsx: async () => '' } } } as unknown as WailsGoAPI
-    expect(() => createWailsBridge(incompleteRuntime)).toThrow('missing a required desktop capability')
+    const incompleteRuntime = { OpenXlsx: async () => '' } as unknown as DesktopHostAPI
+    expect(() => createDesktopBridge(incompleteRuntime)).toThrow('missing a required desktop capability')
   })
 
-  it('translates Wails host failures into structured bridge errors', async () => {
-    const bridge = createWailsBridge(wailsRuntime({
+  it('translates desktop host failures into structured bridge errors', async () => {
+    const bridge = createDesktopBridge(desktopRuntime({
       ReadFile: async () => { throw new Error('The workbook must be selected through the Open dialog.') },
     }))
 

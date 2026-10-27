@@ -416,7 +416,7 @@ async function workbookImageToDataUri(image: ExcelJS.Image | undefined, rasteriz
     return `data:image/${extension};base64,${btoa(binary)}`
   }
   if (!rasterize) {
-    console.warn('[Workbook image] Vector image requires the Windows Wails rasterizer.', { extension })
+    console.warn('[Workbook image] Vector image requires the Windows desktop rasterizer.', { extension })
     return undefined
   }
   const rasterized = await rasterize(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, extension)

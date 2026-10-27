@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createPywebviewBridge, type WailsGoAPI } from '../services/bridge'
+import { createPywebviewBridge, type DesktopHostAPI } from '../services/bridge'
 import { initializePywebview, persistPywebviewLocale, type PywebviewAPI } from '../services/pywebviewBootstrap'
 
 function nativeAPI(): PywebviewAPI {
-  const methods: NonNullable<NonNullable<WailsGoAPI['main']>['App']> = {
+  const methods: DesktopHostAPI = {
     OpenXlsx: async () => '/tmp/book.xlsx', ReadFile: async () => [1, 2],
     SaveJson: async () => ({ success: false, filePath: '', error: 'cancelled' }),
     SaveJsonToPath: async path => ({ success: true, filePath: path, error: '' }),
