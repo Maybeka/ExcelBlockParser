@@ -48,5 +48,4 @@ wailsjs/
 # Python desktop development
 .venv-pywebview/
 __pycache__/
-desktop_pywebview/bin/
 release-pywebview/

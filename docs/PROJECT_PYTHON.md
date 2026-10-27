@@ -62,9 +62,11 @@ def process(context):
 
 `process` receives one dictionary. Its return value must be JSON serializable.
 Each file accepts up to 2 MB; the full package accepts up to 8 MB. Python runs
-from a fresh virtual filesystem for every execution. Only project files and the
-embedded standard library can be imported. The package still cannot read or
-write host files, access the network, execute processes, or install packages.
+in a fresh CPython process and temporary project directory for every execution.
+Scripts are trusted organization code: they can read/write host files, access
+the network and start processes with the current user's permissions. This is
+not a security sandbox. The bundled interpreter includes the standard library;
+there is no pip manager or promise that third-party packages are installed.
 
 The default package returns a JSON-safe summary and three generated files:
 `generated/project-summary.json`, `generated/project_data.py`, and
@@ -150,14 +152,19 @@ replacement for each destination.
 
 ## Runtime Boundary
 
-The pywebview host creates a fresh embedded interpreter for every run. Global
+The pywebview host creates a fresh CPython process for every run. Global
 variables and imported module state do not persist between runs. Only the
 bundled Python standard library is available.
 
-The runtime denies direct host filesystem access, network resolution and
-connections, and child-process execution. Generated files cross the runtime
-boundary only through the validated result contract above. One run may be
-active at a time and can be cancelled with `KeyboardInterrupt`.
+The runtime deliberately permits host filesystem access, network connections,
+and child processes. Relative paths resolve inside the temporary project
+directory and are removed after the run; use explicit persistent paths for
+direct output. The artifact contract above remains the recommended reviewed
+export path, but it does not constrain direct writes by trusted code.
+One run may be active at a time. Cancellation terminates its process tree and
+reports `KeyboardInterrupt`; it cannot undo file writes or network side effects.
+Cancellation is forced process termination, so script `finally` cleanup is not guaranteed.
+The former WASM 128 MB linear-memory cap no longer applies to CPython.
 
 Electron and browser mode expose the editor for development but do not execute
 the script.
@@ -180,5 +187,5 @@ the script.
    duplicate path with different letter case. Verify that **Files** reports the
    contract error and saving is unavailable.
 
-Python must remain unable to read the saved files with `open()`. File output is
-an explicit host operation after a successful run, not Python filesystem access.
+Trusted Python can also read saved files with `open()` and write directly to
+explicit paths. Those direct writes do not use artifact-export confirmation.

@@ -7,8 +7,8 @@ development harness.
 
 ## Quick Start
 
-For desktop development, install Node.js 22, Python 3.12 and the Go version in
-`go.mod`. Windows uses the system Microsoft Edge WebView2 Runtime.
+For desktop development, install Node.js 22 and Python 3.12.
+Windows uses the system Microsoft Edge WebView2 Runtime. Go is not required.
 
 ```powershell
 py -3.12 -m venv .venv-pywebview

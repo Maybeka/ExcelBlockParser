@@ -20,7 +20,7 @@ def main():
     evidence = {"sourceCommit": command("git", "rev-parse", "HEAD"),
                 "version": json.loads((root / "package.json").read_text())["version"],
                 "python": platform.python_version(), "platform": platform.system(),
-                "machine": platform.machine(), "go": command("go", "version"),
+                "machine": platform.machine(),
                 "node": command("node", "--version"), "packages": packages}
     (root / "release-pywebview/build-manifest.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 

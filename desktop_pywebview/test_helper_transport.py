@@ -16,12 +16,15 @@ class HelperTransportTests(unittest.TestCase):
             exit_code.append(0)
             replies.put(b'')
         helper = NativeHelper()
-        helper._process = SimpleNamespace(
-            stdin=SimpleNamespace(write=write, flush=flush, close=lambda: None),
-            stdout=SimpleNamespace(readline=lambda _: replies.get(timeout=5), close=lambda: None),
-            poll=lambda: exit_code[-1] if exit_code else None,
-            terminate=terminate, kill=terminate, wait=lambda **_: 0,
-        )
+        def send(encoded):
+            if json.loads(encoded).get('method') == 'close':
+                terminate()
+            else:
+                write(encoded)
+                flush()
+        helper._connection = SimpleNamespace(send_bytes=send, recv_bytes=lambda _: replies.get(timeout=5), close=lambda: None)
+        helper._process = SimpleNamespace(is_alive=lambda: not exit_code, terminate=terminate,
+                                          kill=terminate, join=lambda *args: None)
         helper._reader = threading.Thread(target=helper._read_responses, daemon=True)
         helper._reader.start()
         self.addCleanup(helper.close)

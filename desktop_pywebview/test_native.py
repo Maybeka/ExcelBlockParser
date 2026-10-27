@@ -6,6 +6,8 @@ from pathlib import Path
 import threading
 import sys
 import time
+import tempfile
+import http.server
 import unittest
 
 from desktop_pywebview.helper import NativeHelper
@@ -55,10 +57,68 @@ class NativeIntegrationTests(unittest.TestCase):
         self.assertTrue(result["hostError"])
         self.assertFalse(self.run_script("def process(context): return {}", "invalid")["ok"])
 
-    def test_host_files_are_not_accessible(self):
-        result = self.run_script("def process(context):\n return open('/etc/passwd').read()")
-        self.assertFalse(result["ok"])
-        self.assertTrue(result["error"])
+    def test_trusted_script_can_read_write_host_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, 'trusted.txt')
+            path.write_text('input', encoding='utf-8')
+            result = self.run_script("from pathlib import Path\ndef process(context):\n p=Path(context['path'])\n value=p.read_text()\n p.write_text('output')\n return value", json.dumps({'path': str(path)}))
+            self.assertTrue(result['ok'], result)
+            self.assertEqual(json.loads(result['resultJson']), 'input')
+            self.assertEqual(path.read_text(), 'output')
+
+    def test_trusted_script_network_and_standard_library(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'network-ok')
+            def log_message(self, *_):
+                pass
+        with http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                result = self.run_script("import urllib.request, decimal, statistics, csv, ssl\ndef process(context):\n return {'http': urllib.request.urlopen(context['url'], timeout=5).read().decode(), 'sum': str(decimal.Decimal('0.1')+decimal.Decimal('0.2')), 'mean': statistics.mean([2,4])}", json.dumps({'url': f'http://127.0.0.1:{server.server_port}/'}))
+                self.assertTrue(result['ok'], result)
+                self.assertEqual(json.loads(result['resultJson']), {'http': 'network-ok', 'sum': '0.3', 'mean': 3})
+            finally:
+                server.shutdown()
+                thread.join(5)
+
+    def test_output_overflow_and_abrupt_exit_do_not_poison_next_run(self):
+        result = self.run_script("def process(context):\n print('x' * (1024 * 1024 + 1))\n return {}")
+        self.assertFalse(result['ok'])
+        self.assertIn('1 MB', result['hostError'])
+        result = self.run_script('import os\ndef process(context): os._exit(7)')
+        self.assertFalse(result['ok'])
+        self.assertTrue(result['hostError'])
+        self.assertTrue(self.run_script('def process(context): return {}')['ok'])
+
+    def test_cancel_stops_trusted_script_descendants(self):
+        with tempfile.TemporaryDirectory() as directory, ThreadPoolExecutor(max_workers=1) as executor:
+            ready, output = Path(directory, 'ready'), Path(directory, 'late-output')
+            child = "from pathlib import Path; import time; Path(" + repr(str(ready)) + ").write_text('ready'); time.sleep(1); Path(" + repr(str(output)) + ").write_text('not stopped')"
+            source = "import subprocess\ndef process(context):\n subprocess.Popen([context['python'], '-c', context['child']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n while True: pass"
+            running = executor.submit(self.run_script, source, json.dumps({'python': sys.executable, 'child': child}))
+            try:
+                deadline = time.monotonic() + 10
+                while not ready.exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists(), 'Script descendant did not start')
+                self.assertTrue(self.helper.request('cancel'))
+                self.assertIn('KeyboardInterrupt', running.result(timeout=10)['error'])
+                time.sleep(1.1)
+                self.assertFalse(output.exists(), 'Cancelled descendant continued executing')
+            finally:
+                self.helper.request('cancel')
+
+    def test_each_run_has_fresh_globals_and_threaded_output_is_complete(self):
+        source = "import threading\nvalue=0\ndef process(context):\n global value\n value+=1\n threads=[threading.Thread(target=lambda: print('thread-output')) for _ in range(20)]\n for t in threads: t.start()\n for t in threads: t.join()\n return value"
+        for _ in range(2):
+            result = self.run_script(source)
+            self.assertTrue(result['ok'], result)
+            self.assertEqual(json.loads(result['resultJson']), 1)
+            self.assertEqual(result['stdout'].count('thread-output'), 20)
 
     def test_cancel_during_startup_and_reuse_after_cancellation(self):
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -119,7 +179,7 @@ class NativeIntegrationTests(unittest.TestCase):
             self.helper.close()
             with self.assertRaises(RuntimeError):
                 running.result(timeout=10)
-        self.assertIsNotNone(self.helper._process.poll())
+        self.assertFalse(self.helper._process.is_alive())
         self.assertFalse(self.helper._reader.is_alive())
 
     @unittest.skipUnless(sys.platform == 'win32', 'Windows GDI+ rasterization requires a Windows runtime')

@@ -19,7 +19,7 @@ SmartScreen warnings for an unsigned publisher.
 
 ## Release Checklist
 
-1. Run `npm run verify:prepush` and `go test ./cmd/native-helper/...`.
+1. Run `npm run verify:prepush` (includes the Python runtime and formula corpus).
 2. Align `package.json`, `package-lock.json` and CHANGELOG; tag the approved version
    as `vX.Y.Z`. Packaging rejects mismatched tag/package versions before building.
 3. The release workflow calls the same Windows candidate workflow: host/helper
@@ -34,7 +34,7 @@ SmartScreen warnings for an unsigned publisher.
 6. Record optional Windows 11 physical/visual findings separately. Do not treat
    hosted Windows Server verification as a Windows 11 manual pass.
 
-The build manifest records the source commit, app version, Python, Go, Node and
+The build manifest records the source commit, app version, Python, Node and
 desktop packaging dependency versions. The full Windows workflow is manual or
 release-triggered; routine checks run the fast production-host and shared suites
 without repeating the full package replay for every documentation change.

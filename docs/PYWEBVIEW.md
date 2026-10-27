@@ -2,7 +2,7 @@
 
 The application uses a Python-owned desktop host for the React/Univer frontend.
 It replaces the previous Wails GUI host while preserving Project v3, Block,
-Region and isolated Python behavior. Windows 11 x64 is the production target;
+Region and the project Python input/result contract. Windows 11 x64 is the production target;
 macOS supports local development. Automated Windows acceptance does not assert
 physical Windows 11 or general font/placement fidelity.
 
@@ -13,13 +13,16 @@ authorized reads, project saving, recovery, JSON-only drop handling, and
 generated-file export. The frontend waits for `pywebviewready` before creating
 its desktop bridge; it does not depend on generated Wails bindings.
 
-A separate console-only Go helper preserves the existing `goccy/go-python`
-isolated interpreter, `process(context)` package contract, memory limit,
-cancellation, and `mtef-mathml` conversion. Windows EMF/WMF previews use the same
-GDI+ implementation as Wails. The helper does not link the Wails window runtime.
-The desktop host terminates and reaps the helper on exit. This migration changes
-the desktop shell; it does not replace the script interpreter with unrestricted
-host CPython.
+A Python service process provides the `process(context)` package contract and
+starts a disposable bundled CPython process for each explicit run. Organization
+scripts are trusted, with current-user filesystem, network and process access;
+this is not a sandbox. Cancellation stops the run and descendants, not prior
+external side effects. Output/result bounds remain; the former WASM memory cap
+does not. See `PROJECT_PYTHON.md` for the complete execution contract.
+
+MathType conversion is a Python port of `mtef-mathml` v0.2.0, checked against 31
+captured stream cases and 771 node/layout outputs. Windows EMF/WMF previews use
+GDI+ through `ctypes`. No Go source, build tool or compiled Go helper is needed.
 
 Workbook authorization keys use Windows path rules on Windows, accepting slash
 and case variants of already-approved paths without authorizing other files.
@@ -46,7 +49,7 @@ rather than silently building without it.
 
 ## Setup and Development
 
-Use Python 3.12, Node.js, and the Go version required by `go.mod`.
+Use Python 3.12 and Node.js 22.
 
 On Windows:
 
@@ -66,8 +69,8 @@ npm ci
 npm run dev:pywebview
 ```
 
-The command builds the shared frontend and native helper, then opens pywebview.
-For an already built frontend/helper, launch `python -m desktop_pywebview
+The command builds the shared frontend, then opens pywebview.
+For an already built frontend, launch `python -m desktop_pywebview
 --debug` using the virtual environment. Set `PYWEBVIEW_PYTHON` when using a
 different interpreter location. Windows explicitly uses EdgeChromium/WebView2;
 macOS uses WKWebView. Recovery remains in the existing pywebview profile,
@@ -220,7 +223,7 @@ does not exercise actual maximized bounds. Other behavior suites remain hidden.
 Its normal 1000-by-600 frame fits the hosted CI desktop; exact position and size
 restoration are still required.
 
-Passing the original Electron, browser, and Go suites is shared-code regression
+Passing the original Electron and browser suites is shared-code regression
 evidence, not proof that all their scenarios have been replayed on pywebview.
 Automated parity does not cover physical target-platform window interaction,
 drag/drop, directory dialogs, or visual Windows EMF placement. No physical
@@ -360,7 +363,7 @@ npm run package:pywebview
 ```
 
 Build on the target OS. PyInstaller packages Python, the platform WebView
-bindings, the helper, frontend assets, and smoke-test examples into
+bindings, standard library, Python services, frontend assets, and smoke-test examples into
 `release-pywebview/`. Windows output is the standalone `Excel Block Parser.exe`;
 macOS still produces `Excel Block Parser.app`. Windows onefile startup extracts
 its bundled dependencies to a private temporary runtime directory and removes it
@@ -370,9 +373,8 @@ project files are not modified. This is single-file distribution, not in-memory
 execution; startup needs temporary disk space and may take longer than onedir.
 The launcher keeps its PyInstaller cache in ignored `.tmp/pyinstaller-cache`
 unless `PYINSTALLER_CONFIG_DIR` is explicitly provided.
-The Windows helper can be cross-built with `python -m
-desktop_pywebview.build_helper --windows`, but that does not produce or verify
-a complete Windows package.
+There is no native-helper cross-build step. Windows GDI+ and the complete
+Windows single-file package must be tested on Windows.
 
 ## Capability Acceptance
 
@@ -384,10 +386,10 @@ a complete Windows package.
 | Window controls | Frameless native window and native state events | Host tests and real native maximize/restore geometry in source and package |
 | Unsaved close | Native close is deferred to the existing three-choice renderer flow | Native Cancel/Discard/Save and recovery restart tests |
 | Project drop | Native DOM event with full paths; one JSON only | Host event filtering and authorized JSON opening tests |
-| Python execution | Existing isolated interpreter in a managed helper process | Real multi-file execution, failures, cancellation and cleanup tests |
+| Python execution | Disposable trusted CPython processes | Multi-file execution, standard-library imports, host file/network access, failures, cancellation and cleanup tests |
 | Generated files | Validated UTF-8 relative paths and replacement confirmation | Actual nested writes, cancellation and overwrite decline/accept tests |
-| MathType | Existing mtef-mathml v0.2.0 helper | Real workbook OLE samples and native drawing resource/pixel checks |
-| EMF/WMF | Existing Windows GDI+ helper | Windows real EMF rasterization, decoded PNG dimensions and nonwhite pixels |
+| MathType | Python port of mtef-mathml v0.2.0 | Captured conformance corpus, real workbook OLE samples and native resource/pixel checks |
+| EMF/WMF | Windows GDI+ through ctypes | Windows real EMF rasterization, decoded PNG dimensions and nonwhite pixels |
 | Distribution | Windows single-file EXE; macOS application bundle | Source/native regressions plus downloaded-package Internet-zone and cleanup checks in Windows CI |
 
 The production host is verified using automated source and packaged evidence.

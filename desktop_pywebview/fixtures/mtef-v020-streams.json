@@ -1,0 +1,295 @@
+[
+  {
+    "data": "BQEBBAAAAGQDAAAACgEAAgCDeAAAAA==",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mi>x</mi></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "AwEBAwAKAQKDeAAAAA==",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mi>x</mi></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAg3gAAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mi>x</mi></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwHvAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"0em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwPvAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"0.222em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwTvAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"0.278em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwXrAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"1em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwLvAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"0.167em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwXvAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"1em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwbvAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"2em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwjvAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"0.083em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwLrAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"0.167em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwTrAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mspace width=\"0.278em\"/></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoFAAABAQICAAABAAIAgzEAAAEAAgCDMAAAAQACAIMwAAABAAIAgzEAAAAA",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mtable columnalign=\"left\" rowalign=\"top\"><mtr><mtd><mrow><mn>1</mn></mrow></mtd><mtd><mrow><mn>0</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>0</mn></mrow></mtd><mtd><mrow><mn>1</mn></mrow></mtd></mtr></mtable></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "AwEBAwAFAAAAAgEAAAECgzEAAAECgzAAAAAA",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mtable rowalign=\"top\"><mtr><mtd><mrow><mn>1</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>0</mn></mrow></mtd></mtr></mtable></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "AwEBAwAKATKDeAAGCAAAAoN5AAAA",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mover accent=\"true\"><mi>x</mi><mo>~</mo></mover><mi>y</mi></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoDACYAAAAA",
+    "error": "",
+    "result": {
+      "MathML": "",
+      "Supported": false,
+      "Diagnostics": [
+        {
+          "Severity": "error",
+          "Offset": 8,
+          "Construct": "template",
+          "Message": "template selector 38 is not implemented"
+        }
+      ]
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIkg3gAAA==",
+    "error": "",
+    "result": {
+      "MathML": "",
+      "Supported": false,
+      "Diagnostics": [
+        {
+          "Severity": "error",
+          "Offset": 10,
+          "Construct": "character encoding",
+          "Message": "character has no MTCode and no resolvable font definition"
+        }
+      ]
+    }
+  },
+  {
+    "data": "BQEBBAAAABEDU3ltYm9sAAoBAAIkf2EAAA==",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mi>α</mi></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwHpAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mo>⩲</mo></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEABwhEU01UNwAAE1dpbkFsbEJhc2ljQ29kZVBhZ2VzABEFVGltZXMgTmV3IFJvbWFuABEDU3ltYm9sABEFQ291cmllciBOZXcAEQJNYXJsZXR0ABNXaW5BbGxDb2RlUGFnZXMAEQbLzszlABIACCEfRY9EL0FQ9BAPR19BUPIfHkFQ9BUPQQD0RfQl9I9CX0EA9BAPQ19BAPSPRfQqX0j0j0EA9BAPQPSPQX9I9BAPQSpfRF9F9F9F9F9BDwwBAAEAAQICAgIAAgABAQEAAwABAAQABQAKAQADAAsAAAEAAgCIMQAAAQACAIE2AAAAAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mstyle displaystyle=\"true\"><mfrac><mrow><mn>1</mn></mrow><mrow><mtext xml:space=\"preserve\">6</mtext></mrow></mfrac></mstyle></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEABwhEU01UNwAAE1dpbkFsbEJhc2ljQ29kZVBhZ2VzABEFVGltZXMgTmV3IFJvbWFuABEDU3ltYm9sABEFQ291cmllciBOZXcAEQRNVCBFeHRyYQATV2luQWxsQ29kZVBhZ2VzABEGy87M5QASAAghH0WPRC9BUPQQD0dfQVDyHx5BUPQVD0EA9EX0JfSPQl9BAPQQD0NfQQD0j0X0Kl9I9I9BAPQQD0D0j0F/SPQQD0EqX0RfRfRfRfRfQQ8MAQABAAECAgICAAIAAQEBAAMAAQAEAAUACgEAAwALAAABAAIAiDEAAAEAAgCBNAAAAAAA",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mstyle displaystyle=\"true\"><mfrac><mrow><mn>1</mn></mrow><mrow><mtext xml:space=\"preserve\">4</mtext></mrow></mfrac></mstyle></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEABwhEU01UNwABE1dpbkFsbEJhc2ljQ29kZVBhZ2VzABEFVGltZXMgTmV3IFJvbWFuABEDU3ltYm9sABEFQ291cmllciBOZXcAEQRNVCBFeHRyYQATV2luQWxsQ29kZVBhZ2VzABEGy87M5QASAAghH0WPRC9BUPQQD0dfQVDyHx5BUPQVD0EA9EX0JfSPQl9BAPQQD0NfQQD0j0X0Kl9I9I9BAPQQD0D0j0F/SPQQD0EqX0RfRfRfRfRfQQ8MAQABAAECAgICAAIAAQEBAAMAAQAEAAUACgEAEAAAAAAAAAAPAQMACgAADwABAA8BAwALAAAPAAEADwECAIEyAAAPAAEADwECAIEzAAAAAAsBAQAAAA==",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><msqrt><mrow><mstyle displaystyle=\"true\"><mfrac><mrow><mtext xml:space=\"preserve\">2</mtext></mrow><mrow><mtext xml:space=\"preserve\">3</mtext></mrow></mfrac></mstyle></mrow></msqrt></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEABwxEU01UNwAAE1dpbkFsbEJhc2ljQ29kZVBhZ2VzABEFVGltZXMgTmV3IFJvbWFuABEDU3ltYm9sABEFQ291cmllciBOZXcAEQRNVCBFeHRyYQATV2luQWxsQ29kZVBhZ2VzABEGy87M5QASAAghL0WPRC9BUPQQD0dfQVDyHx5BUPQVD0EA9EX0JfSPQl9BAPQQD0NfQQD0j0X0Kl9I9I9BAPQQD0D0j0F/SPQQD0EqX0RfRfRfRfRfQQ8MAQABAAECAgICAAIAAQEBAAMAAQAEAAUACgEAAgCBRgACBIY9AD0CAINtAAIAg2EAAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mtext xml:space=\"preserve\">F</mtext><mo>=</mo><mi>m</mi><mi>a</mi></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEABwxEU01UNwAAE1dpbkFsbEJhc2ljQ29kZVBhZ2VzABEFVGltZXMgTmV3IFJvbWFuABEDU3ltYm9sABEFQ291cmllciBOZXcAEQRNVCBFeHRyYQATV2luQWxsQ29kZVBhZ2VzABEGy87M5QASAAghL0WPRC9BUPQQD0dfQVDyHx5BUPQVD0EA9EX0JfSPQl9BAPQQD0NfQQD0j0X0Kl9I9I9BAPQQD0D0j0F/SPQQD0EqX0RfRfRfRfRfQQ8MAQABAAECAgICAAIAAQEBAAMAAQAEAAUACgEAAgCDYQALAgCDZgACAINkAAIAg3MAAgSGPQA9CgMACwAAAQACBIWUA0QCAIN5AAABAAIEhZQDRAIAg3gAAAADABBwAAEAAgCDWAADABsAAAsBAAIAg2kAAAEBAAoCAINZAAMAGwAACwEAAgCDaQAAAQEAAAEAAgCDaQACBIY9AD0CAIgxAAABAAIAg24AAA0CBIYRIuUACgMAAQMAAQAFAAEBAQICAAABAAIAiDEAAAEAAgCIMAAAAQACAIgwAAABAAIAiDEAAAAAAgCWKAACAJYpAAADABRwAAEAAgCDWAADABsAAAsBAAIAg2kAAAEBAAABAAIAg2kAAgSGPQA9AgCIMQAAAQACAINuAAANAgSLKSJJAAoCBIaGIs0DAAEDAAEAAwALAAABAAIEhMADcAABAAIAiDIAAAACBIYSIi0CBIS4A3EAAgCWKAACAJYpAAACAoJhAAIAgnIAAgCCYwACAIJzAAIAgmkAAgCCbgACBIS4A3EDACIAAAEAAgCDQQACAINCAAIAg0MAAAIAliIjAAMAHwMAAQACAINBAAIAg0IAAAIAluEgAAAA",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mi>a</mi><mstyle mathsize=\"58%\"><mi>f</mi></mstyle><mstyle mathsize=\"58%\"><mi>d</mi></mstyle><mstyle mathsize=\"58%\"><mi>s</mi></mstyle><mstyle mathsize=\"58%\"><mo>=</mo></mstyle><mstyle displaystyle=\"true\"><mfrac><mrow><mi>Δ</mi><mi>y</mi></mrow><mrow><mi>Δ</mi><mi>x</mi></mrow></mfrac></mstyle><mstyle displaystyle=\"true\"><munderover><mo>∑</mo><mstyle displaystyle=\"false\"><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow></mstyle><mstyle displaystyle=\"false\"><mrow><mi>n</mi></mrow></mstyle></munderover><mrow><msub><mi>X</mi><mstyle scriptlevel=\"0\"><mrow><mstyle mathsize=\"58%\"><mi>i</mi></mstyle></mrow></mstyle></msub><msub><mi>Y</mi><mstyle scriptlevel=\"0\"><mrow><mstyle mathsize=\"58%\"><mi>i</mi></mstyle></mrow></mstyle></msub></mrow></mstyle><mrow><mo stretchy=\"true\">(</mo><mpadded height=\"+0.12em\" depth=\"+0.12em\"><mrow><mtable columnalign=\"left\" rowalign=\"baseline\"><mtr><mtd><mrow><mn>1</mn></mrow></mtd><mtd><mrow><mn>0</mn></mrow></mtd></mtr><mtr><mtd><mrow><mn>0</mn></mrow></mtd><mtd><mrow><mn>1</mn></mrow></mtd></mtr></mtable></mrow></mpadded><mo stretchy=\"true\">)</mo></mrow><mstyle displaystyle=\"true\"><munderover><mo>⋂</mo><mstyle displaystyle=\"false\"><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow></mstyle><mstyle displaystyle=\"false\"><mrow><mi>n</mi></mrow></mstyle></munderover><mrow><msub><mi>X</mi><mstyle scriptlevel=\"0\"><mrow><mstyle mathsize=\"58%\"><mi>i</mi></mstyle></mrow></mstyle></msub></mrow></mstyle><mo>⊆</mo><mrow><mo stretchy=\"true\">(</mo><mpadded height=\"+0.12em\" depth=\"+0.12em\"><mrow><mstyle displaystyle=\"true\"><mfrac><mrow><mi>π</mi></mrow><mrow><mn>2</mn></mrow></mfrac></mstyle><mo>−</mo><mi>θ</mi></mrow></mpadded><mo stretchy=\"true\">)</mo></mrow><mi mathvariant=\"normal\">arcsin</mi><mi>θ</mi><mover><mrow><mi>A</mi><mi>B</mi><mi>C</mi></mrow><mo stretchy=\"true\">⏜</mo></mover><mover><mrow><mi>A</mi><mi>B</mi></mrow><mo stretchy=\"true\">↔</mo></mover></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEABwxEU01UNwAAE1dpbkFsbEJhc2ljQ29kZVBhZ2VzABEFVGltZXMgTmV3IFJvbWFuABEDU3ltYm9sABEFQ291cmllciBOZXcAEQRNVCBFeHRyYQATV2luQWxsQ29kZVBhZ2VzABEGy87M5QASAAghL0WPRC9BUPQQD0dfQVDyHx5BUPQVD0EA9EX0JfSPQl9BAPQQD0NfQQD0j0X0Kl9I9I9BAPQQD0D0j0F/SPQQD0EqX0RfRfRfRfRfQQ8MAQABAAECAgICAAIAAQEBAAMAAQAEAAUACgEAAwAKAAABAAIAg2EAAwAcAAALAQEBAAIAiDIAAAAKAgSGKwArAgCDYgADABwAAAsBAQEAAgCIMgAAAAABAQAKAgSGPQA9AwAXEAABAAICgmwAAgCCaQACAIJtAAALAQACAIN4AAIEhpIhrgIEhh4ipQABAQAKAgSGKwArAwALAAABAAIAg24AAgCCIQAAAQACAINyAAIAgiEAAwABAwABAAIAg24AAgSGEiItAgCDcgAAAgCWKAACAJYpAAACAIIhAAAAAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><msqrt><mrow><msup><mi>a</mi><mstyle scriptlevel=\"0\"><mrow><mstyle mathsize=\"58%\"><mn>2</mn></mstyle></mrow></mstyle></msup><mo>+</mo><msup><mi>b</mi><mstyle scriptlevel=\"0\"><mrow><mstyle mathsize=\"58%\"><mn>2</mn></mstyle></mrow></mstyle></msup></mrow></msqrt><mo>=</mo><mrow><munder><mrow><mi mathvariant=\"normal\">lim</mi></mrow><mstyle scriptlevel=\"0\"><mrow><mstyle mathsize=\"58%\"><mi>x</mi></mstyle><mstyle mathsize=\"58%\"><mo>→</mo></mstyle><mstyle mathsize=\"58%\"><mo>∞</mo></mstyle></mrow></mstyle></munder></mrow><mo>+</mo><mstyle displaystyle=\"true\"><mfrac><mrow><mi>n</mi><mo>!</mo></mrow><mrow><mi>r</mi><mo>!</mo><mrow><mo stretchy=\"true\">(</mo><mpadded height=\"+0.12em\" depth=\"+0.12em\"><mrow><mi>n</mi><mo>−</mo><mi>r</mi></mrow></mpadded><mo stretchy=\"true\">)</mo></mrow><mo>!</mo></mrow></mfrac></mstyle></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAg3gAAwAcAAABAAIAg3kAAAAAAA==",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><msup><mi>x</mi><mstyle scriptlevel=\"0\"><mrow><mi>y</mi></mrow></mstyle></msup></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAMAGwEAAQACAINpAAAAAgCDWAAAAA==",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mmultiscripts><mi>X</mi><none/><none/><mprescripts/><mstyle scriptlevel=\"0\"><mrow><mi>i</mi></mrow></mstyle><none/></mmultiscripts></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAAoBAAIAgwHrAAA=",
+    "error": "",
+    "result": {
+      "MathML": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><mrow><mrow><mo>⥂</mo></mrow></mrow></math>",
+      "Supported": true,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "AwEBAwA=",
+    "error": "MTEF: truncated object list at offset 5",
+    "result": {
+      "MathML": "",
+      "Supported": false,
+      "Diagnostics": null
+    }
+  },
+  {
+    "data": "BQEBBAAAAA==",
+    "error": "MTEF: truncated object list at offset 7",
+    "result": {
+      "MathML": "",
+      "Supported": false,
+      "Diagnostics": null
+    }
+  }
+]

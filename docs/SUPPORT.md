@@ -9,7 +9,7 @@
 | Browser mode | Development-only | Renderer tests without native bridge behavior |
 
 The supported release platform is Windows 11 x64 through pywebview and the system
-WebView2 Runtime. Python and the isolated-script helper are bundled in one EXE.
+WebView2 Runtime. CPython, its standard library and the desktop services are bundled in one EXE.
 Electron packaging is not a supported distribution channel.
 
 The tag workflow verifies and publishes an unsigned EXE, SHA-256 sidecar and
@@ -40,9 +40,9 @@ checks are supplementary, not a required migration gate. Signing remains deferre
 - Autosave preserves workspace configuration and current parsed state, not an
   external workbook copy.
 - Project Python is available in the pywebview runtime. It executes one
-  explicitly invoked `process(context)` script in an isolated embedded
-  interpreter. There is no pip management, terminal, debugger, LSP, direct host
-  filesystem access, network access, or child-process access. A script may
+  explicitly invoked `process(context)` script in a disposable CPython process.
+  Scripts are trusted and have current-user filesystem, network and child-process
+  access. There is no security sandbox, pip management, terminal, debugger or LSP. A script may
   return bounded UTF-8 text artifacts; after preview and user directory
   selection, the desktop host validates and writes them.
 

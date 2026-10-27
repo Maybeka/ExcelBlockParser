@@ -13,7 +13,7 @@ runtime transitions, extraction execution, or diagnostics decisions.
 | Project | `services/serializer.ts`, `services/project.ts`, `services/projectLifecycle.ts` | Strict Project v3 serialization, import validation, source inspection, save/save-as, and feature-neutral state commands. |
 | Workbook runtime | `services/workbookRuntime.ts`, `services/spreadsheetCapability.ts` | Authorized paths, load generations, attachment/selection state, and bounded workbook/sheet/range capabilities. |
 | Execution | `services/projectExecution.ts`, feature registry | Reader collection and stale-run rejection; registered modules own parsing, snapshots, previews, and save preparation. |
-| Project Python | `services/pythonProject.ts`, `cmd/native-helper/python_runtime.go` | Versioned JSON context construction, isolated interpreter lifecycle, cancellation, and structured result transport. |
+| Project Python | `services/pythonProject.ts`, `desktop_pywebview/python_runtime.py`, `worker.py` | Versioned JSON context, disposable trusted CPython execution, process-tree cancellation, and structured result transport. |
 | Workspace | `services/workspaceHistory.ts`, `services/diagnostics.ts` | Atomic history/dirty transitions, deterministic diagnostics, and cross-workbook focus targets. |
 | Validation | `services/extraction.ts`, `components/ConfigPanel.tsx` | Parse-time deterministic diagnostics and UI-time configuration checks. |
 | UI | `WorkspaceApplication.tsx`, `components/` | User interactions, rendering, previews, and notifications. |
@@ -58,8 +58,10 @@ that these workflows are insufficient; its contract must be designed around
 that scenario rather than introduced speculatively.
 
 The Python desktop host owns the window and filesystem operations. A separately
-managed Go helper retains the isolated Python interpreter, MathType conversion
-and Windows GDI+ rasterization. It has no GUI-runtime dependency. File reads and
+managed Python service owns disposable CPython script processes, the Python
+MathType converter and ctypes-based Windows GDI+ rasterization. No Go compiler,
+runtime or helper binary is used. Script process isolation is not a permission
+sandbox: organization scripts are trusted. File reads and
 source inspection run in cancelable worker processes with a 30-second deadline;
 shutdown terminates both file workers and the helper. Windows production builds
 are onefile EXEs whose temporary runtime dependencies are cleaned on normal exit.

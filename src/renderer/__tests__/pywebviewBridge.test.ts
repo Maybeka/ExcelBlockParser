@@ -20,7 +20,7 @@ function nativeAPI(): PywebviewAPI {
   return {
     ...methods, Ready: async () => undefined,
     Minimize: vi.fn(async () => undefined), ToggleMaximize: vi.fn(async () => true),
-    RuntimeInfo: async () => ({ pywebview: '6.2.1', hostPython: '3.12', scriptPython: 'goccy', mathType: '0.2.0' }),
+    RuntimeInfo: async () => ({ pywebview: '6.2.1', hostPython: '3.12', scriptPython: 'CPython 3.12', mathType: '0.2.0 Python' }),
     LoadAppLocale: async () => null, SaveAppLocale: async () => undefined,
   }
 }

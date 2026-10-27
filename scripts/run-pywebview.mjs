@@ -26,11 +26,9 @@ if (mode === 'package') {
 }
 if (mode === 'test') {
   run(process.execPath, ['--test', 'scripts/patch-univer-formula-buffer.test.mjs'])
-  run(python, ['-m', 'desktop_pywebview.build_helper'])
   run(python, ['-m', 'unittest', 'discover', '-s', 'desktop_pywebview', '-t', '.', '-v'])
 } else if (mode === 'dev' || mode === 'smoke' || mode === 'suite' || mode === 'project' || mode === 'browser' || mode === 'outline' || mode === 'python' || mode === 'window' || mode === 'drawing' || mode === 'preferences' || mode === 'recovery' || mode === 'package') {
   run('npm', ['run', 'build:vite'])
-  run(python, ['-m', 'desktop_pywebview.build_helper'])
   if (mode === 'browser' || mode === 'outline' || mode === 'package') run(process.execPath, ['scripts/prepare-pywebview-browser-fixtures.mjs'])
   if (mode === 'drawing' || mode === 'package') run(process.execPath, ['scripts/prepare-pywebview-drawing-fixtures.mjs'])
   if (mode === 'package') {

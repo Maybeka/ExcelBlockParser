@@ -19,8 +19,10 @@ The application-owned feature scope stays at Block, Region and project Python.
 
 1. Main-process, renderer/unit, browser, Electron development and production
    host/helper tests pass. Existing skips must be identified, not counted as passes.
-2. The independent Go interpreter retains execution, imports, errors, isolation
-   and cancellation tests. Removing the old GUI host must not delete these tests.
+2. Disposable CPython execution retains multi-file imports, error reporting,
+   bounded output and cancellation tests. Trusted filesystem/network access and
+   dynamically imported standard-library modules must work in packaged builds.
+   Formula conversion matches the captured original stream and layout corpus.
 3. File authorization, regular-file checks, size bounds, 30-second read deadlines,
    JSON save targets, safe generated-file paths and overwrite confirmation have
    regressions. Timeout and shutdown must reap file workers and helper processes.
@@ -33,7 +35,7 @@ The application-owned feature scope stays at Block, Region and project Python.
 
 ## Windows Distribution Gates
 
-1. Build on Windows using pinned desktop dependencies and the required Go/Node/
+1. Build on Windows using pinned desktop dependencies and the required Node/
    Python versions. The shipped application is a single EXE plus checksum and
    provenance assets, not an EXE with a separately shipped `_internal` folder.
 2. Source and packaged applications complete all eleven native acceptance groups

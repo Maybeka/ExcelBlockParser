@@ -76,9 +76,17 @@ class NativePythonAPI(NativeSuiteAPI):
 
 SOURCE = """import json
 import sys
+import csv, decimal, statistics, ssl, sqlite3, urllib.request
+from pathlib import Path
 from generators.summary import summarize
 
 def process(context):
+    assert decimal.Decimal('0.1') + decimal.Decimal('0.2') == decimal.Decimal('0.3')
+    assert statistics.mean([2, 4]) == 3
+    with sqlite3.connect(':memory:') as database:
+        assert database.execute('select 1').fetchone()[0] == 1
+    Path('trusted-runtime-check.txt').write_text('trusted filesystem access', encoding='utf-8')
+    assert Path('trusted-runtime-check.txt').read_text(encoding='utf-8') == 'trusted filesystem access'
     summary = summarize(context)
     print('native workspace pipeline complete')
     sys.stderr.write('checked both workbooks\\n')

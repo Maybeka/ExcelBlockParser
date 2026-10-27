@@ -62,7 +62,8 @@ class DesktopAPI:
 
     def RuntimeInfo(self):
         return {"pywebview": version("pywebview"), "hostPython": sys.version.split()[0],
-                "scriptPython": "goccy/go-python v0.1.0", "mathType": "mtef-mathml v0.2.0"}
+                "scriptPython": "CPython " + sys.version.split()[0] + " (trusted process)",
+                "mathType": "mtef-mathml Python port v0.2.0"}
 
     def _loaded(self):
         from webview.dom import DOMEventHandler

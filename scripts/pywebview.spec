@@ -4,15 +4,16 @@ from PyInstaller.utils.hooks import collect_data_files
 
 root = Path(SPECPATH).parent
 windows = sys.platform == "win32"
-helper = root / "desktop_pywebview" / "bin" / ("native-helper.exe" if windows else "native-helper")
-if not helper.is_file():
-    raise SystemExit("Build the native helper before packaging")
+sys.path.insert(0, str(root))
+from desktop_pywebview.stdlib_bundle import prepare
+stdlib, extensions = prepare(root)
 
 analysis = Analysis(
     [str(root / "scripts" / "pywebview_entry.py")],
     pathex=[str(root)],
-    binaries=[(str(helper), "desktop_pywebview/bin")],
-    datas=[(str(root / "dist"), "dist"), (str(root / "examples/project.json"), "examples"),
+    binaries=extensions,
+    datas=[(stdlib, '.'), (str(root / 'desktop_pywebview/equations/fontmaps'), 'desktop_pywebview/equations/fontmaps'),
+           (str(root / "dist"), "dist"), (str(root / "examples/project.json"), "examples"),
            (str(root / "examples/test_data.xlsx"), "examples"),
            (str(root / "examples/multi_sheet.xlsx"), "examples"),
            (str(root / "src/renderer/__tests__/fixtures/project-v3-complete.json"), "src/renderer/__tests__/fixtures"),

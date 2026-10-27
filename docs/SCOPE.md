@@ -1,7 +1,7 @@
 # Excel Block Parser: Product and Repository Scope
 
 **Status:** v1.9.0 frozen baseline; maintenance pending a concrete extension need
-**Production runtime target:** pywebview, React, TypeScript, Go
+**Production runtime target:** pywebview, React, TypeScript, CPython
 **Development runtime:** Electron, React, TypeScript
 **Last assessed:** 2026-09-12
 
@@ -117,7 +117,7 @@ The implemented application supports this general workflow:
 
 - Electron main and preload processes for fast local development and native
   workflow diagnostics.
-- Python desktop bridge and a standalone Go helper for isolated scripts and equations.
+- Python desktop bridge, trusted CPython script processes and Python equation conversion.
 - Native file open/save dialogs for workbooks and project JSON.
 - Modal preview flow. The Electron-only preview window is not a v1 requirement.
 
@@ -148,7 +148,7 @@ parity during ongoing development.
 ## 5. Quality and Verification Status
 
 The repository contains example workbooks plus unit, browser, Electron-native,
-Electron-main, Python host/helper, Go core, and production build checks. Electron
+Electron-main, Python host/runtime, formula conformance, and production build checks. Electron
 remains development coverage only; production candidates also run source and
 downloaded single-file pywebview WebView regressions on Windows. Physical Windows
 11 checks are supplementary rather than a required migration gate. See

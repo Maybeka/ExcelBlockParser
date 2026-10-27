@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Replaced the Wails desktop host with pywebview and Windows single-file EXE
+  packaging; Electron remains the development host.
+- Removed Go sources, dependencies, helper binaries and build tooling. MathType
+  conversion is now Python, and Windows equation previews use GDI+ via ctypes.
+- Project Python now runs trusted organization scripts in disposable bundled
+  CPython processes. Host filesystem, network and child-process access are
+  allowed; execution is not a sandbox. Multi-file imports, input/results,
+  artifact review/export, output limits and cancellation remain available.
+
 ## 1.9.0 - 2026-09-12
 
 - Enabled staged workbook loading by default for new projects and projects that
