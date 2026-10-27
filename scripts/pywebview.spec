@@ -27,11 +27,12 @@ analysis = Analysis(
 )
 archive = PYZ(analysis.pure)
 executable = EXE(
-    archive, analysis.scripts, [], exclude_binaries=True,
+    archive, analysis.scripts, analysis.binaries if windows else [],
+    analysis.datas if windows else [], exclude_binaries=not windows,
     name="Excel Block Parser", debug=False, strip=False, upx=False, console=False,
     icon=str(root / "build" / ("icon.png" if windows else "icon-transparent.png")),
 )
-collection = COLLECT(executable, analysis.binaries, analysis.datas, strip=False, upx=False, name="Excel Block Parser")
 if sys.platform == "darwin":
+    collection = COLLECT(executable, analysis.binaries, analysis.datas, strip=False, upx=False, name="Excel Block Parser")
     app = BUNDLE(collection, name="Excel Block Parser.app", icon=str(root / "build/icon-transparent.png"),
                  bundle_identifier="io.excelblockparser.pywebview")

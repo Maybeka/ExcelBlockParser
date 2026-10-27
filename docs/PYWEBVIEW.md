@@ -220,9 +220,9 @@ restoration are still required.
 
 Passing the original Electron, browser, and Go suites is shared-code regression
 evidence, not proof that all their scenarios have been replayed on pywebview.
-Native parity coverage remains partial; target-platform window interaction,
-physical drag/drop, directory dialogs, and Windows EMF rendering still require
-separate acceptance. Wails remains available during that work.
+Automated parity does not cover physical target-platform window interaction,
+drag/drop, directory dialogs, or visual Windows EMF placement. No physical
+acceptance is claimed. Wails remains available; removing it is a separate task.
 
 The Python workspace suite uses actual renderer actions and the real isolated
 helper. It checks refreshed two-workbook Block/Region input without executing a
@@ -295,7 +295,7 @@ uploaded only after all preceding steps succeed.
 The same bounded source runner is available locally after building the frontend,
 helper and fixtures: `.venv-pywebview/Scripts/python.exe -m
 desktop_pywebview.verify_native`. To test the packaged application, append
-`--executable "release-pywebview/Excel Block Parser/Excel Block Parser.exe"`
+`--executable "release-pywebview/Excel Block Parser.exe"`
 and use a distinct `--logs` directory. Restart children cannot overwrite the
 parent suite's report.
 The current macOS package passes all eleven runner groups with fresh completion
@@ -305,10 +305,9 @@ and new window suite also pass from source. The completion
 report and bounded-runner tests pass 10 cases. This evidence does not validate
 the Windows-only process-tree termination branch or WebView2 runtime.
 A passing Windows hosted-runner job does not establish Windows 11 physical or
-visual acceptance. Check the downloaded candidate's native dialogs, JSON drag/drop,
-dirty-close choices, maximize/restore, outline hit targets, worksheet selection
-flashes, and image/OMML/MathType placement on a Windows 11 machine before retiring
-Wails.
+visual acceptance. Manual checking of dialogs, drag/drop, pointer hit targets,
+selection flashes and formula placement is outside the current migration goal:
+the user explicitly excluded Windows manual acceptance on 2026-10-14.
 
 On 2026-10-13, the Windows Server 2025 hosted runner passed both source and
 packaged WebView2 acceptance at commit `61d2a90`: all 11 groups in each mode
@@ -317,9 +316,28 @@ Host/helper/harness tests ran 74 cases: 73 passed and the private local MathType
 workbook case was explicitly skipped because it is not distributed. The public
 MathType fixture and Windows-only real GDI+ EMF-to-PNG check passed.
 See the [verified workflow run](https://github.com/Maybeka/ExcelBlockParser/actions/runs/38337167023).
-The `pywebview-windows-x64-candidate` artifact is a candidate application directory,
-not a release. CI dialog choices are supplied by the harness; physical Windows 11
+That historical run tested an application directory before download/extraction,
+not an Internet-marked distribution. The resulting preview failed on a user's
+Windows machine during Python.NET initialization. CI dialog choices are supplied
+by the harness; physical Windows 11
 dialogs, drag/drop, pointer hit targets, and visual placement still need acceptance.
+
+The Windows candidate now builds a single EXE. Distribution acceptance downloads
+the release ZIP over a local HTTP connection, verifies its bytes, and explicitly
+applies NTFS `Zone.Identifier` Internet-zone markers to the ZIP and every extracted
+file, reproducing Explorer's downloaded-ZIP propagation (Python's extractor does
+not propagate those markers itself). A negative control must reproduce the exact
+CLR loader failure using the previous public onedir preview. The new single-file
+EXE must complete both Save and Discard smoke scenarios with markers unchanged,
+and report an isolated runtime directory that no longer exists after exit.
+The full eleven packaged suites then run against that same marked, extracted EXE,
+not the build-directory copy. This is automated Internet-zone simulation, not a
+claim of driving a real browser download or Explorer UI.
+
+The `pywebview-windows-x64-candidate` artifact contains the standalone EXE and a
+ZIP containing only that EXE. It is uploaded only after all acceptance checks
+pass. Neither distribution requires a separately shipped `_internal` directory,
+automatic unblocking, a changed .NET trust configuration, or installed Python.
 
 The Windows replay exposed a display-load completion race that cleared newer
 extraction results before Save As. Results now invalidate before explicit source
@@ -338,8 +356,13 @@ npm run package:pywebview
 
 Build on the target OS. PyInstaller packages Python, the platform WebView
 bindings, the helper, frontend assets, and smoke-test examples into
-`release-pywebview/`. Windows output is an application directory containing
-`Excel Block Parser.exe`; macOS also produces `Excel Block Parser.app`.
+`release-pywebview/`. Windows output is the standalone `Excel Block Parser.exe`;
+macOS still produces `Excel Block Parser.app`. Windows onefile startup extracts
+its bundled dependencies to a private temporary runtime directory and removes it
+on normal exit. Those new temporary DLLs do not inherit the downloaded EXE's
+Internet-zone marker. The original EXE stays marked; system security settings and
+project files are not modified. This is single-file distribution, not in-memory
+execution; startup needs temporary disk space and may take longer than onedir.
 The launcher keeps its PyInstaller cache in ignored `.tmp/pyinstaller-cache`
 unless `PYINSTALLER_CONFIG_DIR` is explicitly provided.
 The Windows helper can be cross-built with `python -m
@@ -348,18 +371,21 @@ a complete Windows package.
 
 ## Capability Acceptance
 
-| Wails capability | pywebview implementation | Required evidence |
+| Wails capability | pywebview implementation | Automated evidence |
 | --- | --- | --- |
-| Project open/save/save as | Native dialogs and authorized atomic JSON writes | Host tests, native bridge round trips, native dialogs on target OS |
+| Project open/save/save as | Native dialogs and authorized atomic JSON writes | Host tests, native bridge round trips and complete v3 golden documents |
 | Workbook reads | Dialog/project-authorized bounded reads | Host tests and native workbook load |
 | Recovery | Separate bounded JSON recovery store | Host and native bridge round trips |
-| Window controls | Frameless native window and native state events | Host tests; drag, maximize, minimize and close acceptance on target OS |
-| Unsaved close | Native close is deferred to the existing three-choice renderer flow | Native dirty-project close test and target OS acceptance |
-| Project drop | Native DOM event with full paths; one JSON only | Host event filtering, native opening event and physical drag/drop acceptance |
+| Window controls | Frameless native window and native state events | Host tests and real native maximize/restore geometry in source and package |
+| Unsaved close | Native close is deferred to the existing three-choice renderer flow | Native Cancel/Discard/Save and recovery restart tests |
+| Project drop | Native DOM event with full paths; one JSON only | Host event filtering and authorized JSON opening tests |
 | Python execution | Existing isolated interpreter in a managed helper process | Real multi-file execution, failures, cancellation and cleanup tests |
-| Generated files | Validated UTF-8 relative paths and replacement confirmation | Export tests and target OS directory/confirmation dialogs |
-| MathType | Existing mtef-mathml v0.2.0 helper | Real workbook OLE samples and rendered output acceptance |
-| EMF/WMF | Existing Windows GDI+ helper | Windows rendered preview acceptance |
-| Distribution | PyInstaller application directory/bundle | Packaged native smoke and Windows 11 manual acceptance |
+| Generated files | Validated UTF-8 relative paths and replacement confirmation | Actual nested writes, cancellation and overwrite decline/accept tests |
+| MathType | Existing mtef-mathml v0.2.0 helper | Real workbook OLE samples and native drawing resource/pixel checks |
+| EMF/WMF | Existing Windows GDI+ helper | Windows real EMF rasterization, decoded PNG dimensions and nonwhite pixels |
+| Distribution | Windows single-file EXE; macOS application bundle | Source/native regressions plus downloaded-package Internet-zone and cleanup checks in Windows CI |
 
-The adapter is not production-complete until the target OS acceptance items pass.
+The current migration development goal is accepted using automated evidence.
+Physical Windows 11 interaction and visual acceptance are not claimed and are
+not completion requirements for this goal. Mainline migration, Wails removal,
+and release publication remain separate operations.

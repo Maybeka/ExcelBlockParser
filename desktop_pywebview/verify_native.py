@@ -36,11 +36,13 @@ def stop_tree(process):
     process.wait()
 
 
-def run_case(command, log_path, timeout, cwd, require_report=False):
+def run_case(command, log_path, timeout, cwd, require_report=False, extra_env=None):
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     report = log_path.with_suffix(".result.json")
     environment = os.environ.copy()
+    if extra_env:
+        environment.update(extra_env)
     if require_report:
         report.unlink(missing_ok=True)
         environment["PYWEBVIEW_TEST_REPORT"] = str(report.resolve())

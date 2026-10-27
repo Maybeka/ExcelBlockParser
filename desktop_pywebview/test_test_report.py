@@ -9,6 +9,15 @@ from .test_report import run_with_report
 
 
 class CompletionReportTests(unittest.TestCase):
+    def test_packaged_report_identifies_runtime_directory_after_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory, "result.json")
+            with patch.dict(os.environ, {"PYWEBVIEW_TEST_REPORT": str(report)}):
+                with patch("desktop_pywebview.test_report.sys.frozen", True, create=True):
+                    with patch("desktop_pywebview.test_report.sys._MEIPASS", directory, create=True):
+                        run_with_report(lambda: None)
+            self.assertEqual(json.loads(report.read_text()), {"completed": True, "bundleDirectory": directory})
+
     def test_success_report_is_written_after_main_and_not_inherited(self):
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory, "result.json")

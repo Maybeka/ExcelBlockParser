@@ -32,8 +32,14 @@ jobs:
         run: npm run package:pywebview
       - name: Source WebView2 native acceptance
         run: .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_native
-      - name: Packaged WebView2 native acceptance
-        run: .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_native --executable "release-pywebview/Excel Block Parser/Excel Block Parser.exe" --logs .tmp/pywebview-packaged-native-logs
+      - name: Downloaded single-file distribution and legacy failure control
+        run: |
+          New-Item -ItemType Directory -Force .tmp | Out-Null
+          Invoke-WebRequest -Uri 'https://github.com/Maybeka/ExcelBlockParser/releases/download/pywebview-preview-2026-10-14/ExcelBlockParser-pywebview-preview-2026-10-14-windows-x64.zip' -OutFile .tmp/pywebview-previous-preview.zip
+          .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_distribution --baseline-archive .tmp/pywebview-previous-preview.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Downloaded EXE full WebView2 native acceptance
+        run: .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_native --executable ".tmp/pywebview-downloaded-distribution/Downloaded app with spaces/Excel Block Parser.exe" --logs .tmp/pywebview-packaged-native-logs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -41,9 +47,13 @@ jobs:
           path: |
             .tmp/pywebview-native-logs/
             .tmp/pywebview-packaged-native-logs/
+            .tmp/pywebview-downloaded-distribution/*.log
+            .tmp/pywebview-downloaded-distribution/*.result.json
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: pywebview-windows-x64-candidate
-          path: release-pywebview/Excel Block Parser/
+          path: |
+            release-pywebview/Excel Block Parser.exe
+            release-pywebview/ExcelBlockParser-pywebview-windows-x64.zip
           if-no-files-found: error
