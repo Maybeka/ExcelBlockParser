@@ -120,6 +120,12 @@ class NativeIntegrationTests(unittest.TestCase):
             self.assertEqual(json.loads(result['resultJson']), 1)
             self.assertEqual(result['stdout'].count('thread-output'), 20)
 
+    def test_project_source_bytes_preserve_crlf_and_unicode(self):
+        source = "from pathlib import Path\r\ndef process(context):\r\n return Path(__file__).read_bytes().decode('utf-8')\r\n# Unicode: \u4e2d\u6587\r\n"
+        result = self.run_script(source)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual(json.loads(result['resultJson']), source)
+
     def test_cancel_during_startup_and_reuse_after_cancellation(self):
         with ThreadPoolExecutor(max_workers=1) as executor:
             running = executor.submit(self.run_script, "def process(context):\n while True: pass")

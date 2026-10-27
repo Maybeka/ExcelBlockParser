@@ -101,7 +101,7 @@ def execute(connection, project, context, proceed, directory):
             for name, source in files:
                 path = Path(directory, name)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(source, encoding='utf-8')
+                path.write_bytes(source.encode('utf-8'))
             os.chdir(directory)
             sys.path.insert(0, directory)
             module = entry[:-3].replace('/', '.')
