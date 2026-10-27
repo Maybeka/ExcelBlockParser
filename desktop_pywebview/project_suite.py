@@ -18,7 +18,7 @@ def expected_external_source_path(source_path, destination, windows=os.name == '
 def wait_saved(path, ui):
     # Save As first writes the selected file, then rebases paths and writes the
     # final document. File existence alone does not mean that operation finished.
-    ui.wait(f"document.querySelector('.project-save-notice') !== window.__pywebviewSaveNoticeBeforeCommand && document.querySelector('.project-save-notice')?.textContent === {json.dumps('Saved ' + path.stem)}")
+    ui.wait(f"window.__pywebviewSaveCompletion?.text === {json.dumps('Saved ' + path.stem)}")
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         value = read_saved(path)

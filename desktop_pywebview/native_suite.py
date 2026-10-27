@@ -10,6 +10,25 @@ from .native_clock import ZERO_DELAY_TASK_PUMP
 from .smoke import wait_for
 
 
+# Latch the real renderer completion notice before clicking Save. A hidden native
+# WebView can remove the transient notice before the next test RPC observes it.
+SAVE_COMPLETION_OBSERVER = """(() => {
+  window.__pywebviewSaveObserver?.disconnect();
+  const previous = document.querySelector('.project-save-notice');
+  const completion = window.__pywebviewSaveCompletion = {text: null};
+  const observer = new MutationObserver(() => {
+    const notice = document.querySelector('.project-save-notice');
+    if (notice && notice !== previous) {
+      completion.text = notice.textContent;
+      observer.disconnect();
+    }
+  });
+  window.__pywebviewSaveObserver = observer;
+  observer.observe(document.body, {childList: true, subtree: true, characterData: true});
+  return true;
+})()"""
+
+
 class NativeSuiteAPI(DesktopAPI):
     def __init__(self, recovery_dir):
         super().__init__(recovery_dir)
@@ -72,7 +91,7 @@ class NativeUI:
 
     def menu(self, label):
         if label in ('Save Project', 'Save Project As'):
-            self.read("window.__pywebviewSaveNoticeBeforeCommand = document.querySelector('.project-save-notice'); true")
+            self.read(SAVE_COMPLETION_OBSERVER)
         self.button('Project actions')
         self.click('[role="menuitem"]', label)
 
@@ -172,7 +191,7 @@ def run(window, api, directory):
 
     def wait_saved(path, label=None):
         import time
-        ui.wait(f"document.querySelector('.project-save-notice') !== window.__pywebviewSaveNoticeBeforeCommand && document.querySelector('.project-save-notice')?.textContent === {json.dumps('Saved ' + path.stem)}")
+        ui.wait(f"window.__pywebviewSaveCompletion?.text === {json.dumps('Saved ' + path.stem)}")
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             document = read_saved(path)

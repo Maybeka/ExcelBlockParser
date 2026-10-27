@@ -16,8 +16,7 @@ class ProjectSuitePathTests(unittest.TestCase):
             path.write_text(json.dumps(intermediate), encoding='utf-8')
             ui = Mock()
             def finish_save(expression):
-                self.assertIn('.project-save-notice', expression)
-                self.assertIn('!== window.__pywebviewSaveNoticeBeforeCommand', expression)
+                self.assertIn('__pywebviewSaveCompletion?.text', expression)
                 self.assertIn('Saved Project', expression)
                 path.write_text(json.dumps(final), encoding='utf-8')
             ui.wait.side_effect = finish_save

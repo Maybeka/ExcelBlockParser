@@ -1,11 +1,42 @@
 from pathlib import Path
+import json
+import subprocess
 import tempfile
 import unittest
 
-from desktop_pywebview.native_suite import NativeSuiteAPI, fixture
+from desktop_pywebview.native_suite import NativeSuiteAPI, SAVE_COMPLETION_OBSERVER, fixture
 
 
 class NativeSuiteHarnessTests(unittest.TestCase):
+    def test_save_completion_latches_new_notice_after_it_disappears(self):
+        script = """
+const assert = require('node:assert/strict');
+global.window = {};
+let notice = {textContent: 'Saved Project'};
+global.document = {body: {}, querySelector: () => notice};
+global.MutationObserver = class {
+  constructor(callback) { this.callback = callback; this.disconnected = false; }
+  observe() {}
+  disconnect() { this.disconnected = true; }
+};
+const arm = () => eval(OBSERVER);
+arm();
+window.__pywebviewSaveObserver.callback();
+assert.equal(window.__pywebviewSaveCompletion.text, null);
+notice = {textContent: 'Saved Project'};
+window.__pywebviewSaveObserver.callback();
+notice = null;
+assert.equal(window.__pywebviewSaveCompletion.text, 'Saved Project');
+assert.equal(window.__pywebviewSaveObserver.disconnected, true);
+arm();
+assert.equal(window.__pywebviewSaveCompletion.text, null);
+notice = {textContent: 'Saved Next project'};
+window.__pywebviewSaveObserver.callback();
+assert.equal(window.__pywebviewSaveCompletion.text, 'Saved Next project');
+"""
+        subprocess.run(['node', '-e', 'const OBSERVER = ' + json.dumps(SAVE_COMPLETION_OBSERVER) + ';' + script],
+                       check=True, capture_output=True, text=True, timeout=10)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
