@@ -1,6 +1,7 @@
 """Bounded MTEF v3/v5 parser, ported from mtef-mathml v0.2.0."""
 
 from pathlib import Path
+from decimal import Decimal
 import struct
 import xml.etree.ElementTree as ET
 
@@ -45,11 +46,14 @@ def dim_points(dim, full):
 
 def spacing(dim, row):
     unit, value = dim
+    def number(number_value):
+        text = format(Decimal(str(number_value)), 'f')
+        return text.rstrip('0').rstrip('.') if '.' in text else text
     if unit == 4:
         if (row and 140 <= value <= 160) or (not row and 90 <= value <= 110):
             return ''
-        return f'{value / 100:g}ex'
-    return f'{value:g}' + {0: 'in', 1: 'cm', 2: 'pt', 3: 'pc'}.get(unit, 'em')
+        return number(value / 100) + 'ex'
+    return number(value) + {0: 'in', 1: 'cm', 2: 'pt', 3: 'pc'}.get(unit, 'em')
 
 
 class Parser:

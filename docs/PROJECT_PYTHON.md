@@ -153,8 +153,8 @@ replacement for each destination.
 ## Runtime Boundary
 
 The pywebview host creates a fresh CPython process for every run. Global
-variables and imported module state do not persist between runs. Only the
-bundled Python standard library is available.
+variables and imported module state do not persist between runs. The standard
+library is bundled; installed third-party packages are not guaranteed.
 
 The runtime deliberately permits host filesystem access, network connections,
 and child processes. Relative paths resolve inside the temporary project

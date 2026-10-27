@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from .equations import convert_mtef, convert_ole
 from .equations.mathml import write
 from .equations.model import Char, Line, Matrix, Pile, Template
+from .equations.parser import spacing
 
 
 def node(value):
@@ -28,6 +29,10 @@ def node(value):
 
 
 class EquationTests(unittest.TestCase):
+    def test_dimension_precision_is_not_truncated_to_six_digits(self):
+        self.assertEqual(spacing((2, 1.23456789), False), '1.23456789pt')
+        self.assertEqual(spacing((4, 12.3456789), False), '0.123456789ex')
+
     def test_mtef_matches_captured_original_results(self):
         cases = json.loads(Path(__file__).with_name('fixtures').joinpath('mtef-v020-streams.json').read_text())
         for index, case in enumerate(cases):
