@@ -71,6 +71,8 @@ class NativeUI:
         self.click('button', label)
 
     def menu(self, label):
+        if label in ('Save Project', 'Save Project As'):
+            self.read("window.__pywebviewSaveNoticeBeforeCommand = document.querySelector('.project-save-notice'); true")
         self.button('Project actions')
         self.click('[role="menuitem"]', label)
 
@@ -170,6 +172,7 @@ def run(window, api, directory):
 
     def wait_saved(path, label=None):
         import time
+        ui.wait(f"document.querySelector('.project-save-notice') !== window.__pywebviewSaveNoticeBeforeCommand && document.querySelector('.project-save-notice')?.textContent === {json.dumps('Saved ' + path.stem)}")
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             document = read_saved(path)
