@@ -69,7 +69,7 @@ class FileReader:
                 # Windows pipe polling does not reliably wake when the worker is terminated.
                 if receive.poll(min(0.05, remaining)):
                     break
-                if not process.is_alive():
+                if not process.is_alive() and not receive.poll(0):
                     raise RuntimeError("File read worker exited without a response")
             try:
                 success, value, data = receive.recv()
