@@ -12,7 +12,20 @@ def blocked_worker(connection, path, limit, inspect_only):
     time.sleep(60)
 
 
+def exited_worker(connection, path, limit, inspect_only):
+    connection.close()
+
+
 class FileReaderTests(unittest.TestCase):
+    def test_worker_exit_does_not_wait_for_read_timeout(self):
+        reader = FileReader(worker=exited_worker)
+        self.addCleanup(reader.close)
+        started = time.monotonic()
+        with self.assertRaises(RuntimeError):
+            reader.read("unused", 10)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertFalse(reader._processes)
+
     def test_read_inspect_limits_and_failure_cleanup(self):
         reader = FileReader()
         self.addCleanup(reader.close)

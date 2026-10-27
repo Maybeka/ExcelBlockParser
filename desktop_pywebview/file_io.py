@@ -3,6 +3,7 @@
 import multiprocessing
 from pathlib import Path
 import threading
+import time
 
 
 def _file_worker(connection, path, limit, inspect_only):
@@ -57,8 +58,19 @@ class FileReader:
                 started = True
                 self._processes.add(process)
             send.close()
-            if not receive.poll(self.timeout):
-                raise TimeoutError(f"File read timed out after {self.timeout:g} seconds")
+            deadline = time.monotonic() + self.timeout
+            while True:
+                with self._lock:
+                    if self._closed:
+                        raise RuntimeError("File read was interrupted")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f"File read timed out after {self.timeout:g} seconds")
+                # Windows pipe polling does not reliably wake when the worker is terminated.
+                if receive.poll(min(0.05, remaining)):
+                    break
+                if not process.is_alive():
+                    raise RuntimeError("File read worker exited without a response")
             try:
                 success, value, data = receive.recv()
             except EOFError:

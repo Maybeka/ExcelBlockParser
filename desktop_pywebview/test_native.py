@@ -76,6 +76,20 @@ class NativeIntegrationTests(unittest.TestCase):
         self.assertIn("KeyboardInterrupt", result["error"])
         self.assertTrue(self.run_script("def process(context): return {'ready': True}")["ok"])
 
+    def test_math_type_valid_and_invalid_payloads(self):
+        import struct
+        mtef = bytes([3, 1, 1, 3, 0, 10, 1, 2, 131, ord('x'), 0, 0, 0])
+        header = bytearray(28)
+        struct.pack_into('<H', header, 0, 28)
+        struct.pack_into('<I', header, 8, len(mtef))
+        result = self.helper.request("mathType", data=base64.b64encode(header + mtef).decode("ascii"))
+        self.assertTrue(result["supported"], result)
+        self.assertIn("<math", result["mathMl"])
+        self.assertFalse(result.get("diagnostics"), result)
+        with self.assertRaisesRegex(RuntimeError, "payload is shorter"):
+            self.helper.request("mathType", data=base64.b64encode(bytes([1, 2, 3])).decode("ascii"))
+        self.assertTrue(self.helper.request("mathType", data=base64.b64encode(header + mtef).decode("ascii"))["supported"])
+
     def test_math_type_reference_workbook_objects(self):
         import zipfile
         source = ROOT / ".tmp" / "征地col.xlsx"
