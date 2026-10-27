@@ -14,7 +14,7 @@
     "preview": "electron-vite preview",
     "test": "npx playwright test",
     "test:ui": "npx playwright test --ui",
-    "test:unit": "node --test scripts/patch-univer-formula-buffer.test.mjs && vitest run",
+    "test:unit": "node examples/generate-test-data.mjs --performance-only && node --test scripts/patch-univer-formula-buffer.test.mjs && vitest run",
     "generate:fixtures": "node examples/generate-test-data.mjs",
     "benchmark:workbook": "node scripts/benchmark-workbook.mjs",
     "test:release": "node --test scripts/release-version.test.mjs scripts/windows-powershell.test.mjs scripts/pywebview-release.test.mjs",

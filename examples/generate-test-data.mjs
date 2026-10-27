@@ -1,6 +1,6 @@
 /**
  * Generates test Excel files for manual QA of excel-block-parser.
- * Usage: node examples/generate-test-data.mjs [--performance]
+ * Usage: node examples/generate-test-data.mjs [--performance|--performance-only]
  * Output: examples/test_data.xlsx, test_data_v2.xlsx, multi_sheet.xlsx, empty.xlsx, m2_integration.xlsx
  * Optional: examples/performance_50000.xlsx (exactly 50,000 cells)
  */
@@ -200,6 +200,10 @@ async function generatePerformanceFixture() {
 
 // ──── Main ────────────────────────────────────────────────────────────────────
 async function main() {
+  if (process.argv.includes('--performance-only')) {
+    await generatePerformanceFixture();
+    return;
+  }
   console.log('Generating test Excel files in examples/ ...\n');
   await generateTestData();
   await generateTestDataV2();
