@@ -8,6 +8,9 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      VITEST_MAX_WORKERS: '1'
+      PLAYWRIGHT_WORKERS: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
