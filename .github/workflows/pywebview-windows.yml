@@ -36,7 +36,7 @@ jobs:
       - name: Downloaded single-file distribution and legacy failure control
         run: |
           New-Item -ItemType Directory -Force .tmp | Out-Null
-          Invoke-WebRequest -Uri 'https://github.com/Maybeka/ExcelBlockParser/releases/download/pywebview-preview-2026-10-14/ExcelBlockParser-pywebview-preview-2026-10-14-windows-x64.zip' -OutFile .tmp/pywebview-previous-preview.zip
+          Invoke-WebRequest -Uri 'https://github.com/Maybeka/ExcelBlockParser/releases/download/pywebview-preview-2026-10-28-nogo/CI-ONLY-legacy-startup-failure-fixture.zip' -OutFile .tmp/pywebview-previous-preview.zip
           .venv-pywebview/Scripts/python.exe -m desktop_pywebview.verify_distribution --baseline-archive .tmp/pywebview-previous-preview.zip
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Downloaded EXE full WebView2 native acceptance
